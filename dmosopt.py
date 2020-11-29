@@ -205,8 +205,13 @@ class DistOptimizer():
         optimizer_dict = {}
         for problem_id in problem_ids:
             opt_prob = OptProblem(problem_spec, self.eval_fun)
-            optimizer_dict[problem_id] = OptStrategy(opt_prob, n_initial)
-            
+            opt_strategy = OptStrategy(opt_prob, n_initial)
+            if problem_id in old_evals:
+                old_eval_xs = [old_eval[0] for old_eval in old_evals[problem_id]]
+                old_eval_ys = [old_eval[1] for old_eval in old_evals[problem_id]]
+                opt_strategy.x = np.vstack(old_eval_xs)
+                opt_strategy.y = np.vstack(old_eval_ys)
+            optimizer_dict[problem_id] = opt_strategy
         self.optimizer_dict = optimizer_dict
 
     def save_evals(self):
@@ -246,7 +251,7 @@ class DistOptimizer():
             prms_dict = dict(prms)
             for i in range(n_res):
                 res_i = res[i,:]
-                prms_i = { k: v[i,:] for k in prms_dict }
+                prms_i = { k: prms_dict[k][i] for k in prms_dict }
                 self.logger.info(f"Best eval {i} so far for: {res_i}@{prms_i}")
             
 
@@ -325,6 +330,8 @@ def h5_load_raw(input_file, opt_id):
     f = h5py.File(input_file, 'r')
     opt_grp = h5_get_group(f, opt_id)
 
+    n_objectives = int(opt_grp["n_objectives"][()])
+
     parameter_enum_dict = h5py.check_enum_dtype(opt_grp['parameter_enum'].dtype)
     parameters_idx_dict = { parm: idx for parm, idx in parameter_enum_dict.items() }
     parameters_name_dict = { idx: parm for parm, idx in parameters_idx_dict.items() }
@@ -339,12 +346,13 @@ def h5_load_raw(input_file, opt_id):
         problem_ids = set(opt_grp['problem_ids'])
     
     M = len(parameter_spec_dict)
+    P = n_objectives
     raw_results = {}
     if problem_ids is not None:
         for problem_id in problem_ids:
-            raw_results[problem_id] = opt_grp['%d' % problem_id]['results'][:].reshape((-1,M+1)) # np.array of shape [N, M+1]
+            raw_results[problem_id] = opt_grp['%d' % problem_id]['results'][:].reshape((-1,M+P)) # np.array of shape [N, M+P]
     else:
-        raw_results[0] = opt_grp['%d' % 0]['results'][:].reshape((-1,M+1)) # np.array of shape [N, M+1]
+        raw_results[0] = opt_grp['%d' % 0]['results'][:].reshape((-1,M+P)) # np.array of shape [N, M+P]
     f.close()
     
     param_names = []
@@ -360,7 +368,8 @@ def h5_load_raw(input_file, opt_id):
         
 
     raw_spec = (is_integer, lower, upper)
-    info = { 'params': param_names,
+    info = { 'n_objectives': n_objectives,
+             'params': param_names,                            
              'problem_parameters': problem_parameters,
              'problem_ids': problem_ids }
     
@@ -386,30 +395,25 @@ def h5_load_all(file_path, opt_id):
     """
     raw_spec, raw_problem_results, info = h5_load_raw(file_path, opt_id)
     is_integer, lo_bounds, hi_bounds = raw_spec
-    spec = ProblemSpec(bound1=lo_bounds, bound2=hi_bounds, is_integer=is_integer)
+    n_objectives = info['n_objectives']
+    spec = ProblemSpec(bound1=lo_bounds, bound2=hi_bounds, is_integer=is_integer, n_objectives=n_objectives)
     evals = { problem_id: [] for problem_id in raw_problem_results }
-    prev_best_dict = {}
     for problem_id in raw_problem_results:
         raw_results = raw_problem_results[problem_id]
-        prev_best_dict[problem_id] = raw_results[np.argmax(raw_results, axis=0)[0]]
         for raw_result in raw_results:
-            x = list(raw_result[1:])
-            result = EvalRecord(x)
-            result.complete(raw_result[0])
-            evals[problem_id].append(result)
-    return raw_spec, spec, evals, info, prev_best_dict
+            y = raw_result[:n_objectives]
+            x = raw_result[n_objectives:]
+            evals[problem_id].append((x, y))
+    return raw_spec, spec, evals, info
     
 def init_from_h5(file_path, param_names, opt_id, logger):        
     # Load progress and settings from file, then compare each
     # restored setting with settings specified by args (if any)
-    old_raw_spec, old_spec, old_evals, info, prev_best = h5_load_all(file_path, opt_id)
+    old_raw_spec, old_spec, old_evals, info = h5_load_all(file_path, opt_id)
     saved_params = info['params']
     for problem_id in old_evals:
         n_old_evals = len(old_evals[problem_id])
-        logger.info(
-            f"Restored {n_old_evals} trials for problem {problem_id}, prev best: "
-            f"{prev_best[problem_id][0]}@{list(zip(saved_params, prev_best[problem_id][1:]))}"
-        )
+        logger.info(f"Restored {n_old_evals} trials for problem {problem_id}")
     if (param_names is not None) and param_names != saved_params:
         # Switching params being optimized over would throw off the optimizer.
         # Must use restore params from specified
@@ -425,9 +429,10 @@ def init_from_h5(file_path, param_names, opt_id, logger):
             f"Params {params} and spec {raw_spec} are of different length"
             )
     problem_parameters = info['problem_parameters']
+    n_objectives = info['n_objectives']
     problem_ids = info['problem_ids'] if 'problem_ids' in info else None
 
-    return old_evals, params, is_int, lo_bounds, hi_bounds, problem_parameters, problem_ids
+    return old_evals, params, is_int, lo_bounds, hi_bounds, n_objectives, problem_parameters, problem_ids
 
 def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, spec, evals, problem_parameters, fpath, logger):
     """
@@ -438,21 +443,27 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, spec, evals, p
     if opt_id not in f.keys():
         h5_init_types(f, opt_id, param_names, problem_parameters, spec)
         opt_grp = h5_get_group(f, opt_id)
+        opt_grp['n_objectives'] = spec.n_objectives
         if has_problem_ids:
             opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
 
     opt_grp = h5_get_group(f, opt_id)
     M = len(param_names)
+    P = spec.n_objectives
     for problem_id in problem_ids:
-        prob_evals = evals[problem_id]
+        prob_evals_x, prob_evals_y = evals[problem_id]
+        prob_evals_x = prob_evals_x.reshape((-1, M))
+        prob_evals_y = prob_evals_y.reshape((-1, P))
         opt_prob = h5_get_group(opt_grp, '%d' % problem_id)
         dset = h5_get_dataset(opt_prob, 'results', maxshape=(None,),
                               dtype=np.float32) 
-        old_size = int(dset.shape[0] / (M+1))
-        raw_results = np.zeros((len(prob_evals)-old_size, len(prob_evals[0].x) + 1))
-        for i, eeval in enumerate(prob_evals[old_size:]):
-            raw_results[i][0] = eeval.value
-            raw_results[i][1:] = list(eeval.params)
+        old_size = int(dset.shape[0] / (M+P))
+        raw_results = np.zeros((len(prob_evals_x)-old_size, M+P))
+        for i in range(raw_results.shape[0]):
+            x = prob_evals_x[i + old_size]
+            y = prob_evals_y[i + old_size]
+            raw_results[i][:P] = y
+            raw_results[i][P:] = x
         logger.info(f"Saving {raw_results.shape[0]} trials for problem id %d to {fpath}." % problem_id)
         h5_concat_dataset(opt_prob['results'], raw_results.ravel())
     
