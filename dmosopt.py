@@ -233,11 +233,21 @@ class DistOptimizer():
         best_results = self.get_best()
         if self.has_problem_ids:
             for problem_id in self.problem_ids:
-                res, prms = best_results[problem_id]
-                self.logger.info(f"Best eval so far for id {problem_id}: {res}@{prms}")
+                prms, res = best_results[problem_id]
+                n_res = res.shape[0]
+                prms_dict = dict(prms)
+                for i in range(n_res):
+                    res_i = res[i,:]
+                    prms_i = { k: v[i,:] for k in prms_dict }
+                    self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i}")
         else:
-            res, prms = best_results
-            self.logger.info(f"Best eval so far for: {res}@{prms}")
+            prms, res = best_results
+            n_res = res.shape[0]
+            prms_dict = dict(prms)
+            for i in range(n_res):
+                res_i = res[i,:]
+                prms_i = { k: v[i,:] for k in prms_dict }
+                self.logger.info(f"Best eval {i} so far for: {res_i}@{prms_i}")
             
 
 def h5_get_group (h, groupname):
