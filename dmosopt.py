@@ -25,6 +25,7 @@ class OptProblem():
     def __init__(self, spec, eval_fun):
 
         self.dim = len(spec.bound1)
+        assert(self.dim > 0)
         self.lb = spec.bound1
         self.ub = spec.bound2
         self.int_var = spec.is_integer
@@ -37,6 +38,10 @@ class OptProblem():
     
 class OptStrategy():
     def __init__(self, prob, n_initial=10, resample_fraction=0.25):
+        print(f"prob.dim: {prob.dim}")
+        print(f"prob.n_objectives: {prob.n_objectives}")
+        print(f"prob.lb: {prob.lb}")
+        print(f"prob.ub: {prob.ub}")
         xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub)
         assert(xinit.shape[1] == prob.dim)
         self.prob = prob
@@ -53,8 +58,8 @@ class OptStrategy():
         return result
 
     def complete_x(self, x, y):
-        assert(x.shape[0] == self.prob.dim)
-        assert(y.shape[0] == self.prob.n_objectives)
+        assert(x.shape[1] == self.prob.dim)
+        assert(y.shape[1] == self.prob.n_objectives)
         self.completed.append((x,y))
     
     def step(self):
@@ -175,6 +180,7 @@ class DistOptimizer():
                 old_evals, param_names, is_int, lo_bounds, hi_bounds, n_objectives, problem_parameters, problem_ids = \
                   init_from_h5(file_path, param_names, opt_id, self.logger)
 
+        assert(dim > 0)
         problem_spec = ProblemSpec(bound1=np.asarray(lo_bounds), bound2=np.asarray(hi_bounds),
                                    is_integer=is_int, n_objectives=n_objectives)
         self.problem_spec = problem_spec
