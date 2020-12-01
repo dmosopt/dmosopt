@@ -78,12 +78,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, ):
     niter: number of iteration
     """
     Ninit = nInput * nEval
-    print("xinit: Ninit = %d " % Ninit)
-    sys.stdout.flush()
-
     Xinit = sampling.glp(Ninit, nInput)
-    print("xinit: Xinit = %s " % str(Xinit))
-    sys.stdout.flush()
 
     for i in range(Ninit):
         Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
