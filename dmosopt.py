@@ -37,20 +37,20 @@ class OptProblem():
 
     
 class OptStrategy():
-    def __init__(self, prob, n_initial=10, resample_fraction=0.25):
-        print(f"prob.dim: {prob.dim}")
-        print(f"prob.n_objectives: {prob.n_objectives}")
-        print(f"prob.lb: {prob.lb}")
-        print(f"prob.ub: {prob.ub}")
-        xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub)
-        assert(xinit.shape[1] == prob.dim)
+    def __init__(self, prob, n_initial=10, initial=None, resample_fraction=0.25):
         self.prob = prob
-        self.x = None
-        self.y = None #np.zeros((np.shape[0], prob.n_objectives))
-        self.reqs = [ xinit[i,:] for i in range(xinit.shape[0]) ]
         self.completed = []
+        self.reqs = []
         self.resample_fraction = resample_fraction
-        
+        if initial is None:
+            xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub)
+            assert(xinit.shape[1] == prob.dim)
+            self.reqs = [ xinit[i,:] for i in range(xinit.shape[0]) ]
+            self.x = None
+            self.y = None #np.zeros((np.shape[0], prob.n_objectives))
+        else:
+            self.x, self.y = initial
+            
     def get_next_x(self):
         result = None
         if len(self.reqs) > 0:
@@ -58,8 +58,8 @@ class OptStrategy():
         return result
 
     def complete_x(self, x, y):
-        assert(x.shape[1] == self.prob.dim)
-        assert(y.shape[1] == self.prob.n_objectives)
+        assert(x.shape[0] == self.prob.dim)
+        assert(y.shape[0] == self.prob.n_objectives)
         self.completed.append((x,y))
     
     def step(self):
@@ -99,6 +99,7 @@ class DistOptimizer():
         n_initial=10,
         verbose=False,
         reduce_fun=None,
+        reduce_fun_args=None,
         problem_ids=None,
         problem_parameters=None,
         space=None,
@@ -188,7 +189,8 @@ class DistOptimizer():
         has_problem_ids = (problem_ids is not None)
         if not has_problem_ids:
             problem_ids = set([0])
-        
+
+        self.n_initial = n_initial
         self.problem_parameters, self.param_names = problem_parameters, param_names
         self.is_int = is_int
         self.file_path, self.save = file_path, save
@@ -202,23 +204,28 @@ class DistOptimizer():
             self.eval_fun = partial(eval_obj_fun_sp, obj_fun, self.problem_parameters, self.param_names, self.is_int, 0)
             
         self.reduce_fun = reduce_fun
+        self.reduce_fun_args = reduce_fun_args
         
         self.evals = { problem_id: {} for problem_id in problem_ids }
+        self.old_evals = old_evals
 
         self.has_problem_ids = has_problem_ids
         self.problem_ids = problem_ids
 
-        optimizer_dict = {}
-        for problem_id in problem_ids:
-            opt_prob = OptProblem(problem_spec, self.eval_fun)
-            opt_strategy = OptStrategy(opt_prob, n_initial)
-            if problem_id in old_evals:
-                old_eval_xs = [old_eval[0] for old_eval in old_evals[problem_id]]
-                old_eval_ys = [old_eval[1] for old_eval in old_evals[problem_id]]
-                opt_strategy.x = np.vstack(old_eval_xs)
-                opt_strategy.y = np.vstack(old_eval_ys)
-            optimizer_dict[problem_id] = opt_strategy
-        self.optimizer_dict = optimizer_dict
+        self.optimizer_dict = {}
+
+    def init_strategy(self):
+        for problem_id in self.problem_ids:
+            initial = None
+            if problem_id in self.old_evals:
+                old_eval_xs = [e[0] for e in self.old_evals[problem_id]]
+                old_eval_ys = [e[1] for e in self.old_evals[problem_id]]
+                x = np.vstack(old_eval_xs)
+                y = np.vstack(old_eval_ys)
+                initial = (x, y)
+            opt_prob = OptProblem(self.problem_spec, self.eval_fun)
+            opt_strategy = OptStrategy(opt_prob, self.n_initial, initial=initial)
+            self.optimizer_dict[problem_id] = opt_strategy
 
     def save_evals(self):
         """Store results of finished evals to file; print best eval"""
@@ -507,7 +514,7 @@ def eval_obj_fun_mp(obj_fun, pp, space_params, is_int, problem_ids, space_vals):
     return result_dict
 
 
-def sopt_init(sopt_params, worker=None, verbose=False):
+def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
     objfun = None
     objfun_module = sopt_params.get('obj_fun_module', '__main__')
     objfun_name = sopt_params.get('obj_fun_name', None)
@@ -537,6 +544,8 @@ def sopt_init(sopt_params, worker=None, verbose=False):
         reducefun = eval(reducefun_name, sys.modules[reducefun_module].__dict__)
         sopt_params['reduce_fun'] = reducefun        
     sopt = DistOptimizer(**sopt_params, verbose=verbose)
+    if init_strategy:
+        sopt.init_strategy()
     sopt_dict[sopt.opt_id] = sopt
     return sopt
 
@@ -546,7 +555,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
     logger = logging.getLogger(sopt_params['opt_id'])
     if verbose:
         logger.setLevel(logging.INFO)
-    sopt = sopt_init(sopt_params)
+    sopt = sopt_init(sopt_params, init_strategy=True)
     logger.info("Optimizing for %d iterations..." % sopt.n_iter)
     iter_count = 0
     task_ids = []
@@ -561,12 +570,13 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
         if len(task_ids) > 0:
             task_id, res = controller.get_next_result()
 
-            logger.info(f"task_id {task_id}: res = {res}")
-            
             if sopt.reduce_fun is None:
                 rres = res
             else:
-                rres = sopt.reduce_fun(res)
+                if sopt.reduce_fun_args is None:
+                    rres = sopt.reduce_fun(res)
+                else:
+                    rres = sopt.reduce_fun(res, *sopt.reduce_fun_args)
 
             for problem_id in rres:
                 eval_x = sopt.evals[problem_id][task_id]
@@ -576,8 +586,6 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
             task_ids.remove(task_id)
 
         while ((len(controller.ready_workers) > 0) and not next_iter):
-            logger.info(f"controller.ready_workers: {controller.ready_workers}")
-            logger.info(f"controller.workers_available: {controller.workers_available}")
             eval_x_dict = {}
             for problem_id in sopt.problem_ids:
                 eval_x = sopt.optimizer_dict[problem_id].get_next_x()
@@ -605,7 +613,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
 
 def sopt_work(worker, sopt_params, verbose=False):
     """Worker for distributed surrogate optimization."""
-    sopt_init(sopt_params, worker=worker, verbose=verbose)
+    sopt_init(sopt_params, worker=worker, verbose=verbose, init_strategy=False)
 
 def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
