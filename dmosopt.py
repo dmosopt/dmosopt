@@ -35,21 +35,30 @@ class OptProblem():
     def eval(self, x):
         return self.eval_fun(x)
 
+def anyclose(a, b, rtol=1e-4, atol=1e-4):
+    for i in b.shape[0]:
+        if np.allclose(a, b[i, :]):
+            return True
+    return False
     
 class OptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, resample_fraction=0.25):
         self.prob = prob
         self.completed = []
         self.reqs = []
-        self.resample_fraction = resample_fraction
         if initial is None:
-            xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub)
-            assert(xinit.shape[1] == prob.dim)
-            self.reqs = [ xinit[i,:] for i in range(xinit.shape[0]) ]
             self.x = None
             self.y = None #np.zeros((np.shape[0], prob.n_objectives))
         else:
             self.x, self.y = initial
+        self.resample_fraction = resample_fraction
+        xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, previous=initial[0].shape[0])
+        assert(xinit.shape[1] == prob.dim)
+        if initial is None:
+            self.reqs = [ xinit[i,:] for i in range(xinit.shape[0]) ]
+        else:
+            self.reqs = filter(lambda xs: not anyclose(xs, self.x), 
+                               [ xinit[i,:] for i in range(xinit.shape[0]) ])
             
     def get_next_x(self):
         result = None
@@ -105,7 +114,7 @@ class DistOptimizer():
         space=None,
         n_iter=100,
         nprocs_per_worker=1,
-        save_iter=10,
+        save_eval=10,
         file_path=None,
         save=False,
         **kwargs
@@ -137,7 +146,7 @@ class DistOptimizer():
         If you want to minimize instead,
         simply negate the result in the objective function before returning it.
         :param int n_iter: (optional) Number of times to sample and test params.
-        :param int save_iter: (optional) How often to save progress.
+        :param int save_eval: (optional) How often to save progress.
         :param str file_path: (optional) File name for restoring and/or saving results and settings.
         :param bool save: (optional) Save settings and progress periodically.
         """
@@ -196,7 +205,7 @@ class DistOptimizer():
         self.file_path, self.save = file_path, save
 
         self.n_iter = n_iter
-        self.save_iter = save_iter
+        self.save_eval = save_eval
 
         if has_problem_ids:
             self.eval_fun = partial(eval_obj_fun_mp, obj_fun, self.problem_parameters, self.param_names, self.is_int, problem_ids)
@@ -558,13 +567,14 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
     sopt = sopt_init(sopt_params, init_strategy=True)
     logger.info("Optimizing for %d iterations..." % sopt.n_iter)
     iter_count = 0
+    eval_count = 0
     task_ids = []
     n_tasks = 0
     next_iter = False
     while (iter_count < sopt.n_iter):
         controller.recv()
         
-        if (iter_count > 0) and sopt.save and (iter_count % sopt.save_iter == 0):
+        if (eval_count > 0) and sopt.save and (eval_count % sopt.save_eval == 0):
             sopt.save_evals()
 
         if len(task_ids) > 0:
@@ -583,6 +593,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                 sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id])
                 logger.info("problem id %d: optimization iteration %d: parameter coordinates %s: %s" % (problem_id, iter_count, str(eval_x), str(rres[problem_id])))
                 
+            eval_count += 1
             task_ids.remove(task_id)
 
         while ((len(controller.ready_workers) > 0) and not next_iter):

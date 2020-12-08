@@ -67,7 +67,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     return bestx, besty, x, y
 
 
-def xinit(nEval, nInput, nOutput, xlb, xub, ):
+def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None):
     """ 
     Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
     model: the evaluated model function
@@ -75,14 +75,14 @@ def xinit(nEval, nInput, nOutput, xlb, xub, ):
     nOutput: number of output objectives
     xlb: lower bound of input
     xub: upper bound of input
-    niter: number of iteration
     """
     Ninit = nInput * nEval
+    if nPrevious is not None:
+        Ninit -= nPrevious
     Xinit = sampling.glp(Ninit, nInput)
 
     for i in range(Ninit):
         Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
-        sys.stdout.flush()
     #Yinit = np.zeros((Ninit, nOutput))
     #for i in range(Ninit):
     #    Yinit[i,:] = model.evaluate(Xinit[i,:])

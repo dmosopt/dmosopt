@@ -12,7 +12,7 @@ setuptools.setup(
 #    long_description=long_description,
 #    long_description_content_type="text/markdown",
     url="https://github.com/iraikov/dmosopt",
-    py_modules=["dmosopt", "GLP", "MOASMO", "NSGA2"],
+    py_modules=["dmosopt", "GLP", "MOASMO", "NSGA2", "gp", "sampling", "discrepancy"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD License",
