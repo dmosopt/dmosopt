@@ -5,7 +5,7 @@ import setuptools
 
 setuptools.setup(
     name="dmosopt", 
-    version="0.0.1",
+    version="0.0.2",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",

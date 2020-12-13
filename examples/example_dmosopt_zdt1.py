@@ -39,6 +39,7 @@ if __name__ == '__main__':
     for i in range(30):
         space['x%d' % (i+1)] = [0.0, 1.0]
     problem_parameters = {}
+    objective_names = ['y1', 'y2']
     
     # Create an optimizer
     dmosopt_params = {'opt_id': 'dmosopt_zdt1',
@@ -46,7 +47,7 @@ if __name__ == '__main__':
                       'obj_fun_module': 'example_dmosopt_zdt1',
                       'problem_parameters': problem_parameters,
                       'space': space,
-                      'n_objectives': 2,
+                      'objective_names': objective_names,
                       'n_initial': 1,
                       'n_iter': 4}
     
@@ -58,7 +59,7 @@ if __name__ == '__main__':
         
         # plot results
         plt.plot(y[:,0],y[:,1],'b.',label='evaluated points')
-        plt.plot(besty[:,0],besty[:,1],'r.',label='MO-ASMO')
+        plt.plot(besty['y1'],besty['y1'],'r.',label='MO-ASMO')
     
         y_true = zdt1_pareto()
         plt.plot(y_true[:,0],y_true[:,1],'k-',label='True Pareto')

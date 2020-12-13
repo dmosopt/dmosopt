@@ -79,6 +79,10 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None):
     Ninit = nInput * nEval
     if nPrevious is not None:
         Ninit -= nPrevious
+    
+    if Ninit <= 0:
+        return None
+
     Xinit = sampling.glp(Ninit, nInput)
 
     for i in range(Ninit):
