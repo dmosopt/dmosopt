@@ -60,10 +60,11 @@ if __name__ == '__main__':
         import matplotlib.pyplot as plt
         bestx, besty = best
         x, y = dmosopt.sopt_dict['dmosopt_zdt1'].optimizer_dict[0].get_evals()
+        besty_dict = dict(besty)
         
         # plot results
         plt.plot(y[:,0],y[:,1],'b.',label='evaluated points')
-        plt.plot(besty['y1'],besty['y2'],'r.',label='MO-ASMO')
+        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='MO-ASMO')
     
         y_true = zdt1_pareto()
         plt.plot(y_true[:,0],y_true[:,1],'k-',label='True Pareto')
