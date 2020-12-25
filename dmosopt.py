@@ -37,7 +37,7 @@ class OptProblem():
         return self.eval_fun(x)
 
 def anyclose(a, b, rtol=1e-4, atol=1e-4):
-    for i in b.shape[0]:
+    for i in range(b.shape[0]):
         if np.allclose(a, b[i, :]):
             return True
     return False
@@ -63,8 +63,8 @@ class OptStrategy():
             if initial is None:
                 self.reqs = [ xinit[i,:] for i in range(xinit.shape[0]) ]
             else:
-                self.reqs = filter(lambda xs: not anyclose(xs, self.x), 
-                                   [ xinit[i,:] for i in range(xinit.shape[0]) ])
+                self.reqs = list(filter(lambda xs: not anyclose(xs, self.x), 
+                                        [ xinit[i,:] for i in range(xinit.shape[0]) ]))
             
     def get_next_x(self):
         result = None
@@ -432,11 +432,9 @@ def h5_load_raw(input_file, opt_id):
     M = len(parameter_specs)
     P = n_objectives
     raw_results = {}
-    if problem_ids is not None:
-        for problem_id in problem_ids:
+    for problem_id in problem_ids if problem_ids is not None else [0]:
+        if ('%d' % problem_id) in opt_grp:
             raw_results[problem_id] = opt_grp['%d' % problem_id]['results'][:].reshape((-1,M+P)) # np.array of shape [N, M+P]
-    else:
-        raw_results[0] = opt_grp['%d' % 0]['results'][:].reshape((-1,M+P)) # np.array of shape [N, M+P]
     f.close()
     
     param_names = []
@@ -548,7 +546,6 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
         dset = h5_get_dataset(opt_prob, 'results', maxshape=(None,),
                               dtype=np.float32) 
         old_size = int(dset.shape[0] / (M+P))
-        logger.info(f"old_size = {old_size} len(prob_evals_x) = {len(prob_evals_x)}")
         raw_results = np.zeros((len(prob_evals_x), M+P))
         for i in range(raw_results.shape[0]):
             x = prob_evals_x[i]
@@ -646,6 +643,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
     logger.info(f"Optimizing for {sopt.n_iter} iterations...")
     iter_count = 0
     eval_count = 0
+    saved_eval_count = 0
     task_ids = []
     n_tasks = 0
     next_iter = False
@@ -653,8 +651,6 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
 
         controller.recv()
 
-        if (eval_count > 0) and sopt.save and (eval_count % sopt.save_eval == 0):
-            sopt.save_evals()
 
         if len(task_ids) > 0:
             ret = controller.probe_next_result()
@@ -679,6 +675,10 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                 
                 eval_count += 1
                 task_ids.remove(task_id)
+
+        if sopt.save and (eval_count % sopt.save_eval == 0) and (eval_count > 0) and (saved_eval_count < eval_count):
+            sopt.save_evals()
+            saved_eval_count = eval_count
 
         while ((len(controller.ready_workers) > 0) and not next_iter):
             eval_x_dict = {}
@@ -707,14 +707,16 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
         sopt.save_evals()
     controller.info()
 
-def sopt_work(worker, sopt_params, verbose=False):
+def sopt_work(worker, sopt_params, verbose=False, debug=False):
     """Worker for distributed surrogate optimization."""
+    if worker.worker_id > 1 and (not debug):
+        verbose = False
     sopt_init(sopt_params, worker=worker, verbose=verbose, init_strategy=False)
 
 def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
 
-def run(sopt_params, spawn_workers=False, nprocs_per_worker=1, verbose=True):
+def run(sopt_params, spawn_workers=False, nprocs_per_worker=1, verbose=True, worker_debug=False):
     if distwq.is_controller:
         distwq.run(fun_name="sopt_ctrl", module_name="dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),
@@ -732,7 +734,7 @@ def run(sopt_params, spawn_workers=False, nprocs_per_worker=1, verbose=True):
         distwq.run(fun_name="sopt_work", module_name="dmosopt",
                    broker_fun_name=sopt_params.get("broker_fun_name", None),
                    broker_module_name=sopt_params.get("broker_module_name", None),
-                   verbose=verbose, args=(sopt_params, verbose, ),
+                   verbose=verbose, args=(sopt_params, verbose, worker_debug, ),
                    spawn_workers=spawn_workers,
                    nprocs_per_worker=nprocs_per_worker)
         return None
