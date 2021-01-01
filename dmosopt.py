@@ -265,13 +265,17 @@ class DistOptimizer():
             self.print_best()
                 
 
-    def save_evals(self):
+    def save_evals(self, offset=None):
         """Store results of finished evals to file; print best eval"""
         finished_evals = {}
         for problem_id in self.problem_ids:
             completed = self.optimizer_dict[problem_id].get_completed()
             if completed is not None:
-                finished_evals[problem_id] = completed
+                if offset is None:
+                    finished_evals[problem_id] = completed
+                else:
+                    finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:])
+
         if len(finished_evals) > 0:
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                        self.param_names, self.objective_names,
@@ -546,15 +550,15 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
         dset = h5_get_dataset(opt_prob, 'results', maxshape=(None,),
                               dtype=np.float32) 
         old_size = int(dset.shape[0] / (M+P))
-        if prob_evals_x.shape[0] > old_size:
-            raw_results = np.zeros((prob_evals_x.shape[0]-old_size, M+P))
-            for i in range(raw_results.shape[0]):
-                x = prob_evals_x[i+old_size]
-                y = prob_evals_y[i+old_size]
-                raw_results[i][:P] = y
-                raw_results[i][P:] = x
+        raw_results = np.zeros((prob_evals_x.shape[0], M+P))
+        for i in range(raw_results.shape[0]):
+            x = prob_evals_x[i]
+            y = prob_evals_y[i]
+            raw_results[i][:P] = y
+            raw_results[i][P:] = x
+        if logger is not None:
             logger.info(f"Saving {raw_results.shape[0]} evaluations for problem id {problem_id} to {fpath}.")
-            h5_concat_dataset(opt_prob['results'], raw_results.ravel())
+        h5_concat_dataset(opt_prob['results'], raw_results.ravel())
     
     f.close()
 
@@ -652,7 +656,6 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
 
         controller.recv()
 
-
         if len(task_ids) > 0:
             ret = controller.probe_next_result()
             if ret is not None:
@@ -678,7 +681,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                 task_ids.remove(task_id)
 
         if sopt.save and (eval_count % sopt.save_eval == 0) and (eval_count > 0) and (saved_eval_count < eval_count):
-            sopt.save_evals()
+            sopt.save_evals(offset=saved_eval_count)
             saved_eval_count = eval_count
 
         while ((len(controller.ready_workers) > 0) and not next_iter):
