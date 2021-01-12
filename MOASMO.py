@@ -96,7 +96,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None):
 
 def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, pop = 100, gen = 100, \
-            crossover_rate = 0.9, mu = 20, mum = 20):
+            crossover_rate = 0.9, mu = 20, mum = 20, logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     One-step mode for offline optimization
@@ -120,7 +120,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub)
     bestx_sm, besty_sm, x_sm, y_sm = \
         NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
-                           pop, gen, crossover_rate, mu, mum)
+                           pop, gen, crossover_rate, mu, mum, logger=logger)
     D = NSGA2.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]

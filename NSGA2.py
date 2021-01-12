@@ -6,7 +6,7 @@ import numpy as np
 import copy
 
 def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
-                 crossover_rate = 0.9, mu = 20, mum = 20):
+                 crossover_rate = 0.9, mu = 20, mum = 20, logger=None):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
         nInput: number of model input
@@ -34,6 +34,8 @@ def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
     population_obj  = y.copy()
 
     for i in range(gen):
+        if logger is not None:
+            logger.info(f"NSGA2: iteration {i+1} of {gen}...")
         pool = selection(population_para, population_obj, nInput, pop, poolsize, toursize)
         count = 0
         while (count < pop - 1):

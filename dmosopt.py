@@ -43,7 +43,8 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
     return False
     
 class OptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, resample_fraction=0.25):
+    def __init__(self, prob, n_initial=10, initial=None, population_size=100, resample_fraction=0.25, num_generations=100, logger=None):
+        self.logger = logger
         self.prob = prob
         self.completed = []
         self.reqs = []
@@ -53,6 +54,8 @@ class OptStrategy():
         else:
             self.x, self.y = initial
         self.resample_fraction = resample_fraction
+        self.population_size = population_size
+        self.num_generations = num_generations
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
@@ -95,7 +98,8 @@ class OptStrategy():
                 self.y = np.vstack((self.y, y_completed))
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
-                                 self.x, self.y)
+                                 self.x, self.y, pop=self.population_size, gen=self.num_generations,
+                                 logger=self.logger)
         for i in range(x_resample.shape[0]):
             self.reqs.append(x_resample[i,:])
         
@@ -129,6 +133,9 @@ class DistOptimizer():
         problem_ids=None,
         problem_parameters=None,
         space=None,
+        population_size=100,
+        num_generations=200,
+        resample_fraction=0.25,
         n_iter=100,
         nprocs_per_worker=1,
         save_eval=10,
@@ -168,6 +175,9 @@ class DistOptimizer():
 
         self.opt_id = opt_id
         self.verbose = verbose
+        self.population_size = population_size
+        self.num_generations = num_generations
+        self.resample_fraction = resample_fraction
 
         self.logger = logging.getLogger(opt_id)
         if self.verbose:
@@ -259,7 +269,13 @@ class DistOptimizer():
                 y = np.vstack(old_eval_ys)
                 initial = (x, y)
             opt_prob = OptProblem(self.param_names, self.objective_names, self.param_spec, self.eval_fun)
-            opt_strategy = OptStrategy(opt_prob, self.n_initial, initial=initial)
+            if self.resample_fraction > 1.0:
+                self.resample_fraction = 1.0
+            opt_strategy = OptStrategy(opt_prob, self.n_initial, initial=initial, 
+                                       population_size=self.population_size, 
+                                       resample_fraction=self.resample_fraction,
+                                       num_generations=self.num_generations,
+                                       logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
         if initial is not None:
             self.print_best()
@@ -650,9 +666,8 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
     eval_count = 0
     saved_eval_count = 0
     task_ids = []
-    n_tasks = 0
     next_iter = False
-    while (iter_count < sopt.n_iter) or (len(task_ids) > 0):
+    while iter_count < sopt.n_iter:
 
         controller.recv()
 
@@ -684,7 +699,8 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
             sopt.save_evals(offset=saved_eval_count)
             saved_eval_count = eval_count
 
-        while ((len(controller.ready_workers) > 0) and not next_iter):
+
+        while (len(controller.ready_workers) > 0) and not next_iter:
             eval_x_dict = {}
             for problem_id in sopt.problem_ids:
                 eval_x = sopt.optimizer_dict[problem_id].get_next_x()
@@ -694,15 +710,18 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                     eval_x_dict[problem_id] = eval_x
             if next_iter:
                 break
+
             task_id = controller.submit_call("eval_fun", module_name="dmosopt",
                                              args=(sopt.opt_id, eval_x_dict,))
             task_ids.append(task_id)
-            n_tasks += 1
             for problem_id in sopt.problem_ids:
                 sopt.evals[problem_id][task_id] = eval_x_dict[problem_id]
 
         if next_iter and (len(task_ids) == 0):
-            sopt.optimizer_dict[problem_id].step()
+            for problem_id in sopt.problem_ids:
+                logger.info(f"performing optimization step {iter_count+1} for problem {problem_id} ...")
+                sopt.optimizer_dict[problem_id].step()
+                logger.info(f"completed optimization step {iter_count+1} for problem {problem_id} ...")
             next_iter = False
             if eval_count > 0:
                 iter_count += 1
@@ -720,11 +739,12 @@ def sopt_work(worker, sopt_params, verbose=False, debug=False):
 def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
 
-def run(sopt_params, spawn_workers=False, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
+def run(sopt_params, spawn_workers=False, sequential_spawn=False, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
     if distwq.is_controller:
         distwq.run(fun_name="sopt_ctrl", module_name="dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),
                    spawn_workers=spawn_workers,
+                   sequential_spawn=sequential_spawn,
                    nprocs_per_worker=nprocs_per_worker,
                    collective_mode=collective_mode)
         opt_id = sopt_params['opt_id']
@@ -741,6 +761,7 @@ def run(sopt_params, spawn_workers=False, nprocs_per_worker=1, collective_mode="
                    broker_module_name=sopt_params.get("broker_module_name", None),
                    verbose=verbose, args=(sopt_params, verbose, worker_debug, ),
                    spawn_workers=spawn_workers,
+                   sequential_spawn=sequential_spawn,
                    nprocs_per_worker=nprocs_per_worker,
                    collective_mode=collective_mode)
         return None
