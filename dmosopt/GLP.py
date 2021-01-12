@@ -8,7 +8,7 @@ from __future__ import division, print_function, absolute_import
 import numpy as np
 import fractions as fc
 import itertools
-from discrepancy import CD2
+from dmosopt.discrepancy import CD2
 #from discrepancy_cython import CD2
 
 def sample(n, s):

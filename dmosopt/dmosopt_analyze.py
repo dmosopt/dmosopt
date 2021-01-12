@@ -3,8 +3,8 @@ import os, sys, logging, datetime, gc, pprint
 from functools import partial
 import click
 import numpy as np
-from dmosopt import init_from_h5
-from MOASMO import get_best
+from dmosopt.dmosopt import init_from_h5
+from dmosopt.MOASMO import get_best
 
 script_name = os.path.basename(__file__)
 

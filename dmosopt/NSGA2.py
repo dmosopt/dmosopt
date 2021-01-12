@@ -1,9 +1,9 @@
 # Nondominated Sorting Genetic Algorithm II (NSGA-II)
 # An multi-objective optimization algorithm
 from __future__ import division, print_function, absolute_import
-import sampling
 import numpy as np
 import copy
+from dmosopt import sampling
 
 def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
                  crossover_rate = 0.9, mu = 20, mum = 20, logger=None):

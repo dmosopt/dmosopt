@@ -1,10 +1,8 @@
 # Multi-Objective Adaptive Surrogate Modelling-based Optimization
 from __future__ import division, print_function, absolute_import
 import sys
-import sampling
-import gp
-import NSGA2
 import numpy as np
+from dmosopt import NSGA2, gp, sampling
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, pop = 100, gen = 100, \

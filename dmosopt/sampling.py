@@ -7,7 +7,7 @@ Created on Mon May 12 19:53:23 2015
 
 from __future__ import division, print_function, absolute_import
 import numpy as np
-import GLP
+from dmosopt import GLP
 
 def MonteCarloDesign(n,s):
     ''' Generate Monte Carlo Design

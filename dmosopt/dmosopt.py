@@ -3,7 +3,7 @@ from functools import partial
 from collections import namedtuple
 import numpy as np  
 import distwq
-import MOASMO as opt
+import dmosopt.MOASMO as opt
 
 
 try:
@@ -711,7 +711,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
             if next_iter:
                 break
 
-            task_id = controller.submit_call("eval_fun", module_name="dmosopt",
+            task_id = controller.submit_call("eval_fun", module_name="dmosopt.dmosopt",
                                              args=(sopt.opt_id, eval_x_dict,))
             task_ids.append(task_id)
             for problem_id in sopt.problem_ids:
@@ -741,7 +741,7 @@ def eval_fun(opt_id, *args):
 
 def run(sopt_params, spawn_workers=False, sequential_spawn=False, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
     if distwq.is_controller:
-        distwq.run(fun_name="sopt_ctrl", module_name="dmosopt",
+        distwq.run(fun_name="sopt_ctrl", module_name="dmosopt.dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),
                    spawn_workers=spawn_workers,
                    sequential_spawn=sequential_spawn,
@@ -756,7 +756,7 @@ def run(sopt_params, spawn_workers=False, sequential_spawn=False, nprocs_per_wor
             del(sopt_params['file_path'])
         if 'save' in sopt_params:
             del(sopt_params['save'])
-        distwq.run(fun_name="sopt_work", module_name="dmosopt",
+        distwq.run(fun_name="sopt_work", module_name="dmosopt.dmosopt",
                    broker_fun_name=sopt_params.get("broker_fun_name", None),
                    broker_module_name=sopt_params.get("broker_module_name", None),
                    verbose=verbose, args=(sopt_params, verbose, worker_debug, ),

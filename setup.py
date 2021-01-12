@@ -24,7 +24,7 @@ setup(
     ],
     python_requires='>=3.0',
     install_requires=[
-        'mpi4py', 'numpy', 'h5py', 'distwq>=0.0.3', 
+        'mpi4py', 'numpy', 'h5py', 'scikit-learn', 'distwq>=0.0.6', 
     ],
 
 )

@@ -1,6 +1,6 @@
-import sys
+import sys, logging
 import numpy as np
-import logging, dmosopt
+from dmosopt import dmosopt
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
