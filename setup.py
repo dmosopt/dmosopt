@@ -1,9 +1,10 @@
-import setuptools
+
+from setuptools import setup, find_packages
 
 #with open("README.md", "r") as fh:
 #    long_description = fh.read()
 
-setuptools.setup(
+setup(
     name="dmosopt", 
     version="0.0.3",
     author="Ivan Raikov",
@@ -12,7 +13,10 @@ setuptools.setup(
 #    long_description=long_description,
 #    long_description_content_type="text/markdown",
     url="https://github.com/iraikov/dmosopt",
-    py_modules=["dmosopt", "GLP", "MOASMO", "NSGA2", "gp", "sampling", "discrepancy"],
+    packages=find_packages(exclude=('examples', 'scripts')),
+    entry_points={
+        'console_scripts': [ 'dmosopt_analyze=dmosopt.dmosopt_analyze:main' ],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD License",
