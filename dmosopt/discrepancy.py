@@ -2,6 +2,16 @@ from __future__ import division, print_function, absolute_import
 import math
 import numpy as np
 
+use_numba = True
+try:
+    from numba import njit
+except ImportError as e:
+    use_numba = False
+    def njit(cache, nogil):
+        def decorator(func):
+            return func
+        return decorator
+    
 # compute 4 kinds of L2-discrepancy, and other 2 uniform metrics
 # [Hickernell, 1998a,b], [Fang et.al., 2000]
 # 1: MD2
@@ -57,6 +67,7 @@ def MD2(X):
     D = math.sqrt(D1 + D2*(-2**(1-dim)/float(num)) + D3/(num**2))
     return D
 
+@njit()
 def CD2(X):
     ''' Centered L2-discrepancy'''
     num, dim = X.shape
