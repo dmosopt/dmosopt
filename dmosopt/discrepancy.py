@@ -7,7 +7,7 @@ try:
     from numba import njit
 except ImportError as e:
     use_numba = False
-    def njit(cache, nogil):
+    def njit(cache=False, nogil=False):
         def decorator(func):
             return func
         return decorator
