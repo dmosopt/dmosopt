@@ -290,7 +290,8 @@ class DistOptimizer():
                 if offset is None:
                     finished_evals[problem_id] = completed
                 else:
-                    finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:])
+                    if len(completed[0]) > offset:
+                        finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:])
 
         if len(finished_evals) > 0:
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
@@ -727,7 +728,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                 iter_count += 1
 
     if sopt.save:
-        sopt.save_evals()
+        sopt.save_evals(offset=saved_eval_count)
     controller.info()
 
 def sopt_work(worker, sopt_params, verbose=False, debug=False):
