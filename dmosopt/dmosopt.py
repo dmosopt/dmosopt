@@ -587,6 +587,10 @@ def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_n
     f = h5py.File(fpath, "a")
     if opt_id not in f.keys():
         h5_init_types(f, opt_id, param_names, objective_names, problem_parameters, spec)
+        if has_problem_ids:
+            opt_grp = h5_get_group(f, opt_id)
+            opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
+
     f.close()
     
 def eval_obj_fun_sp(obj_fun, pp, space_params, is_int, problem_id, space_vals):
