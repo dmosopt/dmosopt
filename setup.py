@@ -15,7 +15,9 @@ setup(
     url="https://github.com/iraikov/dmosopt",
     packages=['dmosopt'],
     entry_points={
-        'console_scripts': [ 'dmosopt_analyze=dmosopt.dmosopt_analyze:main' ],
+        'console_scripts': [ 'dmosopt_analyze=dmosopt.dmosopt_analyze:main',
+                             'dmosopt_onestep=dmosopt.dmosopt_onestep:main',
+                             ],
     },
     classifiers=[
         "Programming Language :: Python :: 3",

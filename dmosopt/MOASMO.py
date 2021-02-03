@@ -65,7 +65,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     return bestx, besty, x, y
 
 
-def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None):
+def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, maxiter=5):
     """ 
     Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
     model: the evaluated model function
@@ -81,7 +81,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None):
     if Ninit <= 0:
         return None
 
-    Xinit = sampling.glp(Ninit, nInput)
+    Xinit = sampling.glp(Ninit, nInput, maxiter=maxiter)
 
     for i in range(Ninit):
         Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb

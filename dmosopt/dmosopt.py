@@ -43,7 +43,7 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
     return False
     
 class OptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, population_size=100, resample_fraction=0.25, num_generations=100, logger=None):
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, population_size=100, resample_fraction=0.25, num_generations=100, logger=None):
         self.logger = logger
         self.prob = prob
         self.completed = []
@@ -59,7 +59,7 @@ class OptStrategy():
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
-        xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, nPrevious=nPrevious)
+        xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, nPrevious=nPrevious, maxiter=initial_maxiter)
         self.reqs = []
         if xinit is not None:
             assert(xinit.shape[1] == prob.dim)
@@ -127,6 +127,7 @@ class DistOptimizer():
         obj_fun,
         objective_names=None,
         n_initial=10,
+        initial_maxiter=5,
         verbose=False,
         reduce_fun=None,
         reduce_fun_args=None,
@@ -229,6 +230,7 @@ class DistOptimizer():
             problem_ids = set([0])
 
         self.n_initial = n_initial
+        self.initial_maxiter = initial_maxiter
         self.problem_parameters, self.param_names = problem_parameters, param_names
         self.is_int = is_int
         self.file_path, self.save = file_path, save
@@ -275,6 +277,7 @@ class DistOptimizer():
                                        population_size=self.population_size, 
                                        resample_fraction=self.resample_fraction,
                                        num_generations=self.num_generations,
+                                       initial_maxiter=self.initial_maxiter,
                                        logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
         if initial is not None:
@@ -665,7 +668,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
     logger = logging.getLogger(sopt_params['opt_id'])
     if verbose:
         logger.setLevel(logging.INFO)
-    sopt = sopt_init(sopt_params, init_strategy=True)
+    sopt = sopt_init(sopt_params, verbose=verbose, init_strategy=True)
     logger.info(f"Optimizing for {sopt.n_iter} iterations...")
     iter_count = 0
     eval_count = 0

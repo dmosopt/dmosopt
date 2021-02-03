@@ -52,6 +52,8 @@ def main(file_path, opt_id, sort_key, filter_objectives, verbose):
             filtered_y = y[filtered_objective_index]
             objective_names = filtered_objective_names
             y = filtered_y
+
+        print(f"Found {x.shape[0]} results for id {problem_id}")
         
         best_x, best_y = get_best(x, y, len(param_names), len(objective_names))
         prms = list(zip(param_names, list(best_x.T)))
