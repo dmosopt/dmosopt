@@ -21,7 +21,7 @@ ParamSpec = namedtuple('ParamSpec',
 
 class OptProblem():
 
-    def __init__(self, param_names, objective_names, spec, eval_fun):
+    def __init__(self, param_names, objective_names, feature_names, spec, eval_fun):
 
         self.dim = len(spec.bound1)
         assert(self.dim > 0)
@@ -31,7 +31,9 @@ class OptProblem():
         self.eval_fun = eval_fun
         self.param_names = param_names
         self.objective_names = objective_names
+        self.feature_names = feature_names
         self.n_objectives = len(objective_names)
+        self.n_features = len(feature_names) if feature_names is not None else None
         
     def eval(self, x):
         return self.eval_fun(x)
@@ -51,8 +53,9 @@ class OptStrategy():
         if initial is None:
             self.x = None
             self.y = None
+            self.f = None
         else:
-            self.x, self.y = initial
+            self.x, self.y, self.f = initial
         self.resample_fraction = resample_fraction
         self.population_size = population_size
         self.num_generations = num_generations
@@ -75,10 +78,12 @@ class OptStrategy():
             result = self.reqs.pop(0)
         return result
 
-    def complete_x(self, x, y):
+    def complete_x(self, x, y, f=None):
         assert(x.shape[0] == self.prob.dim)
         assert(y.shape[0] == self.prob.n_objectives)
-        self.completed.append((x,y))
+        if f is not None:
+            assert(f.shape[0] == self.prob.n_features)
+        self.completed.append((x,y,f))
     
     def step(self):
         if len(self.completed) > 0:
@@ -104,19 +109,27 @@ class OptStrategy():
             self.reqs.append(x_resample[i,:])
         
     def get_best_evals(self):
-        return opt.get_best(self.x, self.y, self.prob.dim, self.prob.n_objectives)
+        if self.x is not None:
+            return opt.get_best(self.x, self.y, self.f, self.prob.dim, self.prob.n_objectives)
+        else:
+            return None, None, None
 
     def get_evals(self):
-        return (self.x, self.y)
+        return (self.x, self.y, self.f)
 
     def get_completed(self):
         if len(self.completed) > 0:
             x_completed = [x[0] for x in self.completed]
             y_completed = [x[1] for x in self.completed]
+            f_completed = None
+            if self.prob.n_features is not None:
+                f_completed = [x[2] for x in self.completed]
             
             x_completed = np.vstack(x_completed)
             y_completed = np.vstack(y_completed)
-            return (x_completed, y_completed)
+            if f_completed is not None:
+                f_completed = np.vstack(f_completed)
+            return (x_completed, y_completed, f_completed)
         else:
             return None
 
@@ -126,6 +139,7 @@ class DistOptimizer():
         opt_id,
         obj_fun,
         objective_names=None,
+        feature_names=None,
         n_initial=10,
         initial_maxiter=5,
         verbose=False,
@@ -215,7 +229,7 @@ class DistOptimizer():
         old_evals = {}
         if file_path is not None:
             if os.path.isfile(file_path):
-                old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, problem_parameters, problem_ids = \
+                old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, param_names, opt_id, self.logger)
 
         assert(dim > 0)
@@ -254,10 +268,12 @@ class DistOptimizer():
 
         self.optimizer_dict = {}
 
+        self.feature_names = feature_names
+
         if file_path is not None:
             if not os.path.isfile(file_path):
                 init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
-                        self.param_spec, self.param_names, self.objective_names,
+                        self.param_spec, self.param_names, self.objective_names, self.feature_names,
                         self.problem_parameters, self.file_path)
 
 
@@ -269,8 +285,12 @@ class DistOptimizer():
                 old_eval_ys = [e[1] for e in self.old_evals[problem_id]]
                 x = np.vstack(old_eval_xs)
                 y = np.vstack(old_eval_ys)
-                initial = (x, y)
-            opt_prob = OptProblem(self.param_names, self.objective_names, self.param_spec, self.eval_fun)
+                f = None
+                if self.feature_names is not None:
+                    old_eval_fs = [e[2] for e in self.old_evals[problem_id]]
+                    f = np.vstack(old_eval_fs)
+                initial = (x, y, f)
+            opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_names, self.param_spec, self.eval_fun)
             if self.resample_fraction > 1.0:
                 self.resample_fraction = 1.0
             opt_strategy = OptStrategy(opt_prob, self.n_initial, initial=initial, 
@@ -294,47 +314,68 @@ class DistOptimizer():
                     finished_evals[problem_id] = completed
                 else:
                     if len(completed[0]) > offset:
-                        finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:])
+                        if completed[2] is None:
+                            finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:], None)
+                        else:
+                            finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:], completed[2][offset:])
 
         if len(finished_evals) > 0:
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
-                       self.param_names, self.objective_names,
+                       self.param_names, self.objective_names, self.feature_names,
                        self.param_spec, finished_evals, self.problem_parameters, 
                        self.file_path, self.logger)
 
     def get_best(self):
         best_results = {}
         for problem_id in self.problem_ids:
-            best_x, best_y = self.optimizer_dict[problem_id].get_best_evals()
+            best_x, best_y, best_f = self.optimizer_dict[problem_id].get_best_evals()
             prms = list(zip(self.param_names, list(best_x.T)))
             lres = list(zip(self.objective_names, list(best_y.T)))
-            best_results[problem_id] = (prms, lres)
-        if self.has_problem_ids:
-            return best_results
-        else:
-            return best_results[problem_id]
+            lftrs = None
+            if best_f is not None:
+                lftrs = list(zip(self.feature_names, list(best_f.T)))
+            best_results[problem_id] = (prms, lres, lftrs)
+        return best_results
         
     def print_best(self):
         best_results = self.get_best()
         if self.has_problem_ids:
             for problem_id in self.problem_ids:
-                prms, res = best_results[problem_id]
+                prms, res, ftrs = best_results[problem_id]
                 prms_dict = dict(prms)
                 res_dict = dict(res)
+                ftrs_dict = None
+                if ftrs is not None:
+                    ftrs_dict = dict(ftrs)
                 n_res = next(iter(res_dict.values())).shape[0]
                 for i in range(n_res):
                     res_i = { k: res_dict[k][i] for k in res_dict }
                     prms_i = { k: prms_dict[k][i] for k in prms_dict }
-                    self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i}")
+                    ftrs_i = None
+                    if ftrs_dict is not None:
+                        ftrs_i = { k: ftrs_dict[k][i] for k in ftrs_dict }
+                    if ftrs_i is None:
+                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i}")
+                    else:
+                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}]")
         else:
             prms, res = best_results
             prms_dict = dict(prms)
             res_dict = dict(res)
+            ftrs_dict = None
+            if ftrs is not None:
+                ftrs_dict = dict(ftrs)
             n_res = next(iter(res_dict.values())).shape[0]
             for i in range(n_res):
                 res_i = { k: res_dict[k][i] for k in res_dict }
                 prms_i = { k: prms_dict[k][i] for k in prms_dict }
-                self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
+                ftrs_i = None
+                if ftrs_dict is not None:
+                    ftrs_i = { k: ftrs_dict[k][i] for k in ftrs_dict }
+                if ftrs_i is None:
+                    self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
+                else:
+                    self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i} [{ftrs_i}]")
             
 
 def h5_get_group (h, groupname):
@@ -358,15 +399,22 @@ def h5_concat_dataset(dset, data):
     dset[dsize:] = data
     return dset
 
-def h5_init_types(f, opt_id, param_names, objective_names, problem_parameters, spec):
+def h5_init_types(f, opt_id, param_names, objective_names, feature_names, problem_parameters, spec):
     
     opt_grp = h5_get_group(f, opt_id)
 
     objective_keys = set(objective_names)
+    feature_keys = None
+    if feature_names is not None:
+        feature_keys = set(feature_names)
 
-    # create HDF5 types for the objectives
+    # create HDF5 types for the objectives and features
     objective_mapping = { name: idx for (idx, name) in
                           enumerate(objective_keys) }
+    feature_mapping = None
+    if feature_keys is not None:
+        feature_mapping = { name: idx for (idx, name) in
+                            enumerate(feature_keys) }
 
     dt = h5py.enum_dtype(objective_mapping, basetype=np.uint16)
     opt_grp['objective_enum'] = dt
@@ -381,6 +429,21 @@ def h5_init_types(f, opt_id, param_names, objective_names, problem_parameters, s
     for idx, parm in enumerate(objective_names):
         a[idx]["objective"] = objective_mapping[parm]
     dset[:] = a
+
+    if feature_mapping is not None:
+        dt = h5py.enum_dtype(feature_mapping, basetype=np.uint16)
+        opt_grp['feature_enum'] = dt
+
+        dt = np.dtype([("feature", opt_grp['feature_enum'])])
+        opt_grp['feature_spec_type'] = dt
+
+        dset = h5_get_dataset(opt_grp, 'feature_spec', maxshape=(len(feature_names),),
+                              dtype=opt_grp['feature_spec_type'].dtype)
+        dset.resize((len(feature_names),))
+        a = np.zeros(len(feature_names), dtype=opt_grp['feature_spec_type'].dtype)
+        for idx, parm in enumerate(feature_names):
+            a[idx]["feature"] = feature_mapping[parm]
+        dset[:] = a
 
     # create HDF5 types describing the parameter specification
     param_keys = set(param_names)
@@ -440,6 +503,16 @@ def h5_load_raw(input_file, opt_id):
     objective_names = [ objective_name_dict[spec[0]]
                         for spec in iter(opt_grp['objective_spec']) ]
 
+    n_features = 0
+    feature_names = None
+    if 'feature_enum' in opt_grp:
+        feature_enum_dict = h5py.check_enum_dtype(opt_grp['feature_enum'].dtype)
+        feature_idx_dict = { parm: idx for parm, idx in feature_enum_dict.items() }
+        feature_name_dict = { idx: parm for parm, idx in feature_idx_dict.items() }
+        n_features = len(feature_enum_dict)
+        feature_names = [ feature_name_dict[spec[0]]
+                          for spec in iter(opt_grp['feature_spec']) ]
+
     parameter_enum_dict = h5py.check_enum_dtype(opt_grp['parameter_enum'].dtype)
     parameters_idx_dict = { parm: idx for parm, idx in parameter_enum_dict.items() }
     parameters_name_dict = { idx: parm for parm, idx in parameters_idx_dict.items() }
@@ -455,10 +528,11 @@ def h5_load_raw(input_file, opt_id):
     
     M = len(parameter_specs)
     P = n_objectives
+    F = n_features
     raw_results = {}
     for problem_id in problem_ids if problem_ids is not None else [0]:
         if ('%d' % problem_id) in opt_grp:
-            raw_results[problem_id] = opt_grp['%d' % problem_id]['results'][:].reshape((-1,M+P)) # np.array of shape [N, M+P]
+            raw_results[problem_id] = opt_grp['%d' % problem_id]['results'][:].reshape((-1,M+P+F)) # np.array of shape [N, M+P+F]
     f.close()
     
     param_names = []
@@ -474,6 +548,7 @@ def h5_load_raw(input_file, opt_id):
         
     raw_spec = (is_integer, lower, upper)
     info = { 'objectives': objective_names,
+             'features': feature_names,
              'params': param_names,                            
              'problem_parameters': problem_parameters,
              'problem_ids': problem_ids }
@@ -502,15 +577,22 @@ def h5_load_all(file_path, opt_id):
     is_integer, lo_bounds, hi_bounds = raw_spec
     param_names = info['params']
     objective_names = info['objectives']
+    feature_names = info['features']
     n_objectives = len(objective_names)
+    n_features = 0
+    if feature_names is not None:
+        n_features = len(feature_names)
     spec = ParamSpec(bound1=lo_bounds, bound2=hi_bounds, is_integer=is_integer)
     evals = { problem_id: [] for problem_id in raw_problem_results }
     for problem_id in raw_problem_results:
         raw_results = raw_problem_results[problem_id]
         for raw_result in raw_results:
             y = raw_result[:n_objectives]
-            x = raw_result[n_objectives:]
-            evals[problem_id].append((x, y))
+            x = raw_result[n_objectives+n_features:]
+            f = None
+            if n_features > 0:
+                f = raw_result[n_objectives:n_objectives+n_features]
+            evals[problem_id].append((x, y, f))
     return raw_spec, spec, evals, info
     
 def init_from_h5(file_path, param_names, opt_id, logger=None):        
@@ -538,11 +620,12 @@ def init_from_h5(file_path, param_names, opt_id, logger=None):
             )
     problem_parameters = info['problem_parameters']
     objective_names = info['objectives']
+    feature_names = info['features']
     problem_ids = info['problem_ids'] if 'problem_ids' in info else None
 
-    return old_evals, params, is_int, lo_bounds, hi_bounds, objective_names, problem_parameters, problem_ids
+    return old_evals, params, is_int, lo_bounds, hi_bounds, objective_names, feature_names, problem_parameters, problem_ids
 
-def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_names, spec, evals, problem_parameters, fpath, logger):
+def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_names, feature_names, spec, evals, problem_parameters, fpath, logger):
     """
     Save progress and settings to an HDF5 file 'fpath'.
     """
@@ -562,34 +645,40 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
 
     M = len(param_names)
     P = len(objective_names)
+    F = len(feature_names) if feature_names is not None else 0
     for problem_id in problem_ids:
-        prob_evals_x, prob_evals_y = evals[problem_id]
+        prob_evals_x, prob_evals_y, prob_evals_f = evals[problem_id]
         prob_evals_x = prob_evals_x.reshape((-1, M))
         prob_evals_y = prob_evals_y.reshape((-1, P))
+        if prob_evals_f is not None:
+            prob_evals_f = prob_evals_f.reshape((-1, F))
         opt_prob = h5_get_group(opt_grp, '%d' % problem_id)
         dset = h5_get_dataset(opt_prob, 'results', maxshape=(None,),
                               dtype=np.float32) 
-        old_size = int(dset.shape[0] / (M+P))
-        raw_results = np.zeros((prob_evals_x.shape[0], M+P))
+        old_size = int(dset.shape[0] / (M+P+F))
+        raw_results = np.zeros((prob_evals_x.shape[0], M+P+F))
         for i in range(raw_results.shape[0]):
             x = prob_evals_x[i]
             y = prob_evals_y[i]
             raw_results[i][:P] = y
-            raw_results[i][P:] = x
+            raw_results[i][P+F:] = x
+            ftrs = prob_evals_f[i] if prob_evals_f is not None else None
+            if ftrs is not None:
+                raw_results[i][P:P+F] = ftrs
         if logger is not None:
             logger.info(f"Saving {raw_results.shape[0]} evaluations for problem id {problem_id} to {fpath}.")
         h5_concat_dataset(opt_prob['results'], raw_results.ravel())
     
     f.close()
 
-def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_names, problem_parameters, fpath):
+def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_names, feature_names, problem_parameters, fpath):
     """
     Save progress and settings to an HDF5 file 'fpath'.
     """
 
     f = h5py.File(fpath, "a")
     if opt_id not in f.keys():
-        h5_init_types(f, opt_id, param_names, objective_names, problem_parameters, spec)
+        h5_init_types(f, opt_id, param_names, objective_names, feature_names, problem_parameters, spec)
         if has_problem_ids:
             opt_grp = h5_get_group(f, opt_id)
             opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
@@ -695,10 +784,20 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
 
                 for problem_id in rres:
                     eval_x = sopt.evals[problem_id][task_id]
-                    sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id])
+                    if sopt.feature_names is None:
+                        sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id])
+                    else:
+                        sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id][0], rres[problem_id][1])
                     prms = list(zip(sopt.param_names, list(eval_x.T)))
-                    lres = list(zip(sopt.objective_names, rres[problem_id].T))
-                    logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres}")
+                    lftrs = None
+                    lres = None
+                    if sopt.feature_names is None:
+                        lres = list(zip(sopt.objective_names, rres[problem_id].T))
+                        logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres}")
+                    else:
+                        lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
+                        lftrs = list(zip(sopt.feature_names, rres[problem_id][1].T))
+                        logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres} / {lftrs}")
                 
                 eval_count += 1
                 task_ids.remove(task_id)

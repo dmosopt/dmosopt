@@ -6,7 +6,7 @@ from dmosopt import NSGA2, gp, sampling
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, pop = 100, gen = 100, \
-                 crossover_rate = 0.9, mu = 20, mum = 20):
+                 crossover_rate = 0.9, mu = 15, mum = 20):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     model: the evaluated model function
@@ -94,7 +94,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, maxiter=5):
 
 def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, pop = 100, gen = 100, \
-            crossover_rate = 0.9, mu = 20, mum = 20, logger=None):
+            crossover_rate = 0.9, mu = 15, mum = 20, logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     One-step mode for offline optimization
@@ -124,12 +124,17 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     x_resample = bestx_sm[idxr,:]
     return x_resample
 
-def get_best(x, y, nInput, nOutput):
+def get_best(x, y, f, nInput, nOutput):
     xtmp = x.copy()
     ytmp = y.copy()
+    ftmp = None
+    if f is not None:
+        ftmp = f.copy()
     xtmp, ytmp, rank, crowd = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput)
     idxp = (rank == 0)
     bestx = xtmp[idxp,:]
     besty = ytmp[idxp,:]
+    if ftmp is not None:
+        bestf = ftmp[idxp,:]
 
-    return bestx, besty
+    return bestx, besty, bestf

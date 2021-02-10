@@ -6,7 +6,7 @@ import copy
 from dmosopt import sampling
 
 def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
-                 crossover_rate = 0.9, mu = 20, mum = 20, logger=None):
+                 crossover_rate = 0.9, mutation_rate = 0.05, mu = 20, mum = 20, logger=None):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
         nInput: number of model input
@@ -16,6 +16,7 @@ def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
         pop: number of population
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
+        mutation_rate: ratio of muration in each generation
         mu: distribution index for crossover
         mum: distribution index for mutation
     '''
@@ -39,7 +40,7 @@ def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
         pool = selection(population_para, population_obj, nInput, pop, poolsize, toursize)
         count = 0
         while (count < pop - 1):
-            if (np.random.rand() < 0.9):
+            if (np.random.rand() < crossover_rate):
                 parentidx = np.random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
@@ -55,7 +56,7 @@ def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
             else:
                 parentidx = np.random.randint(poolsize)
                 parent    = pool[parentidx,:]
-                child     = mutation(parent, mum, xlb, xub)
+                child     = mutation(parent, mutation_rate, mum, xlb, xub)
                 y1 = model.evaluate(child)
                 x  = np.vstack((x,child))
                 y  = np.vstack((y,y1))
@@ -197,9 +198,10 @@ def crowding_distance(Y):
 
     return D
 
-def mutation(parent, mum, xlb, xub):
+def mutation(parent, mutation_rate, mum, xlb, xub):
     ''' Polynomial Mutation in Genetic Algorithm
         For more information about PMut refer the NSGA-II paper.
+        muration_rate: mutation rate
         mum: distribution index for mutation, default = 20
             This determine how well spread the child will be from its parent.
         parent: sample point before mutation
@@ -209,7 +211,7 @@ def mutation(parent, mum, xlb, xub):
     child = np.ndarray(n)
     u     = np.random.rand(n)
     for i in range(n):
-        if (u[i] < 0.5):
+        if (u[i] < mutation_rate):
             delta[i] = (2.0*u[i])**(1.0/(mum+1)) - 1.0
         else:
             delta[i] = 1.0 - (2.0*(1.0 - u[i]))**(1.0/(mum+1))
