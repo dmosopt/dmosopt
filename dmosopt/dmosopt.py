@@ -778,8 +778,8 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
         controller.recv()
 
         if len(task_ids) > 0:
-            ret = controller.probe_next_result()
-            if ret is not None:
+            rets = controller.probe_all_next_results()
+            for ret in rets:
 
                 task_id, res = ret
 

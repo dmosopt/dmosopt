@@ -1,4 +1,4 @@
-# Multi-Objective Adaptive Surrogate Modelling-based Optimization
+# Multi-Objective Adaptive Surrogate Model-based Optimization
 from __future__ import division, print_function, absolute_import
 import sys
 import numpy as np
@@ -112,6 +112,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         pop: number of population
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
+        mutation_rate: ratio of mutation in each generation
         mu: distribution index for crossover
         mum: distribution index for mutation
     """
