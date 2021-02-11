@@ -81,7 +81,7 @@ if __name__ == '__main__':
         ax.scatter(besty_dict['y1'],besty_dict['y2'],besty_dict['y3'],c='r',label='MO-ASMO')
              
              
-        plt.show()
+        plt.savefig("example_dmosopt_dtlz.svg")
          
          
          

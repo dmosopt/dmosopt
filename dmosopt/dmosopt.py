@@ -114,8 +114,11 @@ class OptStrategy():
         else:
             return None, None, None
 
-    def get_evals(self):
-        return (self.x, self.y, self.f)
+    def get_evals(self, return_features=False):
+        if return_features:
+            return (self.x, self.y, self.f)
+        else:
+            return (self.x, self.y)
 
     def get_completed(self):
         if len(self.completed) > 0:
@@ -325,7 +328,7 @@ class DistOptimizer():
                        self.param_spec, finished_evals, self.problem_parameters, 
                        self.file_path, self.logger)
 
-    def get_best(self):
+    def get_best(self, return_features=False):
         best_results = {}
         for problem_id in self.problem_ids:
             best_x, best_y, best_f = self.optimizer_dict[problem_id].get_best_evals()
@@ -334,11 +337,17 @@ class DistOptimizer():
             lftrs = None
             if best_f is not None:
                 lftrs = list(zip(self.feature_names, list(best_f.T)))
-            best_results[problem_id] = (prms, lres, lftrs)
-        return best_results
+            if return_features:
+                best_results[problem_id] = (prms, lres, lftrs)
+            else:
+                best_results[problem_id] = (prms, lres)
+        if self.has_problem_ids:
+            return best_results
+        else:
+            return best_results[0]
         
     def print_best(self):
-        best_results = self.get_best()
+        best_results = self.get_best(return_features=True)
         if self.has_problem_ids:
             for problem_id in self.problem_ids:
                 prms, res, ftrs = best_results[problem_id]
@@ -359,7 +368,7 @@ class DistOptimizer():
                     else:
                         self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}]")
         else:
-            prms, res = best_results
+            prms, res, ftrs = best_results
             prms_dict = dict(prms)
             res_dict = dict(res)
             ftrs_dict = None
@@ -846,7 +855,7 @@ def sopt_work(worker, sopt_params, verbose=False, debug=False):
 def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
 
-def run(sopt_params, spawn_workers=False, sequential_spawn=False, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
+def run(sopt_params, return_features=False, spawn_workers=False, sequential_spawn=False, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
     if distwq.is_controller:
         distwq.run(fun_name="sopt_ctrl", module_name="dmosopt.dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),
@@ -857,7 +866,7 @@ def run(sopt_params, spawn_workers=False, sequential_spawn=False, nprocs_per_wor
         opt_id = sopt_params['opt_id']
         sopt = sopt_dict[opt_id]
         sopt.print_best()
-        return sopt.get_best()
+        return sopt.get_best(return_features=return_features)
     else:
         if 'file_path' in sopt_params:
             del(sopt_params['file_path'])
