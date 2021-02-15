@@ -1,5 +1,6 @@
 from __future__ import division, print_function, absolute_import
 import numpy as np
+from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern
 #from sklearn.gaussian_process.kernels import (RBF, Matern, RationalQuadratic, ExpSineSquared, DotProduct, ConstantKernel)
@@ -7,12 +8,13 @@ import copy
 
 
 class GPR_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub):
+    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
         self.xub = xub
         self.xrg = xub - xlb
+        self.logger = logger
 
         x = copy.deepcopy(xin)
         y = copy.deepcopy(yin)
@@ -25,8 +27,10 @@ class GPR_Matern:
 
         smlist = []
         for i in range(nOutput):
+            if logger is not None:
+                logger.info(f"GPR_Matern: creating regressor for output {i} of {nOutput}...")
             #smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, n_restarts_optimizer=5))
-            smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, optimizer=sceua_optimizer))
+            smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, optimizer=partial(sceua_optimizer, logger)))
             smlist[i].fit(x,y[:,i])
         self.smlist = smlist
 
@@ -44,7 +48,7 @@ class GPR_Matern:
     def evaluate(self,x):
         return self.predict(x)
 
-def sceua_optimizer(obj_func, initial_theta, bounds):
+def sceua_optimizer(logger, obj_func, initial_theta, bounds):
     """
     SCE-UA optimizer for optimizing hyper parameters of GPR
     Input:
@@ -71,15 +75,14 @@ def sceua_optimizer(obj_func, initial_theta, bounds):
     kstop = 10
     pcento = 0.1
     peps = 0.001
-    verbose = False
     [bestx, bestf, icall, nloop, bestx_list, bestf_list, icall_list] = \
-        sceua(obj_func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, verbose)
+        sceua(obj_func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger)
     theta_opt = bestx
     func_min = bestf
     return theta_opt, func_min
 
 
-def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, verbose):
+def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
     """
     This is the subroutine implementing the SCE algorithm, 
     written by Q.Duan, 9/2004
@@ -123,6 +126,7 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, verbose):
     criter[.]: vector containing the best criterion values of the last 10 shuffling loops
     """
 
+    verbose = (logger is not None)
     # Initialize SCE parameters:
     npg  = 2 * nopt + 1
     nps  = nopt + 1
@@ -159,27 +163,27 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, verbose):
     icall_list.append(icall)
     
     if verbose:
-        print('The Initial Loop: 0')
-        print('BESTF  : %f' % bestf)
-        print('BESTX  : %s' % np.array2string(bestx))
-        print('WORSTF : %f' % worstf)
-        print('WORSTX : %s' % np.array2string(worstx))
-        print(' ')
+        logger.info('The Initial Loop: 0')
+        logger.info('BESTF  : %f' % bestf)
+        logger.info('BESTX  : %s' % np.array2string(bestx))
+        logger.info('WORSTF : %f' % worstf)
+        logger.info('WORSTX : %s' % np.array2string(worstx))
+        logger.info(' ')
 
     # Computes the normalized geometric range of the parameters
     gnrng = np.exp(np.mean(np.log((np.max(x,axis=0)-np.min(x,axis=0))/bd)))
     # Check for convergency
     if verbose:
         if icall >= maxn:
-            print('*** OPTIMIZATION SEARCH TERMINATED BECAUSE THE LIMIT')
-            print('ON THE MAXIMUM NUMBER OF TRIALS ')
-            print(maxn)
-            print('HAS BEEN EXCEEDED.  SEARCH WAS STOPPED AT TRIAL NUMBER:')
-            print(icall)
-            print('OF THE INITIAL LOOP!')
+            logger.info('*** OPTIMIZATION SEARCH TERMINATED BECAUSE THE LIMIT')
+            logger.info('ON THE MAXIMUM NUMBER OF TRIALS ')
+            logger.info(maxn)
+            logger.info('HAS BEEN EXCEEDED.  SEARCH WAS STOPPED AT TRIAL NUMBER:')
+            logger.info(icall)
+            logger.info('OF THE INITIAL LOOP!')
 
         if gnrng < peps:
-            print('THE POPULATION HAS CONVERGED TO A PRESPECIFIED SMALL PARAMETER SPACE')
+            logger.info('THE POPULATION HAS CONVERGED TO A PRESPECIFIED SMALL PARAMETER SPACE')
     
     # Begin evolution loops:
     nloop = 0
@@ -259,22 +263,22 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, verbose):
         icall_list.append(icall)
         
         if verbose:
-            print('Evolution Loop: %d - Trial - %d' % (nloop, icall))
-            print('BESTF  : %f' % bestf)
-            print('BESTX  : %s' % np.array2string(bestx))
-            print('WORSTF : %f' % worstf)
-            print('WORSTX : %s' % np.array2string(worstx))
-            print(' ')
+            logger.info('Evolution Loop: %d - Trial - %d' % (nloop, icall))
+            logger.info('BESTF  : %f' % bestf)
+            logger.info('BESTX  : %s' % np.array2string(bestx))
+            logger.info('WORSTF : %f' % worstf)
+            logger.info('WORSTX : %s' % np.array2string(worstx))
+            logger.info(' ')
         
         # Computes the normalized geometric range of the parameters
         gnrng = np.exp(np.mean(np.log((np.max(x,axis=0)-np.min(x,axis=0))/bd)))
         # Check for convergency;
         if verbose:
             if icall >= maxn:
-                print('*** OPTIMIZATION SEARCH TERMINATED BECAUSE THE LIMIT')
-                print('ON THE MAXIMUM NUMBER OF TRIALS %d HAS BEEN EXCEEDED!' % maxn)
+                logger.info('*** OPTIMIZATION SEARCH TERMINATED BECAUSE THE LIMIT')
+                logger.info('ON THE MAXIMUM NUMBER OF TRIALS %d HAS BEEN EXCEEDED!' % maxn)
             if gnrng < peps:
-                print('THE POPULATION HAS CONVERGED TO A PRESPECIFIED SMALL PARAMETER SPACE')
+                logger.info('THE POPULATION HAS CONVERGED TO A PRESPECIFIED SMALL PARAMETER SPACE')
             
     
         criter.append(bestf)
@@ -283,15 +287,15 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, verbose):
             criter_change /= np.mean(np.abs(criter[nloop-kstop:nloop]))
             if criter_change < pcento:
                 if verbose:
-                    print('THE BEST POINT HAS IMPROVED IN LAST %d LOOPS BY LESS THAN THE THRESHOLD %f%%' % (kstop, pcento))
-                    print('CONVERGENCY HAS ACHIEVED BASED ON OBJECTIVE FUNCTION CRITERIA!!!')
+                    logger.info('THE BEST POINT HAS IMPROVED IN LAST %d LOOPS BY LESS THAN THE THRESHOLD %f%%' % (kstop, pcento))
+                    logger.info('CONVERGENCY HAS ACHIEVED BASED ON OBJECTIVE FUNCTION CRITERIA!!!')
         
     # End of the Outer Loops
     
     if verbose:
-        print('SEARCH WAS STOPPED AT TRIAL NUMBER: %d' % icall )
-        print('NORMALIZED GEOMETRIC RANGE = %f' % gnrng )
-        print('THE BEST POINT HAS IMPROVED IN LAST %d LOOPS BY %f%%' % (kstop, criter_change))
+        logger.info('SEARCH WAS STOPPED AT TRIAL NUMBER: %d' % icall )
+        logger.info('NORMALIZED GEOMETRIC RANGE = %f' % gnrng )
+        logger.info('THE BEST POINT HAS IMPROVED IN LAST %d LOOPS BY %f%%' % (kstop, criter_change))
    
     # END of Subroutine SCEUA_runner
     return bestx, bestf, icall, nloop, bestx_list, bestf_list, icall_list
