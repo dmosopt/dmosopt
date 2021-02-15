@@ -6,6 +6,16 @@ from sklearn.gaussian_process.kernels import Matern
 #from sklearn.gaussian_process.kernels import (RBF, Matern, RationalQuadratic, ExpSineSquared, DotProduct, ConstantKernel)
 import copy
 
+use_numba = True
+try:
+    from numba import njit
+except ImportError as e:
+    use_numba = False
+    def njit(cache=False, nogil=False):
+        def decorator(func):
+            return func
+        return decorator
+
 
 class GPR_Matern:
     def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, logger=None):
@@ -81,6 +91,19 @@ def sceua_optimizer(logger, obj_func, initial_theta, bounds):
     func_min = bestf
     return theta_opt, func_min
 
+@njit()
+def select_simplex(nps, npg):
+    lcs = np.zeros(nps, dtype=np.int64)
+    lcs[0] = 0
+    for k3 in range(1,nps):
+        for itmp in range(1000):
+            lpos = int(np.floor(
+                    npg + 0.5 - np.sqrt((npg + 0.5)**2 - 
+                    npg * (npg + 1) * np.random.rand())))
+            if len(np.where(lcs[:k3] == lpos)[0]) == 0:
+                break
+        lcs[k3] = lpos
+    return np.sort(lcs)
 
 def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
     """
@@ -209,17 +232,7 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
                 
                 # Select simplex by sampling the complex according to a linear
                 # probability distribution
-                lcs = np.zeros(nps, dtype=np.int64)
-                lcs[0] = 0
-                for k3 in range(1,nps):
-                    for itmp in range(1000):
-                        lpos = int(np.floor(
-                                npg + 0.5 - np.sqrt((npg + 0.5)**2 - 
-                                npg * (npg + 1) * np.random.rand())))
-                        if len(np.where(lcs[:k3] == lpos)[0]) == 0:
-                            break
-                    lcs[k3] = lpos
-                lcs = np.sort(lcs)
+                lcs = select_simplex(nps, npg)
     
                 # Construct the simplex:
                 s = copy.deepcopy(cx[lcs,:])
