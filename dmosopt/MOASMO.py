@@ -121,7 +121,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     N_resample = int(pop*pct)
     x = Xinit.copy()
     y = Yinit.copy()
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub)
+    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     bestx_sm, besty_sm, x_sm, y_sm = \
         NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
                            pop, gen, crossover_rate, mutation_rate, mu, mum, logger=logger)
