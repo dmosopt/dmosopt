@@ -66,6 +66,7 @@ if __name__ == '__main__':
         plt.plot(y_true[:,0],y_true[:,1],'k-',label='True Pareto')
         plt.legend()
         
-        plt.show()
+        plt.savefig("example_dmosopt_zdt1.svg")
+
         
 

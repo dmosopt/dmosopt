@@ -80,7 +80,6 @@ if __name__ == '__main__':
         ax.scatter(y[:,0],y[:,1],y[:,2],c='b',label='evaluated points')
         ax.scatter(besty_dict['y1'],besty_dict['y2'],besty_dict['y3'],c='r',label='MO-ASMO')
              
-             
         plt.savefig("example_dmosopt_dtlz.svg")
          
          

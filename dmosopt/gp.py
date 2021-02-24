@@ -1,4 +1,4 @@
-from __future__ import division, print_function, absolute_import
+from __future__ import division, absolute_import
 import numpy as np
 from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
