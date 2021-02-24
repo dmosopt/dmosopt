@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
-    version="0.0.5",
+    version="0.0.6",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",
