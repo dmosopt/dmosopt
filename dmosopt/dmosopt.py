@@ -465,7 +465,7 @@ def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, probl
         opt_grp['feature_enum'] = dt
 
         dt = np.dtype({ 'names': feature_keys,
-                        'formats': [feature_dtype[0] for feature_dtype in feature_dtypes] })
+                        'formats': [feature_dtype[1] for feature_dtype in feature_dtypes] })
         opt_grp['feature_type'] = dt
 
     # create HDF5 types describing the parameter specification
