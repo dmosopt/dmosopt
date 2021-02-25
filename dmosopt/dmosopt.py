@@ -303,7 +303,7 @@ class DistOptimizer():
                 f = None
                 if self.feature_dtypes is not None:
                     old_eval_fs = [e[2] for e in self.old_evals[problem_id]]
-                    f = np.concatenate(old_eval_fs)
+                    f = np.concatenate(old_eval_fs, axis=None)
                 initial = (x, y, f)
             opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes, self.param_spec, self.eval_fun)
             if self.resample_fraction > 1.0:
@@ -464,9 +464,20 @@ def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, probl
         dt = h5py.enum_dtype(feature_mapping, basetype=np.uint16)
         opt_grp['feature_enum'] = dt
 
+        dt = np.dtype([("feature", opt_grp['feature_enum'])])
+        opt_grp['feature_spec_type'] = dt
+
         dt = np.dtype({ 'names': feature_keys,
                         'formats': [feature_dtype[1] for feature_dtype in feature_dtypes] })
         opt_grp['feature_type'] = dt
+
+        dset = h5_get_dataset(opt_grp, 'feature_spec', maxshape=(len(feature_keys),),
+                              dtype=opt_grp['feature_spec_type'].dtype)
+        dset.resize((len(feature_keys),))
+        a = np.zeros(len(feature_keys), dtype=opt_grp['feature_spec_type'].dtype)
+        for idx, parm in enumerate(feature_keys):
+            a[idx]["feature"] = feature_mapping[parm]
+        dset[:] = a
 
     # create HDF5 types describing the parameter specification
     param_keys = set(param_names)
@@ -539,7 +550,9 @@ def h5_load_raw(input_file, opt_id):
         feature_idx_dict = { parm: idx for parm, idx in feature_enum_dict.items() }
         feature_name_dict = { idx: parm for parm, idx in feature_idx_dict.items() }
         n_features = len(feature_enum_dict)
-        feature_names = opt_grp['feature_type']['names']
+        feature_names = [ feature_name_dict[spec[0]]
+                          for spec in iter(opt_grp['feature_spec']) ]
+
 
     parameter_enum_dict = h5py.check_enum_dtype(opt_grp['parameter_enum'].dtype)
     parameters_idx_dict = { parm: idx for parm, idx in parameter_enum_dict.items() }
