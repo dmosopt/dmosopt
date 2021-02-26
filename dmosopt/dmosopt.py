@@ -539,7 +539,9 @@ def h5_load_raw(input_file, opt_id):
         feature_idx_dict = { parm: idx for parm, idx in feature_enum_dict.items() }
         feature_name_dict = { idx: parm for parm, idx in feature_idx_dict.items() }
         n_features = len(feature_enum_dict)
-        feature_names = opt_grp['feature_type']['names']
+        feature_names = [ feature_name_dict[spec[0]]
+                          for spec in iter(opt_grp['feature_spec']) ]
+
 
     parameter_enum_dict = h5py.check_enum_dtype(opt_grp['parameter_enum'].dtype)
     parameters_idx_dict = { parm: idx for parm, idx in parameter_enum_dict.items() }
