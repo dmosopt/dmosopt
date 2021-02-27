@@ -468,6 +468,18 @@ def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, probl
                         'formats': [feature_dtype[1] for feature_dtype in feature_dtypes] })
         opt_grp['feature_type'] = dt
 
+        dt = np.dtype([("feature", opt_grp['feature_enum'])])
+        opt_grp['feature_spec_type'] = dt
+
+        dset = h5_get_dataset(opt_grp, 'feature_spec', maxshape=(len(feature_keys),),
+                              dtype=opt_grp['feature_spec_type'].dtype)
+        dset.resize((len(feature_keys),))
+        a = np.zeros(len(feature_keys), dtype=opt_grp['feature_spec_type'].dtype)
+        for idx, parm in enumerate(feature_keys):
+            a[idx]["feature"] = feature_mapping[parm]
+        dset[:] = a
+
+
     # create HDF5 types describing the parameter specification
     param_keys = set(param_names)
     param_keys.update(problem_parameters.keys())
