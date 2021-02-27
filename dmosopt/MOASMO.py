@@ -6,7 +6,8 @@ from dmosopt import NSGA2, gp, sampling
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, pop = 100, gen = 100, \
-                 crossover_rate = 0.9, mutation_rate = None, mum = 20):
+                 crossover_rate = 0.9, mutation_rate = None, mum = 20,
+                 gpr_optimizer="sceua", logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     model: the evaluated model function
@@ -44,10 +45,10 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         
     for i in range(niter):
         print('Surrogate Opt loop: %d' % i)
-        sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub)
+        sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
         bestx_sm, besty_sm, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
-                               pop, gen, crossover_rate, mutation_rate, mu, mum)
+                               pop, gen, crossover_rate, mutation_rate, mu, mum, logger=logger)
         D = NSGA2.crowding_distance(besty_sm)
         idxr = D.argsort()[::-1][:N_resample]
         x_resample = bestx_sm[idxr,:]
@@ -97,7 +98,8 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, maxiter=5):
 
 def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, pop = 100, gen = 100, \
-            crossover_rate = 0.9, mutation_rate = None, mu = 15, mum = 20, logger=None):
+            crossover_rate = 0.9, mutation_rate = None, mu = 15, mum = 20,
+            gpr_optimizer="sceua", logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     One-step mode for offline optimization
@@ -121,7 +123,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     N_resample = int(pop*pct)
     x = Xinit.copy()
     y = Yinit.copy()
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
     bestx_sm, besty_sm, x_sm, y_sm = \
         NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
                            pop, gen, crossover_rate, mutation_rate, mu, mum, logger=logger)

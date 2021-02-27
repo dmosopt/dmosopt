@@ -61,8 +61,9 @@ if __name__ == '__main__':
                       'problem_parameters': problem_parameters,
                       'space': space,
                       'objective_names': objective_names,
-                      'n_initial': 3,
-                      'n_iter': 2}
+                      'n_initial': 4,
+                      'n_iter': 4,
+                      'gpr_optimizer': 'dlib' }
          
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:

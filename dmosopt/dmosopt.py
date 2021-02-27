@@ -45,8 +45,9 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
     return False
     
 class OptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, population_size=100, resample_fraction=0.25, num_generations=100, logger=None):
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, population_size=100, resample_fraction=0.25, num_generations=100, gpr_optimizer="sceua", logger=None):
         self.logger = logger
+        self.gpr_optimizer = gpr_optimizer
         self.prob = prob
         self.completed = []
         self.reqs = []
@@ -104,7 +105,7 @@ class OptStrategy():
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
                                  self.x, self.y, pop=self.population_size, gen=self.num_generations,
-                                 logger=self.logger)
+                                 gpr_optimizer=self.gpr_optimizer, logger=self.logger)
         for i in range(x_resample.shape[0]):
             self.reqs.append(x_resample[i,:])
         
@@ -155,7 +156,7 @@ class DistOptimizer():
         save_eval=10,
         file_path=None,
         save=False,
-        save_format=2,
+        gpr_optimizer="sceua",
         **kwargs
     ):
         """
@@ -193,7 +194,7 @@ class DistOptimizer():
         self.population_size = population_size
         self.num_generations = num_generations
         self.resample_fraction = resample_fraction
-        self.save_format = save_format
+        self.gpr_optimizer = gpr_optimizer
         
         self.logger = logging.getLogger(opt_id)
         if self.verbose:
@@ -230,12 +231,8 @@ class DistOptimizer():
         old_evals = {}
         if file_path is not None:
             if os.path.isfile(file_path):
-                if self.save_format == 1:
-                    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_dtypes, problem_parameters, problem_ids = \
-                        init_from_h5_v1(file_path, param_names, opt_id, self.logger)
-                else:
-                    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_dtypes, problem_parameters, problem_ids = \
-                        init_from_h5(file_path, param_names, opt_id, self.logger)
+                old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_dtypes, problem_parameters, problem_ids = \
+                    init_from_h5(file_path, param_names, opt_id, self.logger)
                     
 
         assert(dim > 0)
@@ -281,14 +278,9 @@ class DistOptimizer():
 
         if file_path is not None:
             if not os.path.isfile(file_path):
-                if self.save_format == 1:
-                    init_h5_v1(self.opt_id, self.problem_ids, self.has_problem_ids,
-                               self.param_spec, self.param_names, self.objective_names, self.feature_dtypes,
-                               self.problem_parameters, self.file_path)
-                else:
-                    init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
-                            self.param_spec, self.param_names, self.objective_names, self.feature_dtypes,
-                            self.problem_parameters, self.file_path)
+                init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
+                        self.param_spec, self.param_names, self.objective_names, self.feature_dtypes,
+                        self.problem_parameters, self.file_path)
                     
 
 
@@ -313,7 +305,7 @@ class DistOptimizer():
                                        resample_fraction=self.resample_fraction,
                                        num_generations=self.num_generations,
                                        initial_maxiter=self.initial_maxiter,
-                                       logger=self.logger)
+                                       gpr_optimizer=self.gpr_optimizer, logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
         if initial is not None:
             self.print_best()
@@ -335,16 +327,10 @@ class DistOptimizer():
                             finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:], completed[2][offset:])
 
         if len(finished_evals) > 0:
-            if self.save_format == 1:
-                save_to_h5_v1(self.opt_id, self.problem_ids, self.has_problem_ids,
-                              self.param_names, self.objective_names, self.feature_dtypes,
-                              self.param_spec, finished_evals, self.problem_parameters, 
-                              self.file_path, self.logger)
-            else:
-                save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
-                           self.param_names, self.objective_names, self.feature_dtypes,
-                           self.param_spec, finished_evals, self.problem_parameters, 
-                           self.file_path, self.logger)
+            save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
+                       self.param_names, self.objective_names, self.feature_dtypes,
+                       self.param_spec, finished_evals, self.problem_parameters, 
+                       self.file_path, self.logger)
 
     def get_best(self, return_features=False):
         best_results = {}
@@ -738,291 +724,6 @@ def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_n
     f.close()
 
     
-def h5_init_types_v1(f, opt_id, param_names, objective_names, feature_dtypes, problem_parameters, spec):
-    
-    opt_grp = h5_get_group(f, opt_id)
-
-    objective_keys = set(objective_names)
-    feature_keys = None
-    if feature_dtypes is not None:
-        feature_keys = feature_dtypes['names']
-
-    # create HDF5 types for the objectives and features
-    objective_mapping = { name: idx for (idx, name) in
-                          enumerate(objective_keys) }
-    feature_mapping = None
-    if feature_keys is not None:
-        feature_mapping = { name: idx for (idx, name) in
-                            enumerate(feature_keys) }
-
-    dt = h5py.enum_dtype(objective_mapping, basetype=np.uint16)
-    opt_grp['objective_enum'] = dt
-
-    dt = np.dtype([("objective", opt_grp['objective_enum'])])
-    opt_grp['objective_spec_type'] = dt
-
-    dset = h5_get_dataset(opt_grp, 'objective_spec', maxshape=(len(objective_names),),
-                          dtype=opt_grp['objective_spec_type'].dtype)
-    dset.resize((len(objective_names),))
-    a = np.zeros(len(objective_names), dtype=opt_grp['objective_spec_type'].dtype)
-    for idx, parm in enumerate(objective_names):
-        a[idx]["objective"] = objective_mapping[parm]
-    dset[:] = a
-
-    if feature_mapping is not None:
-        dt = h5py.enum_dtype(feature_mapping, basetype=np.uint16)
-        opt_grp['feature_enum'] = dt
-
-        dt = np.dtype([("feature", opt_grp['feature_enum'])])
-        opt_grp['feature_spec_type'] = dt
-
-        dset = h5_get_dataset(opt_grp, 'feature_spec', maxshape=(len(feature_names),),
-                              dtype=opt_grp['feature_spec_type'].dtype)
-        dset.resize((len(feature_names),))
-        a = np.zeros(len(feature_names), dtype=opt_grp['feature_spec_type'].dtype)
-        for idx, parm in enumerate(feature_names):
-            a[idx]["feature"] = feature_mapping[parm]
-        dset[:] = a
-
-
-    # create HDF5 types describing the parameter specification
-    param_keys = set(param_names)
-    param_keys.update(problem_parameters.keys())
-
-    param_mapping = { name: idx for (idx, name) in
-                      enumerate(param_keys) }
-
-    dt = h5py.enum_dtype(param_mapping, basetype=np.uint16)
-    opt_grp['parameter_enum'] = dt
-
-    dt = np.dtype([("parameter", opt_grp['parameter_enum']),
-                   ("value", np.float32)])
-    opt_grp['problem_parameters_type'] = dt
-
-    dset = h5_get_dataset(opt_grp, 'problem_parameters', maxshape=(len(param_mapping),),
-                          dtype=opt_grp['problem_parameters_type'].dtype)
-    dset.resize((len(param_mapping),))
-    a = np.zeros(len(param_mapping), dtype=opt_grp['problem_parameters_type'].dtype)
-    idx = 0
-    for idx, (parm, val) in enumerate(problem_parameters.items()):
-        a[idx]["parameter"] = param_mapping[parm]
-        a[idx]["value"] = val
-    dset[:] = a
-    
-    dt = np.dtype([("parameter", opt_grp['parameter_enum']),
-                   ("is_integer", np.bool),
-                   ("lower", np.float32),
-                   ("upper", np.float32)])
-    opt_grp['parameter_spec_type'] = dt
-
-    is_integer = np.asarray(spec.is_integer, dtype=np.bool)
-    upper = np.asarray(spec.bound2, dtype=np.float32)
-    lower = np.asarray(spec.bound1, dtype=np.float32)
-
-    dset = h5_get_dataset(opt_grp, 'parameter_spec', maxshape=(len(param_names),),
-                          dtype=opt_grp['parameter_spec_type'].dtype)
-    dset.resize((len(param_names),))
-    a = np.zeros(len(param_names), dtype=opt_grp['parameter_spec_type'].dtype)
-    for idx, (parm, is_int, hi, lo) in enumerate(zip(param_names, is_integer, upper, lower)):
-        a[idx]["parameter"] = param_mapping[parm]
-        a[idx]["is_integer"] = is_int
-        a[idx]["lower"] = lo
-        a[idx]["upper"] = hi
-    dset[:] = a
-    
-def h5_load_raw_v1(input_file, opt_id):
-    ## N is number of trials
-    ## M is number of hyperparameters
-    f = h5py.File(input_file, 'r')
-    opt_grp = h5_get_group(f, opt_id)
-
-    objective_enum_dict = h5py.check_enum_dtype(opt_grp['objective_enum'].dtype)
-    objective_idx_dict = { parm: idx for parm, idx in objective_enum_dict.items() }
-    objective_name_dict = { idx: parm for parm, idx in objective_idx_dict.items() }
-    n_objectives = len(objective_enum_dict)
-    objective_names = [ objective_name_dict[spec[0]]
-                        for spec in iter(opt_grp['objective_spec']) ]
-
-    n_features = 0
-    feature_names = None
-    if 'feature_enum' in opt_grp:
-        feature_enum_dict = h5py.check_enum_dtype(opt_grp['feature_enum'].dtype)
-        feature_idx_dict = { parm: idx for parm, idx in feature_enum_dict.items() }
-        feature_name_dict = { idx: parm for parm, idx in feature_idx_dict.items() }
-        n_features = len(feature_enum_dict)
-        feature_names = opt_grp['feature_type']['names']
-
-    parameter_enum_dict = h5py.check_enum_dtype(opt_grp['parameter_enum'].dtype)
-    parameters_idx_dict = { parm: idx for parm, idx in parameter_enum_dict.items() }
-    parameters_name_dict = { idx: parm for parm, idx in parameters_idx_dict.items() }
-    
-    problem_parameters = { parameters_name_dict[idx]: val
-                           for idx, val in opt_grp['problem_parameters'] }
-    parameter_specs = [ (parameters_name_dict[spec[0]], tuple(spec)[1:])
-                        for spec in iter(opt_grp['parameter_spec']) ]
-
-    problem_ids = None
-    if 'problem_ids' in opt_grp:
-        problem_ids = set(opt_grp['problem_ids'])
-    
-    M = len(parameter_specs)
-    P = n_objectives
-
-    raw_results = {}
-    for problem_id in problem_ids if problem_ids is not None else [0]:
-        if ('%d' % problem_id) in opt_grp:
-            raw_results[problem_id] = opt_grp['%d' % problem_id]['results'][:].reshape((-1,M+P)) # np.array of shape [N, M+P]
-    f.close()
-    
-    param_names = []
-    is_integer = []
-    lower = []
-    upper = []
-    for parm, spec in parameter_specs:
-        param_names.append(parm)
-        is_int, lo, hi = spec
-        is_integer.append(is_int)
-        lower.append(lo)
-        upper.append(hi)
-        
-    raw_spec = (is_integer, lower, upper)
-    info = { 'objectives': objective_names,
-             'features': feature_names,
-             'params': param_names,                            
-             'problem_parameters': problem_parameters,
-             'problem_ids': problem_ids }
-    
-    return raw_spec, raw_results, info
-
-def h5_load_all_v1(file_path, opt_id):
-    """
-    Loads an HDF5 file containing
-    (spec, results, info) where
-      results: np.array of shape [N, M+1] where
-        N is number of trials
-        M is number of hyperparameters
-        results[:, 0] is result/loss
-        results[:, 1:] is [param1, param2, ...]
-      spec: (is_integer, lower, upper)
-        where each element is list of length M
-      info: dict with keys
-        params, problem
-    Assumes the structure is located in group /{opt_id}
-    Returns
-    (param_spec, function_eval, dict, prev_best)
-      where prev_best: np.array[result, param1, param2, ...]
-    """
-    raw_spec, raw_problem_results, info = h5_load_raw_v1(file_path, opt_id)
-    is_integer, lo_bounds, hi_bounds = raw_spec
-    param_names = info['params']
-    objective_names = info['objectives']
-    feature_names = info['features']
-    n_objectives = len(objective_names)
-    n_features = 0
-    if feature_names is not None:
-        n_features = len(feature_names)
-    spec = ParamSpec(bound1=lo_bounds, bound2=hi_bounds, is_integer=is_integer)
-    evals = { problem_id: [] for problem_id in raw_problem_results }
-    for problem_id in raw_problem_results:
-        raw_results = raw_problem_results[problem_id]
-        for raw_result in raw_results:
-            y = raw_result[:n_objectives]
-            x = raw_result[n_objectives+n_features:]
-            f = None
-            if n_features > 0:
-                f = raw_result[n_objectives:n_objectives+n_features]
-            evals[problem_id].append((x, y, f))
-    return raw_spec, spec, evals, info
-    
-def init_from_h5_v1(file_path, param_names, opt_id, logger=None):        
-    # Load progress and settings from file, then compare each
-    # restored setting with settings specified by args (if any)
-    old_raw_spec, old_spec, old_evals, info = h5_load_all_v1(file_path, opt_id)
-    saved_params = info['params']
-    for problem_id in old_evals:
-        n_old_evals = len(old_evals[problem_id])
-        if logger is not None:
-            logger.info(f"Restored {n_old_evals} trials for problem {problem_id}")
-    if (param_names is not None) and param_names != saved_params:
-        # Switching params being optimized over would throw off the optimizer.
-        # Must use restore params from specified
-        if logger is not None:
-            logger.warning(
-                f"Saved params {saved_params} differ from currently specified "
-                f"{param_names}. Using saved.")
-    params = saved_params
-    raw_spec = old_raw_spec
-    is_int, lo_bounds, hi_bounds = raw_spec
-    if len(params) != len(is_int):
-        raise ValueError(
-            f"Params {params} and spec {raw_spec} are of different length"
-            )
-    problem_parameters = info['problem_parameters']
-    objective_names = info['objectives']
-    feature_names = info['features']
-    problem_ids = info['problem_ids'] if 'problem_ids' in info else None
-
-    return old_evals, params, is_int, lo_bounds, hi_bounds, objective_names, feature_names, problem_parameters, problem_ids
-
-def save_to_h5_v1(opt_id, problem_ids, has_problem_ids, param_names, objective_names, feature_dtypes, spec, evals, problem_parameters, fpath, logger):
-    """
-    Save progress and settings to an HDF5 file 'fpath'.
-    """
-
-    f = h5py.File(fpath, "a")
-    if opt_id not in f.keys():
-        h5_init_types_v1(f, opt_id, param_names, objective_names, feature_dtypes, problem_parameters, spec)
-        opt_grp = h5_get_group(f, opt_id)
-        if has_problem_ids:
-            opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
-        
-    opt_grp = h5_get_group(f, opt_id)
-
-    parameter_enum_dict = h5py.check_enum_dtype(opt_grp['parameter_enum'].dtype)
-    parameters_idx_dict = { parm: idx for parm, idx in parameter_enum_dict.items() }
-    parameters_name_dict = { idx: parm for parm, idx in parameters_idx_dict.items() }
-
-    M = len(param_names)
-    P = len(objective_names)
-    F = len(feature_names) if feature_names is not None else 0
-    for problem_id in problem_ids:
-        prob_evals_x, prob_evals_y, prob_evals_f = evals[problem_id]
-        prob_evals_x = prob_evals_x.reshape((-1, M))
-        prob_evals_y = prob_evals_y.reshape((-1, P))
-        if prob_evals_f is not None:
-            prob_evals_f = prob_evals_f.reshape((-1, F))
-        opt_prob = h5_get_group(opt_grp, '%d' % problem_id)
-        dset = h5_get_dataset(opt_prob, 'results', maxshape=(None,),
-                              dtype=np.float32) 
-        old_size = int(dset.shape[0] / (M+P+F))
-        raw_results = np.zeros((prob_evals_x.shape[0], M+P+F))
-        for i in range(raw_results.shape[0]):
-            x = prob_evals_x[i]
-            y = prob_evals_y[i]
-            raw_results[i][:P] = y
-            raw_results[i][P+F:] = x
-            ftrs = prob_evals_f[i] if prob_evals_f is not None else None
-            if ftrs is not None:
-                raw_results[i][P:P+F] = ftrs
-        if logger is not None:
-            logger.info(f"Saving {raw_results.shape[0]} evaluations for problem id {problem_id} to {fpath}.")
-        h5_concat_dataset(opt_prob['results'], raw_results.ravel())
-    
-    f.close()
-
-def init_h5_v1(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_names, feature_dtypes, problem_parameters, fpath):
-    """
-    Save progress and settings to an HDF5 file 'fpath'.
-    """
-
-    f = h5py.File(fpath, "a")
-    if opt_id not in f.keys():
-        h5_init_types_v1(f, opt_id, param_names, objective_names, feature_dtypes, problem_parameters, spec)
-        if has_problem_ids:
-            opt_grp = h5_get_group(f, opt_id)
-            opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
-
-    f.close()
 
 def eval_obj_fun_sp(obj_fun, pp, space_params, is_int, problem_id, space_vals):
     """

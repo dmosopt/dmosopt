@@ -18,7 +18,7 @@ except ImportError as e:
 
 
 class GPR_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -40,7 +40,13 @@ class GPR_Matern:
             if logger is not None:
                 logger.info(f"GPR_Matern: creating regressor for output {i} of {nOutput}...")
             #smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, n_restarts_optimizer=5))
-            smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, optimizer=partial(sceua_optimizer, logger)))
+            if optimizer == "sceua":
+                optf=partial(sceua_optimizer, logger)
+            elif optimizer == "dlib":
+                optf=partial(dlib_optimizer, logger)
+            else:
+                optf=partial(sceua_optimizer, logger)                
+            smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, optimizer=optf))
             smlist[i].fit(x,y[:,i])
         self.smlist = smlist
 
@@ -58,11 +64,61 @@ class GPR_Matern:
     def evaluate(self,x):
         return self.predict(x)
 
+
+def dlib_optimizer(logger, obj_func, initial_theta, bounds):
+    """
+    dlib GFS optimizer for optimizing hyper parameters of GPR
+    Input:
+      * 'obj_func' is the objective function to be minimized, which
+        takes the hyperparameters theta as parameter and an
+        optional flag eval_gradient, which determines if the
+        gradient is returned additionally to the function value
+      * 'initial_theta': the initial value for theta, which can be 
+        used by local optimizers
+      * 'bounds': the bounds on the values of theta, 
+        [(lb1, ub1), (lb2, ub2), (lb3, ub3)]
+     Returned:
+      * 'theta_opt' is the best found hyperparameters theta
+      * 'func_min' is the corresponding value of the target function.
+    """
+    import dlib
+    nopt = len(bounds)
+    is_int = []
+    lb = []
+    ub = []
+    for i, bd in enumerate(bounds):
+        lb.append(bd[0])
+        ub.append(bd[1])
+        is_int.append(type(bd[0]) == int and type(bd[1]) == int)
+    spec = dlib.function_spec(bound1=lb, bound2=ub, is_integer=is_int)
+
+    progress_frac = 100
+    maxn = 1000
+    eps = 0.001
+
+    optimizer = dlib.global_function_search([spec])
+    optimizer.set_solver_epsilon(eps)
+
+    for i in range(maxn):
+        next_eval = optimizer.get_next_x()
+        next_eval.set(-obj_func(list(next_eval.x))[0])
+        if (i > 0) and (i % progress_frac == 0):
+            best_eval = optimizer.get_best_function_eval()
+            logger.info(f'GPR optimization loop: {i} iterations: ')
+            logger.info(f'  best evaluation so far: {-best_eval[1]} @ {list(best_eval[0])}')
+
+    best_eval = optimizer.get_best_function_eval()
+    theta_opt = np.asarray(list(best_eval[0]))
+    func_min = -best_eval[1]
+    return theta_opt, func_min
+
+
+    
 def sceua_optimizer(logger, obj_func, initial_theta, bounds):
     """
     SCE-UA optimizer for optimizing hyper parameters of GPR
     Input:
-      * 'obj_func' is the objective function to be maximized, which
+      * 'obj_func' is the objective function to be minimized, which
         takes the hyperparameters theta as parameter and an
         optional flag eval_gradient, which determines if the
         gradient is returned additionally to the function value
