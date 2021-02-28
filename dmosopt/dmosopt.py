@@ -82,8 +82,6 @@ class OptStrategy():
     def complete_x(self, x, y, f=None):
         assert(x.shape[0] == self.prob.dim)
         assert(y.shape[0] == self.prob.n_objectives)
-        if f is not None:
-            assert(f.shape[0] == self.prob.n_features)
         self.completed.append((x,y,f))
     
     def step(self):
@@ -311,7 +309,7 @@ class DistOptimizer():
             self.print_best()
                 
 
-    def save_evals(self, offset=None):
+    def save_evals(self):
         """Store results of finished evals to file; print best eval"""
         finished_evals = {}
         for problem_id in self.problem_ids:
@@ -322,9 +320,9 @@ class DistOptimizer():
                 else:
                     if len(completed[0]) > offset:
                         if completed[2] is None:
-                            finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:], None)
+                            finished_evals[problem_id] = (completed[0], completed[1], None)
                         else:
-                            finished_evals[problem_id] = (completed[0][offset:], completed[1][offset:], completed[2][offset:])
+                            finished_evals[problem_id] = (completed[0], completed[1], completed[2])
 
         if len(finished_evals) > 0:
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
@@ -843,9 +841,8 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                 task_ids.remove(task_id)
 
         if sopt.save and (eval_count % sopt.save_eval == 0) and (eval_count > 0) and (saved_eval_count < eval_count):
-            sopt.save_evals(offset=saved_eval_count)
+            sopt.save_evals()
             saved_eval_count = eval_count
-
 
         while (len(controller.ready_workers) > 0) and not next_iter:
             eval_x_dict = {}
@@ -865,6 +862,9 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                 sopt.evals[problem_id][task_id] = eval_x_dict[problem_id]
 
         if next_iter and (len(task_ids) == 0):
+            if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count):
+                sopt.save_evals()
+                saved_eval_count = eval_count
             for problem_id in sopt.problem_ids:
                 logger.info(f"performing optimization step {iter_count+1} for problem {problem_id} ...")
                 sopt.optimizer_dict[problem_id].step()
@@ -874,7 +874,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                 iter_count += 1
 
     if sopt.save:
-        sopt.save_evals(offset=saved_eval_count)
+        sopt.save_evals()
     controller.info()
 
 def sopt_work(worker, sopt_params, verbose=False, debug=False):
