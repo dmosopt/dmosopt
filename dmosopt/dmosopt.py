@@ -100,6 +100,7 @@ class OptStrategy():
             else:
                 self.x = np.vstack((self.x, x_completed))
                 self.y = np.vstack((self.y, y_completed))
+            self.completed = []
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
                                  self.x, self.y, pop=self.population_size, gen=self.num_generations,
