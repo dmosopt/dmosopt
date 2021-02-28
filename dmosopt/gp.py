@@ -33,7 +33,7 @@ class GPR_Matern:
         if nOutput == 1:
             y = y.reshape((y.shape[0],1))
 
-        kernel = 1.0 * Matern(length_scale=1.0, length_scale_bounds=(1e-1, 10.0), nu=2.5)
+        kernel = 1.0 * Matern(length_scale=1.0, length_scale_bounds=(1e-2, 10.0), nu=2.5)
 
         smlist = []
         for i in range(nOutput):

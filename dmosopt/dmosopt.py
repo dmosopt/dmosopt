@@ -623,7 +623,7 @@ def h5_load_all(file_path, opt_id):
         xs = raw_results['parameters']
         fs = None
         if n_features > 0:
-            fs = raw_result['features']
+            fs = raw_results['features']
             for i in range(ys.shape[0]):
                 problem_evals.append((list(xs[i]), list(ys[i]), fs[i]))
         else:
