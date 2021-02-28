@@ -303,7 +303,6 @@ class DistOptimizer():
                 f = None
                 if self.feature_dtypes is not None:
                     old_eval_fs = [e[2] for e in self.old_evals[problem_id]]
-                    f = np.concatenate(old_eval_fs)
                 initial = (x, y, f)
             opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes, self.param_spec, self.eval_fun)
             if self.resample_fraction > 1.0:
@@ -638,7 +637,7 @@ def h5_load_all(file_path, opt_id):
         xs = raw_results['parameters']
         fs = None
         if n_features > 0:
-            fs = raw_result['features']
+            fs = raw_results['features']
             for i in range(ys.shape[0]):
                 problem_evals.append((list(xs[i]), list(ys[i]), fs[i]))
         else:
