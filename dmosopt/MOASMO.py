@@ -144,6 +144,6 @@ def get_best(x, y, f, nInput, nOutput):
     besty = ytmp[idxp,:]
     bestf = None
     if ftmp is not None:
-        bestf = ftmp[idxp,:]
+        bestf = ftmp[idxp]
 
     return bestx, besty, bestf

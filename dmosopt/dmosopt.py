@@ -316,14 +316,7 @@ class DistOptimizer():
         for problem_id in self.problem_ids:
             completed = self.optimizer_dict[problem_id].get_completed()
             if completed is not None:
-                if offset is None:
-                    finished_evals[problem_id] = completed
-                else:
-                    if len(completed[0]) > offset:
-                        if completed[2] is None:
-                            finished_evals[problem_id] = (completed[0], completed[1], None)
-                        else:
-                            finished_evals[problem_id] = (completed[0], completed[1], completed[2])
+                finished_evals[problem_id] = completed
 
         if len(finished_evals) > 0:
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
@@ -354,16 +347,13 @@ class DistOptimizer():
                 prms, res, ftrs = best_results[problem_id]
                 prms_dict = dict(prms)
                 res_dict = dict(res)
-                ftrs_dict = None
-                if ftrs is not None:
-                    ftrs_dict = dict(ftrs)
                 n_res = next(iter(res_dict.values())).shape[0]
                 for i in range(n_res):
                     res_i = { k: res_dict[k][i] for k in res_dict }
                     prms_i = { k: prms_dict[k][i] for k in prms_dict }
                     ftrs_i = None
-                    if ftrs_dict is not None:
-                        ftrs_i = { k: ftrs_dict[k][i] for k in ftrs_dict }
+                    if ftrs is not None:
+                        ftrs_i = ftrs[i]
                     if ftrs_i is None:
                         self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i}")
                     else:
@@ -372,16 +362,13 @@ class DistOptimizer():
             prms, res, ftrs = best_results
             prms_dict = dict(prms)
             res_dict = dict(res)
-            ftrs_dict = None
-            if ftrs is not None:
-                ftrs_dict = dict(ftrs)
             n_res = next(iter(res_dict.values())).shape[0]
             for i in range(n_res):
                 res_i = { k: res_dict[k][i] for k in res_dict }
                 prms_i = { k: prms_dict[k][i] for k in prms_dict }
                 ftrs_i = None
-                if ftrs_dict is not None:
-                    ftrs_i = { k: ftrs_dict[k][i] for k in ftrs_dict }
+                if ftrs is not None:
+                    ftrs_i = ftrs_dict[i]
                 if ftrs_i is None:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
                 else:
