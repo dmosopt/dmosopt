@@ -31,7 +31,7 @@ def list_find(f, lst):
 @click.option("--verbose", '-v', is_flag=True)
 def main(file_path, opt_id, sort_key, filter_objectives, verbose):
 
-    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, problem_parameters, problem_ids = \
+    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
 
     if problem_ids is None:
@@ -55,7 +55,7 @@ def main(file_path, opt_id, sort_key, filter_objectives, verbose):
 
         print(f"Found {x.shape[0]} results for id {problem_id}")
         
-        best_x, best_y = get_best(x, y, len(param_names), len(objective_names))
+        best_x, best_y, _ = get_best(x, y, None, len(param_names), len(objective_names))
         prms = list(zip(param_names, list(best_x.T)))
         res = list(zip(objective_names, list(best_y.T)))
         prms_dict = dict(prms)
