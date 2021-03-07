@@ -97,7 +97,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, maxiter=5):
 
 
 def onestep(nInput, nOutput, xlb, xub, pct, \
-            Xinit, Yinit, pop = 100, gen = 100, \
+            Xinit, Yinit, C, pop = 100, gen = 100, \
             crossover_rate = 0.9, mutation_rate = None, mu = 15, mum = 20,
             gpr_optimizer="sceua", logger=None):
     """ 
@@ -123,6 +123,11 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     N_resample = int(pop*pct)
     x = Xinit.copy()
     y = Yinit.copy()
+    if c is not None:
+        feasible = np.argwhere(C > 0.)
+        if len(feasible) > 0:
+            x = x[feasible]
+            y = y[feasible]
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
     bestx_sm, besty_sm, x_sm, y_sm = \
         NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
