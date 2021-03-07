@@ -123,7 +123,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     N_resample = int(pop*pct)
     x = Xinit.copy()
     y = Yinit.copy()
-    if c is not None:
+    if C is not None:
         feasible = np.argwhere(C > 0.)
         if len(feasible) > 0:
             x = x[feasible]

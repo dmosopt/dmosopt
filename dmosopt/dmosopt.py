@@ -305,7 +305,8 @@ class DistOptimizer():
         if file_path is not None:
             if not os.path.isfile(file_path):
                 init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
-                        self.param_spec, self.param_names, self.objective_names, self.feature_dtypes, self.constraint_names,
+                        self.param_spec, self.param_names, self.objective_names, 
+                        self.feature_dtypes, self.constraint_names,
                         self.problem_parameters, self.file_path)
                     
 
@@ -466,7 +467,7 @@ def h5_concat_dataset(dset, data):
     return dset
 
 
-def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, constr_names, problem_parameters, spec):
+def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, constraint_names, problem_parameters, spec):
     
     opt_grp = h5_get_group(f, opt_id)
 
@@ -543,7 +544,7 @@ def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, const
         dset.resize((len(constraint_names),))
         a = np.zeros(len(constraint_names), dtype=opt_grp['constraint_spec_type'].dtype)
         for idx, parm in enumerate(constraint_names):
-            a[idx]["constraint"] = constraint_mapping[parm]
+            a[idx]["constraint"] = constr_mapping[parm]
             dset[:] = a
 
     # create HDF5 types describing the parameter specification
