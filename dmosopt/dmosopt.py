@@ -19,6 +19,13 @@ ParamSpec = namedtuple('ParamSpec',
                         'is_integer',
                        ])
 
+def anyclose(a, b, rtol=1e-4, atol=1e-4):
+    for i in range(b.shape[0]):
+        if np.allclose(a, b[i, :]):
+            return True
+    return False
+        
+
 class OptProblem():
 
     def __init__(self, param_names, objective_names, feature_dtypes, spec, eval_fun):
@@ -37,12 +44,6 @@ class OptProblem():
         
     def eval(self, x):
         return self.eval_fun(x)
-
-def anyclose(a, b, rtol=1e-4, atol=1e-4):
-    for i in range(b.shape[0]):
-        if np.allclose(a, b[i, :]):
-            return True
-    return False
     
 class OptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, population_size=100, resample_fraction=0.25, num_generations=100, gpr_optimizer="sceua", logger=None):
@@ -88,18 +89,22 @@ class OptStrategy():
         if len(self.completed) > 0:
             x_completed = [x[0] for x in self.completed]
             y_completed = [x[1] for x in self.completed]
+            f_completed = [x[2] for x in self.completed]
 
             x_completed = np.vstack(x_completed)
             y_completed = np.vstack(y_completed)
+            f_completed = np.concatenate(f_completed, axis=None)
 
             assert(x_completed.shape[1] == self.prob.dim)
             assert(y_completed.shape[1] == self.prob.n_objectives)
             if self.x is None:
                 self.x = x_completed
                 self.y = y_completed
+                self.f = f_completed
             else:
                 self.x = np.vstack((self.x, x_completed))
                 self.y = np.vstack((self.y, y_completed))
+                self.f = np.concatenate((self.f, f_completed))
             self.completed = []
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
@@ -269,6 +274,7 @@ class DistOptimizer():
         self.problem_ids = problem_ids
 
         self.optimizer_dict = {}
+        self.storage_dict = {}
 
         self.feature_dtypes = feature_dtypes
         self.feature_names = None
@@ -306,6 +312,7 @@ class DistOptimizer():
                                        initial_maxiter=self.initial_maxiter,
                                        gpr_optimizer=self.gpr_optimizer, logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
+            self.storage_dict[problem_id] = []
         if initial is not None:
             self.print_best()
                 
@@ -314,15 +321,23 @@ class DistOptimizer():
         """Store results of finished evals to file; print best eval"""
         finished_evals = {}
         for problem_id in self.problem_ids:
-            completed = self.optimizer_dict[problem_id].get_completed()
-            if completed is not None:
-                finished_evals[problem_id] = completed
+            storage_evals = self.storage_dict[problem_id]
+            if len(storage_evals) > 0:
+                x_completed = [x[0] for x in storage_evals]
+                y_completed = [x[1] for x in storage_evals]
+                f_completed = None
+                if self.feature_names is not None:
+                    f_completed = [x[2] for x in storage_evals]
+                finished_evals[problem_id] = (x_completed, y_completed, f_completed)
+                self.storage_dict[problem_id] = []
 
         if len(finished_evals) > 0:
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                        self.param_names, self.objective_names, self.feature_dtypes,
                        self.param_spec, finished_evals, self.problem_parameters, 
                        self.file_path, self.logger)
+
+        
 
     def get_best(self, return_features=False):
         best_results = {}
@@ -368,7 +383,7 @@ class DistOptimizer():
                 prms_i = { k: prms_dict[k][i] for k in prms_dict }
                 ftrs_i = None
                 if ftrs is not None:
-                    ftrs_i = ftrs_dict[i]
+                    ftrs_i = ftrs[i]
                 if ftrs_i is None:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
                 else:
@@ -689,7 +704,7 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
         if prob_evals_f is not None:
             dset = h5_get_dataset(opt_prob, 'features', maxshape=(None,),
                                   dtype=opt_grp['feature_type'])
-            data = np.array([tuple(f) for f in prob_evals_f], dtype=opt_grp['feature_type'])
+            data = np.concatenate(prob_evals_f, dtype=opt_grp['feature_type'])
             h5_concat_dataset(dset, data)
         
     f.close()
@@ -812,8 +827,10 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                     eval_x = sopt.evals[problem_id][task_id]
                     if sopt.feature_names is None:
                         sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id])
+                        sopt.storage_dict[problem_id].append((eval_x, rres[problem_id]))
                     else:
                         sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id][0], rres[problem_id][1])
+                        sopt.storage_dict[problem_id].append((eval_x, rres[problem_id][0], rres[problem_id][1]))
                     prms = list(zip(sopt.param_names, list(eval_x.T)))
                     lftrs = None
                     lres = None
@@ -822,7 +839,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                         logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres}")
                     else:
                         lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
-                        lftrs = list(zip(sopt.feature_names, rres[problem_id][1].T))
+                        lftrs = rres[problem_id][1]
                         logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres} / {lftrs}")
                 
                 eval_count += 1

@@ -100,6 +100,7 @@ def dlib_optimizer(logger, obj_func, initial_theta, bounds):
     optimizer.set_solver_epsilon(eps)
 
     for i in range(maxn):
+        logger.info(f'GPR optimization loop: {i} iterations: ')
         next_eval = optimizer.get_next_x()
         next_eval.set(-obj_func(list(next_eval.x))[0])
         if (i > 0) and (i % progress_frac == 0):

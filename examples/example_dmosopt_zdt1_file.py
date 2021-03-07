@@ -4,6 +4,8 @@ from dmosopt import dmosopt
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+feature_dtypes = [('g', np.float32, ), 
+                  ('h', np.float32, )]
 
 def zdt1(x):
     ''' This is the Zitzler-Deb-Thiele Function - type A
@@ -15,7 +17,7 @@ def zdt1(x):
     g = 1. + 9./29.*np.sum(x[1:])
     h = 1. - np.sqrt(f[0]/g)
     f[1] = g*h
-    return f
+    return f, np.array([(g,h,)], dtype=np.dtype(feature_dtypes))
 
 
 def obj_fun(pp):
@@ -44,21 +46,21 @@ if __name__ == '__main__':
     # Create an optimizer
     dmosopt_params = {'opt_id': 'dmosopt_zdt1',
                       'obj_fun_name': 'obj_fun',
-                      'obj_fun_module': 'example_dmosopt_zdt1',
+                      'obj_fun_module': 'example_dmosopt_zdt1_file',
                       'problem_parameters': problem_parameters,
                       'space': space,
                       'objective_names': problem_objectives,
                       'n_initial': 1,
                       'n_iter': 2,
                       'file_path': 'dmosopt.zdt1.h5',
-                      'save': True
-
+                      'save': True,
+                      'feature_dtypes': feature_dtypes
                       }
     
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:
         import matplotlib.pyplot as plt
-        bestx, besty = best
+        bestx, besty, bestf = best
         x, y = dmosopt.sopt_dict['dmosopt_zdt1'].optimizer_dict[0].get_evals()
         besty_dict = dict(besty)
         
