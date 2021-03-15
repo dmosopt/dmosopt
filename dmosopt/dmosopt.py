@@ -130,7 +130,7 @@ class OptStrategy():
         if self.x is not None:
             return opt.get_best(self.x, self.y, self.f, self.c, self.prob.dim, self.prob.n_objectives)
         else:
-            return None, None, None
+            return None, None, None, None
 
     def get_evals(self, return_features=False, return_constraints=False):
         if return_features and return_constraints:
@@ -369,10 +369,16 @@ class DistOptimizer():
 
         
 
-    def get_best(self, return_features=False, return_constraints=False):
+    def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
         for problem_id in self.problem_ids:
             best_x, best_y, best_f, best_c = self.optimizer_dict[problem_id].get_best_evals()
+            if feasible and best_c is not None:
+                feasible_idxs = np.any(best_c > 0., axis=1)
+                best_x = best_x[feasible_idxs,:]
+                best_y = best_y[feasible_idxs,:]
+                best_f = best_f[feasible_idxs]
+                best_c = best_c[feasible_idxs,:] 
             prms = list(zip(self.param_names, list(best_x.T)))
             lres = list(zip(self.objective_names, list(best_y.T)))
             lconstr = None
@@ -391,8 +397,8 @@ class DistOptimizer():
         else:
             return best_results[0]
         
-    def print_best(self):
-        best_results = self.get_best(return_features=True, return_constraints=True)
+    def print_best(self, feasible=True):
+        best_results = self.get_best(feasible=feasible, return_features=True, return_constraints=True)
         if self.has_problem_ids:
             for problem_id in self.problem_ids:
                 prms, res, ftrs, constr = best_results[problem_id]
@@ -412,7 +418,7 @@ class DistOptimizer():
                     if ftrs is not None:
                         ftrs_i = ftrs[i]
                     if (ftrs_i is not None) and (constr_i is not None):
-                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}] [constr: {ftrs_i}]")
+                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}] [constr: {constr_i}]")
                     elif (constr_i is not None): 
                         self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [constr: {constr_i}]")
                     elif (ftrs_i is not None): 
@@ -424,6 +430,7 @@ class DistOptimizer():
             prms_dict = dict(prms)
             res_dict = dict(res)
             n_res = next(iter(res_dict.values())).shape[0]
+            constr_dict = None
             if constr is not None:
                 constr_dict = dict(constr)
             for i in range(n_res):
@@ -436,13 +443,13 @@ class DistOptimizer():
                 if ftrs is not None:
                     ftrs_i = ftrs[i]
                 if (ftrs_i is not None) and (constr_i is not None):
-                    self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}] [constr: {ftrs_i}]")
+                    self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i} [{ftrs_i}] [constr: {constr_i}]")
                 elif (constr_i is not None): 
-                    self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [constr: {constr_i}]")
+                    self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i} [constr: {constr_i}]")
                 elif (ftrs_i is not None): 
-                    self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}]")
+                    self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i} [{ftrs_i}]")
                 else:
-                    self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i}")
+                    self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
             
 
 def h5_get_group (h, groupname):
@@ -618,7 +625,7 @@ def h5_load_raw(input_file, opt_id):
         constraint_idx_dict = { parm: idx for parm, idx in constraint_enum_dict.items() }
         constraint_name_dict = { idx: parm for parm, idx in constraint_idx_dict.items() }
         n_constraints = len(constraint_enum_dict)
-        constraint_names = [ objective_name_dict[spec[0]]
+        constraint_names = [ constraint_name_dict[spec[0]]
                              for spec in iter(opt_grp['constraint_spec']) ]
 
     n_features = 0

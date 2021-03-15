@@ -124,10 +124,10 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     x = Xinit.copy()
     y = Yinit.copy()
     if C is not None:
-        feasible = np.argwhere(C > 0.)
+        feasible = np.argwhere(C > 0.)[:,0]
         if len(feasible) > 0:
-            x = x[feasible]
-            y = y[feasible]
+            x = x[feasible,:]
+            y = y[feasible,:]
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
     bestx_sm, besty_sm, x_sm, y_sm = \
         NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
@@ -137,12 +137,15 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     x_resample = bestx_sm[idxr,:]
     return x_resample
 
-def get_best(x, y, f, nInput, nOutput):
+def get_best(x, y, f, c, nInput, nOutput):
     xtmp = x.copy()
     ytmp = y.copy()
     ftmp = None
     if f is not None:
         ftmp = f.copy()
+    ctmp = None
+    if c is not None:
+        ctmp = c.copy()
     xtmp, ytmp, rank, crowd = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput)
     idxp = (rank == 0)
     bestx = xtmp[idxp,:]
@@ -150,5 +153,8 @@ def get_best(x, y, f, nInput, nOutput):
     bestf = None
     if ftmp is not None:
         bestf = ftmp[idxp]
+    bestc = None
+    if ctmp is not None:
+        bestc = ctmp[idxp,:]
 
-    return bestx, besty, bestf
+    return bestx, besty, bestf, bestc
