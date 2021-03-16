@@ -70,12 +70,13 @@ def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
         besty = population_obj.copy()
     return bestx, besty, x, y
 
-def sortMO(x, y, nInput, nOutput):
+def sortMO(x, y, nInput, nOutput, return_perm=False):
     ''' Non domination sorting for multi-objective optimization
         x: input parameter matrix
         y: output objectives matrix
         nInput: number of input
         nOutput: number of output
+        return_perm: if True, return permutation indices of original input
     '''
     rank, dom = fast_non_dominated_sort(y)
     idxr = rank.argsort()
@@ -98,9 +99,13 @@ def sortMO(x, y, nInput, nOutput):
         c += len(idxtt)
     x = x[idxt,:]
     y = y[idxt,:]
+    perm = idxr[idxt]
     rank = rank[idxt]
 
-    return x, y, rank, crowd
+    if return_perm:
+        return x, y, rank, crowd, perm
+    else:
+        return x, y, rank, crowd
 
 def fast_non_dominated_sort(Y):
     ''' a fast non-dominated sorting method

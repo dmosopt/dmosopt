@@ -140,21 +140,15 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
 def get_best(x, y, f, c, nInput, nOutput):
     xtmp = x.copy()
     ytmp = y.copy()
-    ftmp = None
-    if f is not None:
-        ftmp = f.copy()
-    ctmp = None
-    if c is not None:
-        ctmp = c.copy()
-    xtmp, ytmp, rank, crowd = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput)
+    xtmp, ytmp, rank, crowd, perm = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
     bestx = xtmp[idxp,:]
     besty = ytmp[idxp,:]
     bestf = None
-    if ftmp is not None:
-        bestf = ftmp[idxp]
+    if f is not None:
+        bestf = f[perm][idxp]
     bestc = None
-    if ctmp is not None:
-        bestc = ctmp[idxp,:]
+    if c is not None:
+        bestc = c[perm,:][idxp,:]
 
     return bestx, besty, bestf, bestc

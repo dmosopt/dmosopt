@@ -62,6 +62,7 @@ def main(file_path, opt_id, sort_key, filter_objectives, verbose):
             y = filtered_y
 
         print(f"Found {x.shape[0]} results for id {problem_id}")
+        sys.stdout.flush()
         
         best_x, best_y, best_f, best_c = get_best(x, y, f, c, len(param_names), len(objective_names))
         prms = list(zip(param_names, list(best_x.T)))
@@ -73,7 +74,7 @@ def main(file_path, opt_id, sort_key, filter_objectives, verbose):
         if best_c is not None:
             constr = list(zip(constraint_names, list(best_c.T)))
             constr_dict = dict(constr)
-        n_res = next(iter(res_dict.values())).shape[0]
+        n_res = best_y.shape[0]
         if sort_key is None:
             for i in range(n_res):
                 res_i = { k: res_dict[k][i] for k in res_dict }
