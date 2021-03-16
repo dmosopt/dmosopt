@@ -24,12 +24,13 @@ def list_find(f, lst):
     return None
 
 @click.command()
+@click.option('--constraints/--no-constraints', default=True)
 @click.option("--file-path", '-p', required=True, type=click.Path())
 @click.option("--opt-id", required=True, type=str)
 @click.option("--sort-key", required=False, type=str)
 @click.option("--filter-objectives", required=False, type=str)
 @click.option("--verbose", '-v', is_flag=True)
-def main(file_path, opt_id, sort_key, filter_objectives, verbose):
+def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
 
     old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
@@ -40,10 +41,12 @@ def main(file_path, opt_id, sort_key, filter_objectives, verbose):
         old_eval_xs = [e[0] for e in old_evals[problem_id]]
         old_eval_ys = [e[1] for e in old_evals[problem_id]]
         old_eval_fs = None
+        f = None
         if feature_names is not None:
             old_eval_fs = [e[2] for e in old_evals[problem_id]]
             f = np.concatenate(old_eval_fs, axis=None)
         old_eval_cs = None
+        c = None
         if constraint_names is not None:
             old_eval_cs = [e[3] for e in old_evals[problem_id]]
             c = np.vstack(old_eval_cs)
@@ -61,7 +64,17 @@ def main(file_path, opt_id, sort_key, filter_objectives, verbose):
             objective_names = filtered_objective_names
             y = filtered_y
 
-        print(f"Found {x.shape[0]} results for id {problem_id}")
+        if c is not None and constraints:
+            feasible = np.argwhere(c > 0.)[:,0]
+            if len(feasible) > 0:
+                x = x[feasible,:]
+                y = y[feasible,:]
+                c = c[feasible,:]
+                if f is not None:
+                    f = f[feasible]
+
+        print(f'Found {x.shape[0]} {" feasible " if constraints else ""}'
+              f'results for id {problem_id}')
         sys.stdout.flush()
         
         best_x, best_y, best_f, best_c = get_best(x, y, f, c, len(param_names), len(objective_names))
