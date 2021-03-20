@@ -1026,12 +1026,13 @@ def sopt_work(worker, sopt_params, verbose=False, debug=False):
 def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
 
-def run(sopt_params, return_features=False, return_constraints=False, spawn_workers=False, sequential_spawn=False, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
+def run(sopt_params, return_features=False, return_constraints=False, spawn_workers=False, sequential_spawn=False, spawn_startup_wait=None, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
     if distwq.is_controller:
         distwq.run(fun_name="sopt_ctrl", module_name="dmosopt.dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),
                    spawn_workers=spawn_workers,
                    sequential_spawn=sequential_spawn,
+                   spawn_startup_wait=spawn_startup_wait,
                    nprocs_per_worker=nprocs_per_worker,
                    collective_mode=collective_mode)
         opt_id = sopt_params['opt_id']
@@ -1049,6 +1050,7 @@ def run(sopt_params, return_features=False, return_constraints=False, spawn_work
                    verbose=verbose, args=(sopt_params, verbose, worker_debug, ),
                    spawn_workers=spawn_workers,
                    sequential_spawn=sequential_spawn,
+                   spawn_startup_wait=spawn_startup_wait,
                    nprocs_per_worker=nprocs_per_worker,
                    collective_mode=collective_mode)
         return None
