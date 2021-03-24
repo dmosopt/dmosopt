@@ -953,7 +953,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                         sopt.storage_dict[problem_id].append((eval_x, rres[problem_id][0], rres[problem_id][1], None))
                     elif sopt.constraint_names is not None:
                         sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id][0], c=rres[problem_id][1])
-                        sopt.storage_dict[problem_id].append((eval_x, rres[problem_id][0], None, rres[problem_id][2]))
+                        sopt.storage_dict[problem_id].append((eval_x, rres[problem_id][0], None, rres[problem_id][1]))
                     else:
                         sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id])
                         sopt.storage_dict[problem_id].append((eval_x, rres[problem_id], None, None))
@@ -971,7 +971,7 @@ def sopt_ctrl(controller, sopt_params, verbose=False):
                         logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres} / {lftrs}")
                     elif sopt.constraint_names is not None:
                         lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
-                        lconstr = list(zip(sopt.constraint_names, rres[problem_id][2].T))
+                        lconstr = list(zip(sopt.constraint_names, rres[problem_id][1].T))
                         logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres} / constr: {lconstr}")
                     else:
                         lres = list(zip(sopt.objective_names, rres[problem_id].T))
