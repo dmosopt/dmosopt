@@ -5,11 +5,24 @@ Created on Mon Nov 17 14:18:23 2014
 """
 # Good Lattice Points method for Uniform Design
 from __future__ import division, print_function, absolute_import
+import sys
 import numpy as np
 import fractions as fc
 import itertools
 from dmosopt.discrepancy import CD2
 #from discrepancy_cython import CD2
+
+use_numba = True
+try:
+    from numba import njit
+except ImportError as e:
+    use_numba = False
+    print("dmosopt.GLP: Warning: unable to import numba")
+    sys.stdout.flush()
+    def njit(cache=False, nogil=False):
+        def decorator(func):
+            return func
+        return decorator
 
 def sample(n, s):
     ''' main function of GLP design'''
@@ -119,10 +132,11 @@ def PowerGenVector(n,s):
         hh[i,:] = np.mod([aa[i]**t for t in range(s)],n)
     return hh
 
+@njit()
 def glpmod(n,h):
     ''' generate GLP using generation vector h'''
     m = len(h)
-    u = np.zeros([n,m])
+    u = np.zeros((n,m))
     for i in range(n):
         for j in range(m):
             u[i,j] = np.mod((i+1)*h[j],n)

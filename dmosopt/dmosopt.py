@@ -9,7 +9,8 @@ import dmosopt.MOASMO as opt
 try:
     import h5py
 except ImportError as e:
-    logger.warning('dmosopt: unable to import h5py: %s' % str(e))
+    logger = logging.getLogger('dmosopt')
+    logger.warning(f'unable to import h5py: {e}')
 
 sopt_dict = {}
 
@@ -913,7 +914,7 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
     return sopt
 
 
-def sopt_ctrl(controller, sopt_params, verbose=False):
+def sopt_ctrl(controller, sopt_params, verbose=True):
     """Controller for distributed surrogate optimization."""
     logger = logging.getLogger(sopt_params['opt_id'])
     if verbose:

@@ -6,6 +6,7 @@ Created on Mon May 12 19:53:23 2015
 """
 
 from __future__ import division, print_function, absolute_import
+import sys
 import numpy as np
 from dmosopt import GLP
 
