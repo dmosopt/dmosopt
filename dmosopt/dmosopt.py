@@ -127,9 +127,10 @@ class OptStrategy():
         for i in range(x_resample.shape[0]):
             self.reqs.append(x_resample[i,:])
         
-    def get_best_evals(self):
+    def get_best_evals(self, feasible=True):
         if self.x is not None:
-            return opt.get_best(self.x, self.y, self.f, self.c, self.prob.dim, self.prob.n_objectives)
+            return opt.get_best(self.x, self.y, self.f, self.c, self.prob.dim, 
+                                self.prob.n_objectives, feasible=feasible)
         else:
             return None, None, None, None
 
@@ -373,13 +374,7 @@ class DistOptimizer():
     def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
         for problem_id in self.problem_ids:
-            best_x, best_y, best_f, best_c = self.optimizer_dict[problem_id].get_best_evals()
-            if feasible and best_c is not None:
-                feasible_idxs = np.any(best_c > 0., axis=1)
-                best_x = best_x[feasible_idxs,:]
-                best_y = best_y[feasible_idxs,:]
-                best_f = best_f[feasible_idxs]
-                best_c = best_c[feasible_idxs,:] 
+            best_x, best_y, best_f, best_c = self.optimizer_dict[problem_id].get_best_evals(feasible=feasible)
             prms = list(zip(self.param_names, list(best_x.T)))
             lres = list(zip(self.objective_names, list(best_y.T)))
             lconstr = None
@@ -1027,7 +1022,7 @@ def sopt_work(worker, sopt_params, verbose=False, debug=False):
 def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
 
-def run(sopt_params, return_features=False, return_constraints=False, spawn_workers=False, sequential_spawn=False, spawn_startup_wait=None, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
+def run(sopt_params, feasible=True, return_features=False, return_constraints=False, spawn_workers=False, sequential_spawn=False, spawn_startup_wait=None, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
     if distwq.is_controller:
         distwq.run(fun_name="sopt_ctrl", module_name="dmosopt.dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),
@@ -1039,7 +1034,7 @@ def run(sopt_params, return_features=False, return_constraints=False, spawn_work
         opt_id = sopt_params['opt_id']
         sopt = sopt_dict[opt_id]
         sopt.print_best()
-        return sopt.get_best(return_features=return_features, return_constraints=return_constraints)
+        return sopt.get_best(feasible=feasible, return_features=return_features, return_constraints=return_constraints)
     else:
         if 'file_path' in sopt_params:
             del(sopt_params['file_path'])

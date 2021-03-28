@@ -137,9 +137,17 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     x_resample = bestx_sm[idxr,:]
     return x_resample
 
-def get_best(x, y, f, c, nInput, nOutput):
+def get_best(x, y, f, c, nInput, nOutput, feasible=True):
     xtmp = x.copy()
     ytmp = y.copy()
+    if feasible and c is not None:
+        feasible = np.argwhere(c > 0.)[:,0]
+        if len(feasible) > 0:
+            xtmp = xtmp[feasible,:]
+            ytmp = ytmp[feasible,:]
+            if f is not None:
+                f = f[feasible]
+            c = c[feasible,:]
     xtmp, ytmp, rank, crowd, perm = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
     bestx = xtmp[idxp,:]

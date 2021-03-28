@@ -64,20 +64,12 @@ def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
             objective_names = filtered_objective_names
             y = filtered_y
 
-        if c is not None and constraints:
-            feasible = np.argwhere(c > 0.)[:,0]
-            if len(feasible) > 0:
-                x = x[feasible,:]
-                y = y[feasible,:]
-                c = c[feasible,:]
-                if f is not None:
-                    f = f[feasible]
-
-        print(f'Found {x.shape[0]} {" feasible " if constraints else ""}'
-              f'results for id {problem_id}')
+        print(f'Found {x.shape[0]} results for id {problem_id}')
         sys.stdout.flush()
         
-        best_x, best_y, best_f, best_c = get_best(x, y, f, c, len(param_names), len(objective_names))
+        best_x, best_y, best_f, best_c = get_best(x, y, f, c, len(param_names), len(objective_names), 
+                                                  feasible=constraints)
+
         prms = list(zip(param_names, list(best_x.T)))
         res = list(zip(objective_names, list(best_y.T)))
         prms_dict = dict(prms)
