@@ -124,8 +124,9 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     x = Xinit.copy()
     y = Yinit.copy()
     if C is not None:
-        feasible = np.argwhere(C > 0.)[:,0]
+        feasible = np.argwhere(np.all(C > 0., axis=1))
         if len(feasible) > 0:
+            feasible = feasible[0]
             x = x[feasible,:]
             y = y[feasible,:]
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
@@ -141,8 +142,9 @@ def get_best(x, y, f, c, nInput, nOutput, feasible=True):
     xtmp = x.copy()
     ytmp = y.copy()
     if feasible and c is not None:
-        feasible = np.argwhere(c > 0.)[:,0]
+        feasible = np.argwhere(np.all(c > 0., axis=1))
         if len(feasible) > 0:
+            feasible = feasible[0]
             xtmp = xtmp[feasible,:]
             ytmp = ytmp[feasible,:]
             if f is not None:
