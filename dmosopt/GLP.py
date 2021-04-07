@@ -4,13 +4,11 @@ Created on Mon Nov 17 14:18:23 2014
 @author: gongwei
 """
 # Good Lattice Points method for Uniform Design
-from __future__ import division, print_function, absolute_import
 import sys
 import numpy as np
 import fractions as fc
 import itertools
 from dmosopt.discrepancy import CD2
-#from discrepancy_cython import CD2
 
 use_numba = True
 try:
@@ -46,7 +44,8 @@ def GLP_PGV(n,s,plusone=False):
     X = np.random.uniform(0,1,size=[n,s])
     D = 1e32
     #for i in range(min(h.shape[0],20)):
-    for i in range(h.shape[0]):
+    hs = h.shape[0]
+    for i in range(hs):
         x = glpmod(n,h[i,:])
         if plusone:
             x = x[0:n-1,:]
@@ -106,7 +105,7 @@ def GenVector(n):
     for i in range(n):
         if fc.gcd(i,n) == 1:
             h.append(i)
-    return h
+    return np.asarray(h)
 
 def PowerGenVector(n,s):
     a = []

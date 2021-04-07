@@ -1,12 +1,11 @@
 # Nondominated Sorting Genetic Algorithm II (NSGA-II)
 # An multi-objective optimization algorithm
-from __future__ import division, print_function, absolute_import
 import numpy as np
 import copy
 from dmosopt import sampling
 
-def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
-                 crossover_rate = 0.9, mutation_rate = 0.05, mu = 20, mum = 20, logger=None):
+def optimization(model, nInput, nOutput, xlb, xub, logger=None, pop=100, gen=100, \
+                 crossover_rate = 0.9, mutation_rate = 0.05, mu = 20, mum = 20, ):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
         nInput: number of model input
@@ -23,12 +22,14 @@ def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
 
-    x = sampling.lh(pop, nInput)
+    if mutation_rate is None:
+        mutation_rate = 1. / float(nInput)
+
+    x = sampling.slh(pop, nInput)
     x = x * (xub - xlb) + xlb
     y = np.zeros((pop, nOutput))
     for i in range(pop):
         y[i,:] = model.evaluate(x[i,:])
-    icall = pop
 
     x, y, rank, crowd = sortMO(x, y, nInput, nOutput)
     population_para = x.copy()
@@ -37,37 +38,68 @@ def optimization(model, nInput, nOutput, xlb, xub, pop, gen, \
     for i in range(gen):
         if logger is not None:
             logger.info(f"NSGA2: iteration {i+1} of {gen}...")
-        pool = selection(population_para, population_obj, nInput, pop, poolsize, toursize)
-        count = 0
-        while (count < pop - 1):
-            if (np.random.rand() < crossover_rate):
-                parentidx = np.random.choice(poolsize, 2, replace = False)
-                parent1   = pool[parentidx[0],:]
-                parent2   = pool[parentidx[1],:]
-                child1, child2 = crossover(parent1, parent2, mu, xlb, xub)
-                y1 = model.evaluate(child1)
-                y2 = model.evaluate(child2)
-                x  = np.vstack((x,child1,child2))
-                y  = np.vstack((y,y1,y2))
-                population_para = np.vstack((population_para,child1,child2))
-                population_obj  = np.vstack((population_obj,y1,y2))
-                count += 2
-                icall += 2
-            else:
-                parentidx = np.random.randint(poolsize)
-                parent    = pool[parentidx,:]
-                child     = mutation(parent, mutation_rate, mum, xlb, xub)
-                y1 = model.evaluate(child)
-                x  = np.vstack((x,child))
-                y  = np.vstack((y,y1))
-                population_para = np.vstack((population_para,child))
-                population_obj  = np.vstack((population_obj,y1))
-                count += 1
-                icall += 1
-        population_para, population_obj = \
-            remove_worst(population_para, population_obj, pop, nInput, nOutput)
-        bestx = population_para.copy()
-        besty = population_obj.copy()
+        bestx, besty, x, y = onestep(model=model,
+                                     nInput=nInput, nOutput=nOutput,
+                                     xlb=xlb, xub=xub, x=x, y=y, pop=pop,
+                                     crossover_rate = crossover_rate,
+                                     mutation_rate = mutation_rate,
+                                     mu = mu, mum = mum, )
+    return bestx, besty, x, y
+
+
+def onestep(model, nInput, nOutput, xlb, xub, x, y, pop=100, \
+            crossover_rate = 0.9, mutation_rate = 0.05, mu = 20, mum = 20, ):
+    ''' One-step nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
+        model: the evaluated model function
+        nInput: number of model input
+        nOutput: number of output objectives
+        xlb: lower bound of input
+        xub: upper bound of input
+        pop: number of population
+        gen: number of generation
+        crossover_rate: ratio of crossover in each generation
+        mutation_rate: ratio of muration in each generation
+        mu: distribution index for crossover
+        mum: distribution index for mutation
+    '''
+    poolsize = int(round(pop/2.)); # size of mating pool;
+    toursize = 2;                  # tournament size;
+
+    if mutation_rate is None:
+        mutation_rate = 1. / float(nInput)
+
+    population_para = x.copy()
+    population_obj  = y.copy()
+
+    pool = selection(population_para, population_obj, nInput, pop, poolsize, toursize)
+    count = 0
+    while (count < pop - 1):
+        if (np.random.rand() < crossover_rate):
+            parentidx = np.random.choice(poolsize, 2, replace = False)
+            parent1   = pool[parentidx[0],:]
+            parent2   = pool[parentidx[1],:]
+            child1, child2 = crossover(parent1, parent2, mu, xlb, xub)
+            y1 = model.evaluate(child1)
+            y2 = model.evaluate(child2)
+            x  = np.vstack((x,child1,child2))
+            y  = np.vstack((y,y1,y2))
+            population_para = np.vstack((population_para,child1,child2))
+            population_obj  = np.vstack((population_obj,y1,y2))
+            count += 2
+        else:
+            parentidx = np.random.randint(poolsize)
+            parent    = pool[parentidx,:]
+            child     = mutation(parent, mutation_rate, mum, xlb, xub)
+            y1 = model.evaluate(child)
+            x  = np.vstack((x,child))
+            y  = np.vstack((y,y1))
+            population_para = np.vstack((population_para,child))
+            population_obj  = np.vstack((population_obj,y1))
+            count += 1
+            
+    bestx, besty = \
+        remove_worst(population_para, population_obj, pop, nInput, nOutput)
+    
     return bestx, besty, x, y
 
 def sortMO(x, y, nInput, nOutput, return_perm=False):

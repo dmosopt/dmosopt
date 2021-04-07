@@ -1,13 +1,17 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
-from __future__ import division, print_function, absolute_import
 import sys
 import numpy as np
 from dmosopt import NSGA2, gp, sampling
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
-                 Xinit = None, Yinit = None, pop = 100, gen = 100, \
-                 crossover_rate = 0.9, mutation_rate = None, mum = 20,
-                 gpr_optimizer="sceua", logger=None):
+                 Xinit = None, Yinit = None, pop=100,
+                 initial_maxiter=5, initial_method="glp",
+                 gpr_optimizer="sceua", optimizer="nsga2",
+                 optimizer_kwargs= { 'gen': 100,
+                                     'crossover_rate': 0.9,
+                                     'mutation_rate': None,
+                                     'mu': 20, 'mum': 20 },
+                 logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     model: the evaluated model function
@@ -18,7 +22,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     niter: number of iteration
     pct: percentage of resampled points in each iteration
     Xinit and Yinit: initial samplers for surrogate model construction
-    ### options for the embedded NSGA-II of MO-ASMO
+    ### options for the embedded NSGA-II optimizer:
         pop: number of population
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
@@ -28,7 +32,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     N_resample = int(pop*pct)
     if (Xinit is None and Yinit is None):
         Ninit = nInput * 10
-        Xinit = sampling.glp(Ninit, nInput)
+        Xinit = xinit(Ninit, nInput, method=initial_method, maxiter=initial_maxiter)
         for i in range(Ninit):
             Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
         Yinit = np.zeros((Ninit, nOutput))
@@ -40,15 +44,14 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     x = Xinit.copy()
     y = Yinit.copy()
 
-    if mutation_rate is None:
-        mutation_rate = 1. / float(nInput)
-        
     for i in range(niter):
-        print('Surrogate Opt loop: %d' % i)
         sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
-        bestx_sm, besty_sm, x_sm, y_sm = \
-            NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
-                               pop, gen, crossover_rate, mutation_rate, mu, mum, logger=logger)
+        if optimizer == 'nsga2':
+            bestx_sm, besty_sm, x_sm, y_sm = \
+                NSGA2.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
+                                   pop=pop, **optimizer_kwargs)
+        else:
+            raise RuntimeError(f"Unknown optimizer {optimizer}")
         D = NSGA2.crowding_distance(besty_sm)
         idxr = D.argsort()[::-1][:N_resample]
         x_resample = bestx_sm[idxr,:]
@@ -69,11 +72,11 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     return bestx, besty, x, y
 
 
-def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, maxiter=5):
+def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxiter=5):
     """ 
     Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
-    model: the evaluated model function
-    nInput: number of model input
+    nEval: number of evaluations per parameter
+    nInput: number of model parameters
     nOutput: number of output objectives
     xlb: lower bound of input
     xub: upper bound of input
@@ -85,32 +88,42 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, maxiter=5):
     if Ninit <= 0:
         return None
 
-    Xinit = sampling.glp(Ninit, nInput, maxiter=maxiter)
+    if method == "glp":
+        Xinit = sampling.glp(Ninit, nInput, maxiter=maxiter)
+    elif method == "slh":
+        Xinit = sampling.slh(Ninit, nInput, maxiter=maxiter)
+    elif method == "lh":
+        Xinit = sampling.slh(Ninit, nInput, maxiter=maxiter)
+    elif method == "mc":
+        Xinit = sampling.mc(Ninit, nInput)
+    else:
+        raise RuntimeError(f'Unknown method {method}')
 
     for i in range(Ninit):
         Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
-    #Yinit = np.zeros((Ninit, nOutput))
-    #for i in range(Ninit):
-    #    Yinit[i,:] = model.evaluate(Xinit[i,:])
 
     return Xinit
 
 
 def onestep(nInput, nOutput, xlb, xub, pct, \
-            Xinit, Yinit, C, pop = 100, gen = 100, \
-            crossover_rate = 0.9, mutation_rate = None, mu = 15, mum = 20,
-            gpr_optimizer="sceua", logger=None):
+            Xinit, Yinit, C, pop=100, 
+            gpr_optimizer="sceua", optimizer="nsga2",
+            optimizer_kwargs= { 'gen': 100,
+                                'crossover_rate': 0.9,
+                                'mutation_rate': None,
+                                'mu': 20, 'mum': 20 },
+            logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
-    One-step mode for offline optimization
-    Do NOT call the model evaluation function
+    One-step mode for offline optimization.
+
     nInput: number of model input
     nOutput: number of output objectives
     xlb: lower bound of input
     xub: upper bound of input
     pct: percentage of resampled points in each iteration
     Xinit and Yinit: initial samplers for surrogate model construction
-    ### options for the embedded NSGA-II of MO-ASMO
+    ### options for the embedded NSGA-II:
         pop: number of population
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
@@ -118,8 +131,6 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         mu: distribution index for crossover
         mum: distribution index for mutation
     """
-    if mutation_rate is None:
-        mutation_rate = 1. / float(nInput)
     N_resample = int(pop*pct)
     x = Xinit.copy()
     y = Yinit.copy()
@@ -129,14 +140,21 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             feasible = feasible[0]
             x = x[feasible,:]
             y = y[feasible,:]
+
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
-    bestx_sm, besty_sm, x_sm, y_sm = \
-        NSGA2.optimization(sm, nInput, nOutput, xlb, xub, \
-                           pop, gen, crossover_rate, mutation_rate, mu, mum, logger=logger)
+    if optimizer == 'nsga2':
+        bestx_sm, besty_sm, x_sm, y_sm = \
+            NSGA2.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
+                               pop=pop, **optimizer_kwargs)
+    else:
+        raise RuntimeError(f"Unknown optimizer {optimizer}")
+        
     D = NSGA2.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]
     return x_resample
+
+
 
 def get_best(x, y, f, c, nInput, nOutput, feasible=True):
     xtmp = x.copy()

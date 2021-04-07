@@ -48,8 +48,8 @@ class OptProblem():
     def eval(self, x):
         return self.eval_fun(x)
     
-class OptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, population_size=100, resample_fraction=0.25, num_generations=100, gpr_optimizer="sceua", logger=None):
+class SOptStrategy():
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp", population_size=100, resample_fraction=0.25, num_generations=100, mutation_rate=None, gpr_optimizer="sceua", logger=None):
         self.logger = logger
         self.gpr_optimizer = gpr_optimizer
         self.prob = prob
@@ -65,10 +65,12 @@ class OptStrategy():
         self.resample_fraction = resample_fraction
         self.population_size = population_size
         self.num_generations = num_generations
+        self.mutation_rate = mutation_rate
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
-        xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, nPrevious=nPrevious, maxiter=initial_maxiter)
+        xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, nPrevious=nPrevious,
+                          maxiter=initial_maxiter, method=initial_method)
         self.reqs = []
         if xinit is not None:
             assert(xinit.shape[1] == prob.dim)
@@ -122,7 +124,9 @@ class OptStrategy():
             self.completed = []
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
-                                 self.x, self.y, self.c, pop=self.population_size, gen=self.num_generations,
+                                 self.x, self.y, self.c, pop=self.population_size,
+                                 optimizer_kwargs={'gen': self.num_generations,
+                                                   'mutation_rate': self.mutation_rate},
                                  gpr_optimizer=self.gpr_optimizer, logger=self.logger)
         for i in range(x_resample.shape[0]):
             self.reqs.append(x_resample[i,:])
@@ -167,6 +171,7 @@ class DistOptimizer():
         constraint_names=None,
         n_initial=10,
         initial_maxiter=5,
+        initial_method="glp",
         verbose=False,
         reduce_fun=None,
         reduce_fun_args=None,
@@ -176,8 +181,8 @@ class DistOptimizer():
         population_size=100,
         num_generations=200,
         resample_fraction=0.25,
+        mutation_rate=None,
         n_iter=100,
-        nprocs_per_worker=1,
         save_eval=10,
         file_path=None,
         save=False,
@@ -219,6 +224,7 @@ class DistOptimizer():
         self.population_size = population_size
         self.num_generations = num_generations
         self.resample_fraction = resample_fraction
+        self.mutation_rate = mutation_rate
         self.gpr_optimizer = gpr_optimizer
         
         self.logger = logging.getLogger(opt_id)
@@ -273,6 +279,7 @@ class DistOptimizer():
 
         self.n_initial = n_initial
         self.initial_maxiter = initial_maxiter
+        self.initial_method = initial_method
         self.problem_parameters, self.param_names = problem_parameters, param_names
         self.is_int = is_int
         self.file_path, self.save = file_path, save
@@ -333,13 +340,16 @@ class DistOptimizer():
             opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes, self.constraint_names, self.param_spec, self.eval_fun)
             if self.resample_fraction > 1.0:
                 self.resample_fraction = 1.0
-            opt_strategy = OptStrategy(opt_prob, self.n_initial, initial=initial, 
-                                       population_size=self.population_size, 
-                                       resample_fraction=self.resample_fraction,
-                                       num_generations=self.num_generations,
-                                       initial_maxiter=self.initial_maxiter,
-                                       gpr_optimizer=self.gpr_optimizer,
-                                       logger=self.logger)
+            
+            opt_strategy = SOptStrategy(opt_prob, self.n_initial, initial=initial, 
+                                        population_size=self.population_size, 
+                                        resample_fraction=self.resample_fraction,
+                                        num_generations=self.num_generations,
+                                        initial_maxiter=self.initial_maxiter,
+                                        initial_method=self.initial_method,
+                                        mutation_rate=self.mutation_rate,
+                                        gpr_optimizer=self.gpr_optimizer,
+                                        logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
             self.storage_dict[problem_id] = []
         if initial is not None:

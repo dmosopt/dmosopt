@@ -5,8 +5,6 @@ Created on Mon May 12 19:53:23 2015
 @author: gongwei
 """
 
-from __future__ import division, print_function, absolute_import
-import sys
 import numpy as np
 from dmosopt import GLP
 
@@ -91,6 +89,8 @@ def decorr(x,n,s):
             z = rmtrend(x[:,j],x[:,k])
             x[:,k] = (rand2rank(z) + 0.5) / n
     return x
+
+
 
 def LatinHypercubeDesignDecorrelation(n,s,maxiter = 5):
     ''' Generate Latin Hypercube Design with de-correlation
