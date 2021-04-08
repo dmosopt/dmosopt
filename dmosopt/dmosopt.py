@@ -986,26 +986,27 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 eval_count += 1
                 task_ids.remove(task_id)
 
-        if sopt.save and (eval_count % sopt.save_eval == 0) and (eval_count > 0) and (saved_eval_count < eval_count):
+        if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count) and ((eval_count - saved_eval_count) >= sopt.save_eval):
             sopt.save_evals()
             saved_eval_count = eval_count
 
-        while (len(controller.ready_workers) > 0) and not next_iter:
-            eval_x_dict = {}
-            for problem_id in sopt.problem_ids:
-                eval_x = sopt.optimizer_dict[problem_id].get_next_x()
-                if eval_x is None:
-                    next_iter = True
-                else:
-                    eval_x_dict[problem_id] = eval_x
-            if next_iter:
-                break
+        if not next_iter:
+            for w in range(len(controller.ready_workers)):
+                eval_x_dict = {}
+                for problem_id in sopt.problem_ids:
+                    eval_x = sopt.optimizer_dict[problem_id].get_next_x()
+                    if eval_x is None:
+                        next_iter = True
+                    else:
+                        eval_x_dict[problem_id] = eval_x
+                if next_iter:
+                    break
 
-            task_id = controller.submit_call("eval_fun", module_name="dmosopt.dmosopt",
-                                             args=(sopt.opt_id, eval_x_dict,))
-            task_ids.append(task_id)
-            for problem_id in sopt.problem_ids:
-                sopt.evals[problem_id][task_id] = eval_x_dict[problem_id]
+                task_id = controller.submit_call("eval_fun", module_name="dmosopt.dmosopt",
+                                                 args=(sopt.opt_id, eval_x_dict,))
+                task_ids.append(task_id)
+                for problem_id in sopt.problem_ids:
+                    sopt.evals[problem_id][task_id] = eval_x_dict[problem_id]
 
         if next_iter and (len(task_ids) == 0):
             if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count):
