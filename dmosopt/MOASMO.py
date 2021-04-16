@@ -10,7 +10,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  optimizer_kwargs= { 'gen': 100,
                                      'crossover_rate': 0.9,
                                      'mutation_rate': None,
-                                     'mu': 20, 'mum': 20 },
+                                     'mu': 1., 'mum': 20. },
                  logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -111,7 +111,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             optimizer_kwargs= { 'gen': 100,
                                 'crossover_rate': 0.9,
                                 'mutation_rate': None,
-                                'mu': 20, 'mum': 20 },
+                                'mu': 1., 'mum': 20. },
             logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -162,7 +162,7 @@ def get_best(x, y, f, c, nInput, nOutput, feasible=True):
     if feasible and c is not None:
         feasible = np.argwhere(np.all(c > 0., axis=1))
         if len(feasible) > 0:
-            feasible = feasible[0]
+            feasible = feasible.ravel()
             xtmp = xtmp[feasible,:]
             ytmp = ytmp[feasible,:]
             if f is not None:

@@ -6,7 +6,7 @@ import copy
 from dmosopt import sampling
 
 def optimization(model, nInput, nOutput, xlb, xub, logger=None, pop=100, gen=100, \
-                 crossover_rate = 0.9, mutation_rate = 0.05, mu = 20, mum = 20, ):
+                 crossover_rate = 0.9, mutation_rate = 0.05, mu = 1., mum = 20., ):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
         nInput: number of model input
