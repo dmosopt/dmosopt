@@ -1,5 +1,5 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
-import sys
+import sys, pprint
 import numpy as np
 from dmosopt import NSGA2, gp, sampling
 
@@ -137,10 +137,10 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
         if len(feasible) > 0:
-            feasible = feasible[0]
+            feasible = feasible.ravel()
             x = x[feasible,:]
             y = y[feasible,:]
-
+        logger.info(f"Found {len(feasible)} feasible solutions")
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, x_sm, y_sm = \

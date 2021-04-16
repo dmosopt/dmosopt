@@ -32,11 +32,12 @@ def list_find(f, lst):
 @click.option("--verbose", '-v', is_flag=True)
 def main(file_path, opt_id, resample_fraction, population_size, num_generations, verbose):
 
-    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, problem_parameters, problem_ids = \
+    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
 
+
+    logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(opt_id)
-    logger.setLevel(logging.INFO)
 
     if problem_ids is None:
         problem_ids = [0]
@@ -45,15 +46,36 @@ def main(file_path, opt_id, resample_fraction, population_size, num_generations,
         old_eval_ys = [e[1] for e in old_evals[problem_id]]
         x = np.vstack(old_eval_xs)
         y = np.vstack(old_eval_ys)
+        old_eval_fs = None
+        f = None
+        if feature_names is not None:
+            old_eval_fs = [e[2] for e in old_evals[problem_id]]
+            f = np.concatenate(old_eval_fs, axis=None)
+        old_eval_cs = None
+        c = None
+        if constraint_names is not None:
+            old_eval_cs = [e[3] for e in old_evals[problem_id]]
+            pprint.pprint(old_eval_cs)
+            c = np.vstack(old_eval_cs)
+            pprint.pprint(c)
+        x = np.vstack(old_eval_xs)
+        y = np.vstack(old_eval_ys)
 
-        print(f"Found {x.shape[0]} results for id {problem_id}")
+        print(f"Restored {x.shape[0]} solutions")
+        sys.stdout.flush()
+
+
 
         n_dim = len(lo_bounds)
         n_objectives = len(objective_names)
         
         x_resample = onestep(n_dim, n_objectives,
                              np.asarray(lo_bounds), np.asarray(hi_bounds), resample_fraction,
-                             x, y, pop=population_size, gen=num_generations,
+                             x, y, C=c, pop=population_size, 
+                             optimizer_kwargs= { 'gen': num_generations,
+                                                 'crossover_rate': 0.9,
+                                                 'mutation_rate': None,
+                                                 'mu': 20, 'mum': 20 },
                              logger=logger)
 
         for i, x in enumerate(x_resample):
