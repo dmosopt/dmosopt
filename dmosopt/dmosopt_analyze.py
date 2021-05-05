@@ -101,7 +101,7 @@ def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
         else:
             sort_array = res_dict[sort_key]
             sorted_index = np.argsort(sort_array, kind='stable')
-            for i, n in enumerate(sorted_index):
+            for n in sorted_index:
                 res_n = { k: res_dict[k][n] for k in res_dict }
                 prms_n = { k: prms_dict[k][n] for k in prms_dict }
                 constr_n = None
@@ -113,11 +113,11 @@ def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
                 if ftrs_n is not None and constr_n is not None:
                     print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} [{ftrs_n}] constr: {constr_n}")
                 elif ftrs_n is not None:
-                    print(f"Best eval {i} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} [{ftrs_n}]")
+                    print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} [{ftrs_n}]")
                 elif constr_n is not None:
-                    print(f"Best eval {i} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} constr: {constr_n}")
+                    print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} constr: {constr_n}")
                 else:
-                    print(f"Best eval {i} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n}")
+                    print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n}")
 
             
             
