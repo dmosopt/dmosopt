@@ -6,6 +6,8 @@ from sklearn.gaussian_process.kernels import Matern
 #from sklearn.gaussian_process.kernels import (RBF, Matern, RationalQuadratic, ExpSineSquared, DotProduct, ConstantKernel)
 import copy
 
+import gpflow
+
 use_numba = True
 try:
     from numba import njit

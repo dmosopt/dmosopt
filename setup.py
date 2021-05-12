@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
-    version="0.0.8",
+    version="0.0.9",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",
@@ -17,6 +17,7 @@ setup(
     entry_points={
         'console_scripts': [ 'dmosopt_analyze=dmosopt.dmosopt_analyze:main',
                              'dmosopt_onestep=dmosopt.dmosopt_onestep:main',
+                             'dmosopt_plot=dmosopt.dmosopt_plot:main',
                              ],
     },
     classifiers=[
@@ -26,7 +27,7 @@ setup(
     ],
     python_requires='>=3.0',
     install_requires=[
-        'mpi4py', 'numpy', 'h5py', 'scikit-learn', 'distwq>=0.0.8', 
+        'mpi4py', 'numpy', 'h5py', 'scipy', 'scikit-learn', 'distwq>=0.0.8', 
     ],
 
 )

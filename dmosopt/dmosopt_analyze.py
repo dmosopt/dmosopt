@@ -1,13 +1,15 @@
 
 import os, sys, logging, datetime, gc, pprint
 from functools import partial
+from collections import OrderedDict
 import click
 import numpy as np
+from scipy.spatial import cKDTree
 from dmosopt.dmosopt import init_from_h5
 from dmosopt.MOASMO import get_best
 
 script_name = os.path.basename(__file__)
-
+        
 def list_find(f, lst):
     """
 
@@ -28,9 +30,11 @@ def list_find(f, lst):
 @click.option("--file-path", '-p', required=True, type=click.Path())
 @click.option("--opt-id", required=True, type=str)
 @click.option("--sort-key", required=False, type=str)
+@click.option("--knn", required=False, type=int, default=50)
 @click.option("--filter-objectives", required=False, type=str)
+@click.option("--output-file", required=False, type=click.Path())
 @click.option("--verbose", '-v', is_flag=True)
-def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
+def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, output_file, verbose):
 
     old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
@@ -79,14 +83,31 @@ def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
         if best_c is not None:
             constr = list(zip(constraint_names, list(best_c.T)))
             constr_dict = dict(constr)
+            
+        output_dict = OrderedDict()
         n_res = best_y.shape[0]
+        m = len(objective_names)
         if sort_key is None:
+
+            points = np.zeros((n_res, m))
             for i in range(n_res):
-                res_i = { k: res_dict[k][i] for k in res_dict }
-                prms_i = { k: prms_dict[k][i] for k in prms_dict }
+                res_i = np.asarray([ res_dict[k][i] for k in objective_names ])
+                points[i, :] = res_i
+
+            for m_i in range(m):
+                points[:, m_i] = points[:, m_i] / np.max(points[:, m_i])
+                
+            tree = cKDTree(points)
+            qp = np.zeros((m, ))
+            dnn, nn = tree.query(qp, k=knn)
+            
+            for i in nn:
+                res_i = { k: res_dict[k][i] for k in objective_names }
+                prms_i = { k: prms_dict[k][i] for k in param_names }
+                output_dict[i] = [ float(prms_dict[k][i]) for k in param_names ]
                 constr_i = None
                 if constr_dict is not None:
-                    constr_i = { k: constr_dict[k][i] for k in constr_dict }
+                    constr_i = { k: constr_dict[k][i] for k in constraint_names }
                 ftrs_i = None
                 if best_f is not None:
                     ftrs_i = best_f[i]
@@ -102,11 +123,12 @@ def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
             sort_array = res_dict[sort_key]
             sorted_index = np.argsort(sort_array, kind='stable')
             for n in sorted_index:
-                res_n = { k: res_dict[k][n] for k in res_dict }
-                prms_n = { k: prms_dict[k][n] for k in prms_dict }
+                res_n = { k: res_dict[k][n] for k in objective_names }
+                prms_n = { k: prms_dict[k][n] for k in param_names }
+                output_dict[n] = [ float(prms_dict[k][n]) for k in param_names ]
                 constr_n = None
                 if constr_dict is not None:
-                    constr_n = { k: constr_dict[k][n] for k in constr_dict }
+                    constr_n = { k: constr_dict[k][n] for k in constraint_names }
                 ftrs_n = None
                 if best_f is not None:
                     ftrs_n = best_f[n]
@@ -119,6 +141,9 @@ def main(constraints, file_path, opt_id, sort_key, filter_objectives, verbose):
                 else:
                     print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n}")
 
+        with open(output_file, 'w') as out:
+            for k, v in output_dict.items():
+                out.write(f'{k}: {pprint.pformat(output_dict[k])}\n')
             
             
 

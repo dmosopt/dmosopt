@@ -226,6 +226,9 @@ class DistOptimizer():
         self.resample_fraction = resample_fraction
         self.mutation_rate = mutation_rate
         self.gpr_optimizer = gpr_optimizer
+
+        if self.resample_fraction > 1.0:
+            self.resample_fraction = 1.0
         
         self.logger = logging.getLogger(opt_id)
         if self.verbose:
@@ -321,6 +324,7 @@ class DistOptimizer():
 
 
     def init_strategy(self):
+        opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes, self.constraint_names, self.param_spec, self.eval_fun)
         for problem_id in self.problem_ids:
             initial = None
             if problem_id in self.old_evals:
@@ -337,9 +341,6 @@ class DistOptimizer():
                     old_eval_cs = [e[3] for e in self.old_evals[problem_id]]
                     c = np.vstack(old_eval_cs)
                 initial = (x, y, f, c)
-            opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes, self.constraint_names, self.param_spec, self.eval_fun)
-            if self.resample_fraction > 1.0:
-                self.resample_fraction = 1.0
             
             opt_strategy = SOptStrategy(opt_prob, self.n_initial, initial=initial, 
                                         population_size=self.population_size, 
