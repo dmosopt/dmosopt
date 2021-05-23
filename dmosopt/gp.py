@@ -96,7 +96,7 @@ def dlib_optimizer(logger, obj_func, initial_theta, bounds):
 
     progress_frac = 100
     maxn = 1000
-    eps = 0.001
+    eps = 0.01
 
     optimizer = dlib.global_function_search([spec])
     optimizer.set_solver_epsilon(eps)

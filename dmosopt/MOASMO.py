@@ -2,13 +2,14 @@
 import sys, pprint
 import numpy as np
 from dmosopt import NSGA2, gp, sampling
+from dmosopt.feasibility import FeasibilityModel
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
-                 Xinit = None, Yinit = None, pop=100,
+                 Xinit = None, Yinit = None, nConstraints = None, pop=100,
                  initial_maxiter=5, initial_method="glp",
                  gpr_optimizer="sceua", optimizer="nsga2",
                  optimizer_kwargs= { 'gen': 100,
-                                     'crossover_rate': 0.9,
+                                     'crossover_rate': 0.5,
                                      'mutation_rate': None,
                                      'mu': 1., 'mum': 20. },
                  logger=None):
@@ -36,13 +37,27 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         for i in range(Ninit):
             Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
         Yinit = np.zeros((Ninit, nOutput))
-        for i in range(Ninit):
-            Yinit[i,:] = model.evaluate(Xinit[i,:])
+        C = None
+        if nConstraints is not None:
+            C = np.zeros((Ninit, nConstraints))
+            for i in range(Ninit):
+                Yinit[i,:], C[i,:] = model.evaluate(Xinit[i,:])
+        else:
+            for i in range(Ninit):
+                Yinit[i,:] = model.evaluate(Xinit[i,:])
+            
     else:
         Ninit = Xinit.shape[0]
     icall = Ninit
-    x = Xinit.copy()
-    y = Yinit.copy()
+    if C is not None:
+        feasible = np.argwhere(np.all(C > 0., axis=1))
+        if len(feasible) > 0:
+            feasible = feasible.ravel()
+            x = Xinit[feasible,:].copy()
+            y = Yinit[feasible,:].copy()
+    else:
+        x = Xinit.copy()
+        y = Yinit.copy()
 
     for i in range(niter):
         sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
@@ -56,8 +71,19 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         idxr = D.argsort()[::-1][:N_resample]
         x_resample = bestx_sm[idxr,:]
         y_resample = np.zeros((N_resample,nOutput))
-        for j in range(N_resample):
-            y_resample[j,:] = model.evaluate(x_resample[j,:])
+        c_resample = None
+        if C is not None:
+            c_resample = np.zeros((N_resample,nConstraints))
+            for j in range(N_resample):
+                y_resample[j,:], c_resample[j,:] = model.evaluate(x_resample[j,:])
+            feasible = np.argwhere(np.all(c_resample > 0., axis=1))
+            if len(feasible) > 0:
+                feasible = feasible.ravel()
+                x_resample = x_resample[feasible,:]
+                y_resample = y_resample[feasible,:]
+        else:
+            for j in range(N_resample):
+                y_resample[j,:] = model.evaluate(x_resample[j,:])
         icall += N_resample
         x = np.vstack((x, x_resample))
         y = np.vstack((y, y_resample))
@@ -109,7 +135,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, C, pop=100, 
             gpr_optimizer="sceua", optimizer="nsga2",
             optimizer_kwargs= { 'gen': 100,
-                                'crossover_rate': 0.9,
+                                'crossover_rate': 0.5,
                                 'mutation_rate': None,
                                 'mu': 1., 'mum': 20. },
             logger=None):
@@ -142,9 +168,13 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             y = y[feasible,:]
         logger.info(f"Found {len(feasible)} feasible solutions")
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
+    fsbm = None
+    if C is not None:
+        fsbm = FeasibilityModel(Xinit,  C)
+        
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, x_sm, y_sm = \
-            NSGA2.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
+            NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
                                pop=pop, **optimizer_kwargs)
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")

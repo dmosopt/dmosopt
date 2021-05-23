@@ -62,8 +62,7 @@ if __name__ == '__main__':
                       'space': space,
                       'objective_names': objective_names,
                       'n_initial': 4,
-                      'n_iter': 4,
-                      'gpr_optimizer': 'dlib' }
+                      'n_iter': 4, }
          
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:
