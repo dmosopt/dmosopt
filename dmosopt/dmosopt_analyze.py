@@ -141,9 +141,10 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
                 else:
                     print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n}")
 
-        with open(output_file, 'w') as out:
-            for k, v in output_dict.items():
-                out.write(f'{k}: {pprint.pformat(output_dict[k])}\n')
+        if output_file is not None:
+            with open(output_file, 'w') as out:
+                for k, v in output_dict.items():
+                    out.write(f'{k}: {pprint.pformat(output_dict[k])}\n')
             
             
 
