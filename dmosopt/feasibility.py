@@ -28,20 +28,19 @@ class FeasibilityModel(object):
     def predict(self, x):
 
         nn_distances, nn = self.kdt.query(x, k=1)
-        exp_distances = np.exp(nn_distances)
+        ED = np.exp(nn_distances)
 
         ps = []
         ds = []
         for clf in self.clfs:
             pred = clf.predict(x)
             cls_distances = np.abs(clf.decision_function(x))
-            delta = cls_distances - exp_distances
             ps.append(pred)
-            ds.append(delta)
+            ds.append(cls_distances)
 
         P = np.column_stack(ps)
-        D = np.column_stack(ds)
+        CD = np.column_stack(ds)
         
-        return P, D
+        return P, CD, ED
 
         
