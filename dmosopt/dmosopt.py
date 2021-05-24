@@ -49,7 +49,7 @@ class OptProblem():
         return self.eval_fun(x)
     
 class SOptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp", population_size=100, resample_fraction=0.25, num_generations=100, mutation_rate=None, gpr_optimizer="sceua", logger=None):
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp", population_size=100, resample_fraction=0.25, num_generations=100, crossover_rate=0.9, mutation_rate=None, gpr_optimizer="sceua", logger=None):
         self.logger = logger
         self.gpr_optimizer = gpr_optimizer
         self.prob = prob
@@ -66,6 +66,7 @@ class SOptStrategy():
         self.population_size = population_size
         self.num_generations = num_generations
         self.mutation_rate = mutation_rate
+        self.crossover_rate = crossover_rate
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
@@ -126,6 +127,7 @@ class SOptStrategy():
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
                                  self.x, self.y, self.c, pop=self.population_size,
                                  optimizer_kwargs={'gen': self.num_generations,
+                                                   'crossover_rate': self.crossover_rate,
                                                    'mutation_rate': self.mutation_rate},
                                  gpr_optimizer=self.gpr_optimizer, logger=self.logger)
         for i in range(x_resample.shape[0]):
@@ -182,6 +184,7 @@ class DistOptimizer():
         num_generations=200,
         resample_fraction=0.25,
         mutation_rate=None,
+        crossover_rate=0.9,
         n_iter=100,
         save_eval=10,
         file_path=None,
@@ -225,6 +228,7 @@ class DistOptimizer():
         self.num_generations = num_generations
         self.resample_fraction = resample_fraction
         self.mutation_rate = mutation_rate
+        self.crossover_rate = crossover_rate
         self.gpr_optimizer = gpr_optimizer
 
         if self.resample_fraction > 1.0:
@@ -349,6 +353,7 @@ class DistOptimizer():
                                         initial_maxiter=self.initial_maxiter,
                                         initial_method=self.initial_method,
                                         mutation_rate=self.mutation_rate,
+                                        crossover_rate=self.crossover_rate,
                                         gpr_optimizer=self.gpr_optimizer,
                                         logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy

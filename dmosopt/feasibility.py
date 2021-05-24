@@ -19,7 +19,7 @@ class FeasibilityModel(object):
         self.kdt = cKDTree(X)
         
         for i in range(N):
-            clf = make_pipeline(StandardScaler(), svm.NuSVC(gamma='auto', class_weight='balanced', nu=0.01))
+            clf = make_pipeline(StandardScaler(), svm.NuSVC(gamma='auto', class_weight='balanced', nu=0.1))
             self.clfs.append(clf)
             y = (C[:,i] > 0.).astype(int)
             clf.fit(X, y)

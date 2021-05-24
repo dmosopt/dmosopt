@@ -9,7 +9,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  initial_maxiter=5, initial_method="glp",
                  gpr_optimizer="sceua", optimizer="nsga2",
                  optimizer_kwargs= { 'gen': 100,
-                                     'crossover_rate': 0.5,
+                                     'crossover_rate': 0.9,
                                      'mutation_rate': None,
                                      'mu': 1., 'mum': 20. },
                  logger=None):
@@ -135,7 +135,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, C, pop=100, 
             gpr_optimizer="sceua", optimizer="nsga2",
             optimizer_kwargs= { 'gen': 100,
-                                'crossover_rate': 0.5,
+                                'crossover_rate': 0.9,
                                 'mutation_rate': None,
                                 'mu': 1., 'mum': 20. },
             logger=None):
