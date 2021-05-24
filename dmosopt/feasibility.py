@@ -12,14 +12,14 @@ from sklearn.preprocessing import StandardScaler
 
 class FeasibilityModel(object):
 
-    def __init__(self, X, C):
+    def __init__(self, X, C, nu=0.05):
 
         N = C.shape[1]
         self.clfs = []
         self.kdt = cKDTree(X)
         
         for i in range(N):
-            clf = make_pipeline(StandardScaler(), svm.NuSVC(gamma='auto', class_weight='balanced', nu=0.1))
+            clf = make_pipeline(StandardScaler(), svm.NuSVC(gamma='auto', class_weight='balanced', nu=nu))
             self.clfs.append(clf)
             y = (C[:,i] > 0.).astype(int)
             clf.fit(X, y)
