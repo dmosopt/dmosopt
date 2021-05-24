@@ -160,18 +160,20 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     N_resample = int(pop*pct)
     x = Xinit.copy()
     y = Yinit.copy()
+    fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
         if len(feasible) > 0:
             feasible = feasible.ravel()
-            x = x[feasible,:]
-            y = y[feasible,:]
-        logger.info(f"Found {len(feasible)} feasible solutions")
+            try:
+                fsbm = FeasibilityModel(Xinit,  C)
+                x = x[feasible,:]
+                y = y[feasible,:]
+                logger.info(f"Found {len(feasible)} feasible solutions")
+            except:
+                e = sys.exc_info()[0]
+                logger.warning(f"Unable to fit feasibility model: {e}")
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
-    fsbm = None
-    if C is not None:
-        fsbm = FeasibilityModel(Xinit,  C)
-        
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \

@@ -29,7 +29,7 @@ def list_find(f, lst):
 @click.option('--constraints/--no-constraints', default=True)
 @click.option("--file-path", '-p', required=True, type=click.Path())
 @click.option("--opt-id", required=True, type=str)
-@click.option("--sort-key", required=False, type=str)
+@click.option("--sort-key", required=False, type=str, multiple=True)
 @click.option("--knn", required=False, type=int, default=50)
 @click.option("--filter-objectives", required=False, type=str)
 @click.option("--output-file", required=False, type=click.Path())
@@ -87,7 +87,7 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
         output_dict = OrderedDict()
         n_res = best_y.shape[0]
         m = len(objective_names)
-        if sort_key is None:
+        if len(sort_key) == 0:
 
             points = np.zeros((n_res, m))
             for i in range(n_res):
@@ -120,8 +120,8 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
                 else:
                     print(f"Best eval {i} for id {problem_id}: {pprint.pformat(res_i)}@{prms_i}")
         else:
-            sort_array = res_dict[sort_key]
-            sorted_index = np.argsort(sort_array, kind='stable')
+            sort_tuple = tuple(( res_dict[k] for k in sort_key[::-1] ))
+            sorted_index = np.lexsort(sort_tuple)
             for n in sorted_index:
                 res_n = { k: res_dict[k][n] for k in objective_names }
                 prms_n = { k: prms_dict[k][n] for k in param_names }

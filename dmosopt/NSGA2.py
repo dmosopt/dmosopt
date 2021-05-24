@@ -1,6 +1,7 @@
 # Nondominated Sorting Genetic Algorithm II (NSGA-II)
 # An multi-objective optimization algorithm
-from __future__ import division, print_function, absolute_import
+
+import sys
 import numpy as np
 import copy
 from dmosopt import sampling
@@ -97,7 +98,7 @@ def crossover_feasibility_selection(feasibility_model, children_list):
     child_selection = []
     for children in children_list:
         fsb_pred, fsb_dist = feasibility_model.predict(children)
-        all_feasible = np.argwhere(np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel())
+        all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
         if len(all_feasible) > 0:
             fsb_pred = fsb_pred[all_feasible]
             fsb_dist = fsb_dist[all_feasible]
@@ -111,7 +112,7 @@ def crossover_feasibility_selection(feasibility_model, children_list):
 
 def feasibility_selection(feasibility_model, children):
     fsb_pred, fsb_dist = feasibility_model.predict(children)
-    all_feasible = np.argwhere(np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel())
+    all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
     if len(all_feasible) > 0:
         fsb_pred = fsb_pred[all_feasible]
         fsb_dist = fsb_dist[all_feasible]
@@ -274,10 +275,10 @@ def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
             delta[lo] = (2.0*u[lo])**(1.0/(mum+1)) - 1.0
         if len(hi) > 0:
             delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(mum+1))
-        child = parent + (xub - xlb) * delta[i]
+        child = parent + (xub - xlb) * delta
         child = wrapval(child, xlb, xub)
         children.append(child)
-    return children
+    return np.row_stack(children)
 
 
 def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
