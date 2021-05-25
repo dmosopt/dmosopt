@@ -63,7 +63,7 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
                     child1 = children1[0]
                     child2 = children2[0]
                 else:
-                    child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2])
+                    child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
                 y1 = model.evaluate(child1)
                 y2 = model.evaluate(child2)
                 x  = np.vstack((x,child1,child2))
@@ -79,7 +79,7 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
                 if feasibility_model is None:
                     child = children[0]
                 else:
-                    child = feasibility_selection(feasibility_model, children)
+                    child = feasibility_selection(feasibility_model, children, logger=logger)
                 y1 = model.evaluate(child)
                 x  = np.vstack((x,child))
                 y  = np.vstack((y,y1))
@@ -94,7 +94,7 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
     return bestx, besty, x, y
 
 
-def crossover_feasibility_selection(feasibility_model, children_list):
+def crossover_feasibility_selection(feasibility_model, children_list, logger=None):
     child_selection = []
     for children in children_list:
         fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
@@ -110,7 +110,7 @@ def crossover_feasibility_selection(feasibility_model, children_list):
     child2 = child_selection[1]
     return child1, child2
 
-def feasibility_selection(feasibility_model, children):
+def feasibility_selection(feasibility_model, children, logger=None):
     fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
     all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
     if len(all_feasible) > 0:
