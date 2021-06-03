@@ -6,20 +6,20 @@ Definitions of feasibility models.
 import sys
 import numpy as np
 from scipy.spatial import cKDTree
-from sklearn import svm
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import SGDClassifier
 
 class FeasibilityModel(object):
 
-    def __init__(self, X, C, nu=0.05):
+    def __init__(self, X, C):
 
         N = C.shape[1]
         self.clfs = []
         self.kdt = cKDTree(X)
         
         for i in range(N):
-            clf = make_pipeline(StandardScaler(), svm.NuSVC(gamma='auto', class_weight='balanced', nu=nu))
+            clf = make_pipeline(StandardScaler(), SGDClassifier())
             self.clfs.append(clf)
             y = (C[:,i] > 0.).astype(int)
             clf.fit(X, y)
