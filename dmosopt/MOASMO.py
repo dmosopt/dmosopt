@@ -119,7 +119,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     elif method == "slh":
         Xinit = sampling.slh(Ninit, nInput, maxiter=maxiter)
     elif method == "lh":
-        Xinit = sampling.slh(Ninit, nInput, maxiter=maxiter)
+        Xinit = sampling.lh(Ninit, nInput, maxiter=maxiter)
     elif method == "mc":
         Xinit = sampling.mc(Ninit, nInput)
     else:
