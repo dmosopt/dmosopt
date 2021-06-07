@@ -18,7 +18,7 @@ except ImportError as e:
 
 
 class GPR_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", length_scale_bounds=(1e-3, 1000.0), logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", length_scale_bounds=(1e-2, 100.0), logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
