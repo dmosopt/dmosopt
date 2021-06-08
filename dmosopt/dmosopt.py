@@ -49,9 +49,10 @@ class OptProblem():
         return self.eval_fun(x)
     
 class SOptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp", population_size=100, resample_fraction=0.25, num_generations=100, crossover_rate=0.9, mutation_rate=None, gpr_optimizer="sceua", logger=None):
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp", population_size=100, resample_fraction=0.25, num_generations=100, crossover_rate=0.9, mutation_rate=None, gpr_optimizer="sceua", optimizer="nsga2", logger=None):
         self.logger = logger
         self.gpr_optimizer = gpr_optimizer
+        self.optimizer = optimizer
         self.prob = prob
         self.completed = []
         self.reqs = []
@@ -126,6 +127,7 @@ class SOptStrategy():
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
                                  self.x, self.y, self.c, pop=self.population_size,
+                                 optimizer=self.optimizer,
                                  optimizer_kwargs={'gen': self.num_generations,
                                                    'crossover_rate': self.crossover_rate,
                                                    'mutation_rate': self.mutation_rate},
@@ -190,6 +192,7 @@ class DistOptimizer():
         file_path=None,
         save=False,
         gpr_optimizer="sceua",
+        optimizer="nsga2",
         **kwargs
     ):
         """
@@ -230,6 +233,7 @@ class DistOptimizer():
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
         self.gpr_optimizer = gpr_optimizer
+        self.optimizer = optimizer
 
         if self.resample_fraction > 1.0:
             self.resample_fraction = 1.0
@@ -355,6 +359,7 @@ class DistOptimizer():
                                         mutation_rate=self.mutation_rate,
                                         crossover_rate=self.crossover_rate,
                                         gpr_optimizer=self.gpr_optimizer,
+                                        optimizer=self.optimizer,
                                         logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
             self.storage_dict[problem_id] = []

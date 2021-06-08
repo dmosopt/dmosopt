@@ -48,8 +48,9 @@ if __name__ == '__main__':
                       'problem_parameters': problem_parameters,
                       'space': space,
                       'objective_names': objective_names,
+                      'optimizer': 'age',
                       'initial_maxiter': 10,
-                      'n_initial': 3,
+                      'n_initial': 1,
                       'n_iter': 5}
     
     best = dmosopt.run(dmosopt_params, verbose=True)

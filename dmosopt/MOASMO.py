@@ -1,7 +1,7 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
 import sys, pprint
 import numpy as np
-from dmosopt import NSGA2, gp, sampling
+from dmosopt import NSGA2, AGEMOEA, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
@@ -65,6 +65,10 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
             bestx_sm, besty_sm, x_sm, y_sm = \
                 NSGA2.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
                                    pop=pop, **optimizer_kwargs)
+        elif optimizer == 'age':
+            bestx_sm, besty_sm, x_sm, y_sm = \
+                AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
+                                     pop=pop, **optimizer_kwargs)
         else:
             raise RuntimeError(f"Unknown optimizer {optimizer}")
         D = NSGA2.crowding_distance(besty_sm)
@@ -178,6 +182,10 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         bestx_sm, besty_sm, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
                                pop=pop, **optimizer_kwargs)
+    elif optimizer == 'age':
+        bestx_sm, besty_sm, x_sm, y_sm = \
+            AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
+                                 pop=pop, **optimizer_kwargs)
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
         
