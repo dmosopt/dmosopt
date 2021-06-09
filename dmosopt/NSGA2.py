@@ -3,13 +3,10 @@
 
 import sys
 import numpy as np
+from functools import reduce
 import copy
 from dmosopt import sampling
 
-def wrapval(x, lb, ub):
-    ''' Wrap a numeric value into a specific range if it exceeds the upper bound. '''
-    value = np.mod(x - lb, ub - lb) + lb
-    return value
 
 
 def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logger=None, pop=100, gen=100, \
@@ -51,7 +48,7 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
     for i in range(gen):
         if logger is not None:
             logger.info(f"NSGA2: iteration {i+1} of {gen}...")
-        pool = selection(population_para, population_obj, nInput, pop, poolsize, toursize)
+        pool = tournament_selection(population_para, population_obj, pop, poolsize, toursize, rank)
         count = 0
         while (count < pop - 1):
             if (np.random.rand() < crossover_rate):
@@ -87,7 +84,7 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
                 population_obj  = np.vstack((population_obj,y1))
                 count += 1
                 icall += 1
-        population_para, population_obj = \
+        population_para, population_obj, rank = \
             remove_worst(population_para, population_obj, pop, nInput, nOutput)
         bestx = population_para.copy()
         besty = population_obj.copy()
@@ -110,6 +107,7 @@ def crossover_feasibility_selection(feasibility_model, children_list, logger=Non
     child2 = child_selection[1]
     return child1, child2
 
+
 def feasibility_selection(feasibility_model, children, logger=None):
     fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
     all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
@@ -120,6 +118,50 @@ def feasibility_selection(feasibility_model, children, logger=None):
     sum_dist = np.sum(fsb_dist, axis=1)
     child = children[np.argmax(sum_dist)]
     return child
+
+
+def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
+    ''' Polynomial Mutation in Genetic Algorithm
+        For more information about PMut refer the NSGA-II paper.
+        muration_rate: mutation rate
+        mum: distribution index for mutation, default = 20
+            This determine how well spread the child will be from its parent.
+        parent: sample point before mutation
+	'''
+    n = len(parent)
+    children = np.ndarray((nchildren,n))
+    delta = np.ndarray((n,))
+    for i in range(nchildren):
+        u = np.random.rand(n)
+        lo = np.argwhere(u < mutation_rate).ravel()
+        hi = np.argwhere(u >= mutation_rate).ravel()
+        delta[lo] = (2.0*u[lo])**(1.0/(mum+1)) - 1.0
+        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(mum+1))
+        children[i, :] = np.clip(parent + (xub - xlb) * delta, xlb, xub)
+    return children
+
+
+def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
+    ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
+         For more information about SBX refer the NSGA-II paper.
+         mu: distribution index for crossover, default = 20
+         This determine how well spread the children will be from their parents.
+    '''
+    n = len(parent1)
+    children1 = np.ndarray((nchildren, n))
+    children2 = np.ndarray((nchildren, n))
+    beta = np.ndarray((n,))
+    for i in range(nchildren):
+        u = np.random.rand(n)
+        lo = np.argwhere(u <= 0.5).ravel()
+        hi = np.argwhere(u > 0.5).ravel()
+        beta[lo] = (2.0*u[lo])**(1.0/(mu+1))
+        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(mu+1))
+        children1[i,:] = np.clip(0.5*((1-beta)*parent1 + (1+beta)*parent2), xlb, xub)
+        children2[i,:] = np.clip(0.5*((1+beta)*parent1 + (1-beta)*parent2), xlb, xub)
+    return children1, children2
+
+
 
 
 def sortMO(x, y, nInput, nOutput, return_perm=False):
@@ -211,7 +253,7 @@ def dominates(p,q):
         d = False, if p not dominates q
         p and q are 1*nOutput array
     '''
-    if sum(p > q) == 0:
+    if np.sum(p > q) == 0:
         d = True
     else:
         d = False
@@ -255,78 +297,27 @@ def crowding_distance(Y):
 
     return D
 
-def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
-    ''' Polynomial Mutation in Genetic Algorithm
-        For more information about PMut refer the NSGA-II paper.
-        muration_rate: mutation rate
-        mum: distribution index for mutation, default = 20
-            This determine how well spread the child will be from its parent.
-        parent: sample point before mutation
-	'''
-    children = []
-    n = len(parent)
-    for i in range(nchildren):
-        delta = np.ndarray(n)
-        child = np.ndarray(n)
-        u = np.random.rand(n)
-        lo = np.argwhere(u < mutation_rate).ravel()
-        hi = np.argwhere(u >= mutation_rate).ravel()
-        if len(lo) > 0:
-            delta[lo] = (2.0*u[lo])**(1.0/(mum+1)) - 1.0
-        if len(hi) > 0:
-            delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(mum+1))
-        child = parent + (xub - xlb) * delta
-        child = wrapval(child, xlb, xub)
-        children.append(child)
-    return np.row_stack(children)
 
 
-def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
-    ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
-        For more information about SBX refer the NSGA-II paper.
-        mu: distribution index for crossover, default = 20
-        This determine how well spread the children will be from their parents.
-    '''
-    n = len(parent1)
-    children1 = []
-    children2 = []
+def tournament_prob(ax, i):
+    p = ax[1]
+    p1 = p*(1. - p)**i
+    ax[0].append(p1)
+    return (ax[0], p)
 
-    for i in range(nchildren):
-        beta  = np.ndarray(n)
-        u = np.random.rand(n)
-        lo = np.argwhere(u <= 0.5).ravel()
-        hi = np.argwhere(u > 0.5).ravel()
-        if len(lo) > 0:
-            beta[lo] = (2.0*u[lo])**(1.0/(mu+1))
-        if len(hi) > 0:
-            beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(mu+1))
-        child1 = 0.5*((1-beta)*parent1 + (1+beta)*parent2)
-        child2 = 0.5*((1+beta)*parent1 + (1-beta)*parent2)
-        child1 = wrapval(child1, xlb, xub)
-        child2 = wrapval(child2, xlb, xub)
-        children1.append(child1)
-        children2.append(child2)
-    return np.row_stack(children1), np.row_stack(children2)
-
-
-def selection(population_para, population_obj, nInput, pop, poolsize, toursize):
+def tournament_selection(population_parm, population_obj, pop, poolsize, toursize, *metrics):
     ''' tournament selecting the best individuals into the mating pool'''
-    pool    = np.zeros([poolsize,nInput])
-    poolidx = np.zeros(poolsize)
-    count   = 0
-    while (count < poolsize-1):
-        candidate = np.random.choice(pop, toursize, replace = False)
-        idx = candidate.min()
-        if not(idx in poolidx):
-            poolidx[count] = idx
-            pool[count,:]  = population_para[idx,:]
-            count += 1
-    return pool
+
+    candidates = np.arange(pop)
+    sorted_candidates = np.lexsort(tuple((metric[candidates] for metric in metrics)))
+    prob, _ = reduce(tournament_prob, candidates, ([], 0.5))
+    poolidx = np.random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
+    return population_parm[poolidx,:]
 
 
 def remove_worst(population_para, population_obj, pop, nInput, nOutput):
     ''' remove the worst individuals in the population '''
     population_para, population_obj, rank, crowd = \
         sortMO(population_para, population_obj, nInput, nOutput)
-    return population_para[0:pop,:], population_obj[0:pop,:]
+    return population_para[0:pop,:], population_obj[0:pop,:], rank[0:pop]
 

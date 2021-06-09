@@ -4,6 +4,7 @@
 
 import numpy as np
 import copy
+from functools import reduce
 from dmosopt import sampling
 
 
@@ -34,44 +35,93 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
     for i in range(pop):
         y[i,:] = model.evaluate(x[i,:])
         
-    x, y, rank, crowd = sortMO(x, y, nInput, nOutput)
     population_parm = x.copy()
     population_obj  = y.copy()
+    population_parm, population_obj, rank, crowd_dist = \
+        environmental_selection(population_parm, population_obj, pop, nInput, nOutput)
+
+    nchildren=1
+    if feasibility_model is not None:
+        nchildren = poolsize
 
     for i in range(gen):
         if logger is not None:
             logger.info(f"AGE-MOEA: iteration {i+1} of {gen}...")
-        pool = tournament_selection(population_parm, population_obj, nInput, pop, poolsize, toursize)
+            
+        pool = tournament_selection(population_parm, population_obj, pop, poolsize, toursize, rank, -crowd_dist)
         count = 0
         while (count < pop - 1):
             if (np.random.rand() < crossover_rate):
                 parentidx = np.random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
-                child1, child2 = crossover(parent1, parent2, mu, xlb, xub)
+                children1, children2 = crossover(parent1, parent2, mu, xlb, xub, nchildren=nchildren)
+                if feasibility_model is None:
+                    child1 = children1[0]
+                    child2 = children2[0]
+                else:
+                    child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
                 y1 = model.evaluate(child1)
                 y2 = model.evaluate(child2)
+                x  = np.vstack((x,child1,child2))
+                y  = np.vstack((y,y1,y2))
                 population_parm = np.vstack((population_parm,child1,child2))
                 population_obj  = np.vstack((population_obj,y1,y2))
                 count += 2
             else:
                 parentidx = np.random.randint(poolsize)
                 parent    = pool[parentidx,:]
-                child     = mutation(parent, mutation_rate, mum, xlb, xub)
+                children  = mutation(parent, mutation_rate, mum, xlb, xub, nchildren=nchildren)
+                if feasibility_model is None:
+                    child = children[0]
+                else:
+                    child = feasibility_selection(feasibility_model, children, logger=logger)
                 y1 = model.evaluate(child)
+                x  = np.vstack((x,child))
+                y  = np.vstack((y,y1))
                 population_parm = np.vstack((population_parm,child))
                 population_obj  = np.vstack((population_obj,y1))
                 count += 1
                 
-        population_parm, population_obj, _ = \
-            environmental_selection(population_parm, population_obj, pop, nInput, nOutput)
+        population_parm, population_obj, rank, crowd_dist = \
+            environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
                                     
-        bestx = population_parm.copy()
-        besty = population_obj.copy()
+    bestx = population_parm.copy()
+    besty = population_obj.copy()
         
     return bestx, besty, x, y
 
-def sortMO(x, y, nInput, nOutput, return_perm=False):
+
+def crossover_feasibility_selection(feasibility_model, children_list, logger=None):
+    child_selection = []
+    for children in children_list:
+        fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
+        all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
+        if len(all_feasible) > 0:
+            fsb_pred = fsb_pred[all_feasible]
+            fsb_dist = fsb_dist[all_feasible]
+            children = children[all_feasible]
+        sum_dist = np.sum(fsb_dist, axis=1)
+        child = children[np.argmax(sum_dist)]
+        child_selection.append(child)
+    child1 = child_selection[0]
+    child2 = child_selection[1]
+    return child1, child2
+
+
+def feasibility_selection(feasibility_model, children, logger=None):
+    fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
+    all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
+    if len(all_feasible) > 0:
+        fsb_pred = fsb_pred[all_feasible]
+        fsb_dist = fsb_dist[all_feasible]
+        children = children[all_feasible]
+    sum_dist = np.sum(fsb_dist, axis=1)
+    child = children[np.argmax(sum_dist)]
+    return child
+
+
+def sortMO(x, y):
     ''' Non domination sorting for multi-objective optimization
         x: input parameter matrix
         y: output objectives matrix
@@ -84,30 +134,10 @@ def sortMO(x, y, nInput, nOutput, return_perm=False):
     rank = rank[idxr]
     x = x[idxr,:]
     y = y[idxr,:]
-    T = x.shape[0]
 
-    crowd = np.zeros(T)
-    rmax = int(rank.max())
-    idxt = np.zeros(T, dtype = np.int)
-    c = 0
-    for k in range(rmax):
-        rankidx = (rank == k)
-        D = crowding_distance(y[rankidx,:])
-        idxd = D.argsort()[::-1]
-        crowd[rankidx] = D[idxd]
-        idxtt = np.array(range(len(rank)))[rankidx]
-        idxt[c:(c+len(idxtt))] = idxtt[idxd]
-        c += len(idxtt)
-    x = x[idxt,:]
-    y = y[idxt,:]
-    perm = idxr[idxt]
-    rank = rank[idxt]
+    return x, y, rank
 
-    if return_perm:
-        return x, y, rank, crowd, perm
-    else:
-        return x, y, rank, crowd
-
+    
 def fast_non_dominated_sort(Y):
     ''' a fast non-dominated sorting method
         Y: output objective matrix
@@ -154,6 +184,7 @@ def fast_non_dominated_sort(Y):
 
     return rank, dom
 
+
 def dominates(p,q):
     ''' comparison for multi-objective optimization
         d = True, if p dominates q
@@ -166,45 +197,9 @@ def dominates(p,q):
         d = False
     return d
 
-def crowding_distance(Y):
-    ''' compute crowding distance in NSGA-II
-        Y is the output data matrix
-        [n,d] = size(Y)
-        n: number of points
-        d: number of dimentions
-    '''
-    n,d = Y.shape
-    lb = np.min(Y, axis = 0)
-    ub = np.max(Y, axis = 0)
 
-    if n == 1 or np.min(ub-lb) == 0.0:
-        D = np.array([1.])
-    else:
-        U = (Y - lb) / (ub - lb)
 
-        D = np.zeros(n)
-        DS = np.zeros((n,d))
-
-        idx = U.argsort(axis = 0)
-        US = np.zeros((n,d))
-        for i in range(d):
-            US[:,i] = U[idx[:,i],i]
-
-        DS[0,:] = 1.
-        DS[n-1,:] = 1.
-
-        for i in range(1,n-1):
-            for j in range(d):
-                DS[i,j] = US[i+1,j] - US[i-1,j]
-
-        for i in range(n):
-            for j in range(d):
-                D[idx[i,j]] += DS[i,j]
-        D[np.isnan(D)] = 0.0
-
-    return D
-
-def mutation(parent, mutation_rate, mum, xlb, xub):
+def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
     ''' Polynomial Mutation in Genetic Algorithm
         For more information about PMut refer the NSGA-II paper.
         muration_rate: mutation rate
@@ -212,43 +207,39 @@ def mutation(parent, mutation_rate, mum, xlb, xub):
             This determine how well spread the child will be from its parent.
         parent: sample point before mutation
 	'''
-    n     = len(parent)
-    delta = np.ndarray(n)
-    child = np.ndarray(n)
-    u     = np.random.rand(n)
-    for i in range(n):
-        if (u[i] < mutation_rate):
-            delta[i] = (2.0*u[i])**(1.0/(mum+1)) - 1.0
-        else:
-            delta[i] = 1.0 - (2.0*(1.0 - u[i]))**(1.0/(mum+1))
-        child[i] = parent[i] + (xub[i] - xlb[i]) * delta[i]
-    child = np.clip(child, xlb, xub)
-    return child
+    n = len(parent)
+    children = np.ndarray((nchildren,n))
+    delta = np.ndarray((n,))
+    for i in range(nchildren):
+        u = np.random.rand(n)
+        lo = np.argwhere(u < mutation_rate).ravel()
+        hi = np.argwhere(u >= mutation_rate).ravel()
+        delta[lo] = (2.0*u[lo])**(1.0/(mum+1)) - 1.0
+        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(mum+1))
+        children[i, :] = np.clip(parent + (xub - xlb) * delta, xlb, xub)
+    return children
 
-def crossover(parent1, parent2, mu, xlb, xub):
+
+def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
     ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
-        For more information about SBX refer the NSGA-II paper.
-        mu: distribution index for crossover, default = 20
-        This determine how well spread the children will be from their parents.
+         For more information about SBX refer the NSGA-II paper.
+         mu: distribution index for crossover, default = 20
+         This determine how well spread the children will be from their parents.
     '''
-    n      = len(parent1)
-    beta   = np.ndarray(n)
-    child1 = np.ndarray(n)
-    child2 = np.ndarray(n)
-    u = np.random.rand(n)
-    for i in range(n):
-        if (u[i] <= 0.5):
-            beta[i] = (2.0*u[i])**(1.0/(mu+1))
-        else:
-            beta[i] = (1.0/(2.0*(1.0 - u[i])))**(1.0/(mu+1))
-        child1[i] = 0.5*((1-beta[i])*parent1[i] + (1+beta[i])*parent2[i])
-        child2[i] = 0.5*((1+beta[i])*parent1[i] + (1-beta[i])*parent2[i])
-    child1 = np.clip(child1, xlb, xub)
-    child2 = np.clip(child2, xlb, xub)
-    return child1, child2
+    n = len(parent1)
+    children1 = np.ndarray((nchildren, n))
+    children2 = np.ndarray((nchildren, n))
+    beta = np.ndarray((n,))
+    for i in range(nchildren):
+        u = np.random.rand(n)
+        lo = np.argwhere(u <= 0.5).ravel()
+        hi = np.argwhere(u > 0.5).ravel()
+        beta[lo] = (2.0*u[lo])**(1.0/(mu+1))
+        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(mu+1))
+        children1[i,:] = np.clip(0.5*((1-beta)*parent1 + (1+beta)*parent2), xlb, xub)
+        children2[i,:] = np.clip(0.5*((1+beta)*parent1 + (1-beta)*parent2), xlb, xub)
+    return children1, children2
 
-
-    
 
 
 def normalize(front, extreme):
@@ -288,6 +279,7 @@ def normalize(front, extreme):
 
     return normalization
 
+
 def minkowski_matrix(A, B, p):
     """workaround for scipy's cdist refusing p<1"""
     i_ind, j_ind = np.meshgrid(np.arange(A.shape[0]), np.arange(B.shape[0]))
@@ -326,7 +318,7 @@ def point_2_line_distance(P, A, B):
 
 
 def find_corner_solutions(front):
-    """Return the indexes of the extreme points"""
+    """Return the indexes of the extreme points. """
 
     m, n = front.shape
 
@@ -348,19 +340,21 @@ def find_corner_solutions(front):
     return indexes
 
 
-def tournament_selection(population_parm, population_obj, nInput, pop, poolsize, toursize):
+def tournament_prob(ax, i):
+    p = ax[1]
+    p1 = p*(1. - p)**i
+    ax[0].append(p1)
+    return (ax[0], p)
+
+
+def tournament_selection(population_parm, population_obj, pop, poolsize, toursize, *metrics):
     ''' tournament selecting the best individuals into the mating pool'''
-    pool    = np.zeros([poolsize,nInput])
-    poolidx = np.zeros(poolsize)
-    count   = 0
-    while (count < poolsize-1):
-        candidate = np.random.choice(pop, toursize, replace = False)
-        idx = candidate.min()
-        if not(idx in poolidx):
-            poolidx[count] = idx
-            pool[count,:]  = population_parm[idx,:]
-            count += 1
-    return pool
+
+    candidates = np.arange(pop)
+    sorted_candidates = np.lexsort(tuple((metric[candidates] for metric in metrics)))
+    prob, _ = reduce(tournament_prob, candidates, ([], 0.5))
+    poolidx = np.random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
+    return population_parm[poolidx,:]
 
 
 def survival_score(y, front, ideal_point):
@@ -417,32 +411,47 @@ def survival_score(y, front, ideal_point):
     return normalization, p, crowd_dist
 
 
-def environmental_selection(population_parm, population_obj, pop, nInput, nOutput):
+def environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=None):
 
-    xs, ys, rank, _ = sortMO(population_parm, population_obj, nInput, nOutput)
-    rmax = int(rank.max())
+    xs, ys, rank = sortMO(population_parm, population_obj)
+    rmax = int(np.max(rank))
+    rmin = int(np.min(rank))
 
     yn = np.zeros_like(ys)
     crowd_dist = np.zeros_like(rank)
-    selected = rank < rmax
+    selected = np.zeros_like(rank).astype(np.bool)
     
     # get the first front for normalization
     front_1 = np.argwhere(rank == 0).ravel()
+    #if logger is not None:
+    #    logger.info(f"front_1.shape = {front_1.shape}")
 
     # follows from the definition of the ideal point but with current non dominated solutions
     ideal_point = np.min(ys[front_1, :], axis=0)
-        
-    normalization, p, crowd_dist[front_1] = survival_score(ys, front_1, ideal_point)
-    yn[front_1, :] = ys[front_1, :] / normalization
-    for r in range(1, rmax+1):
-        front_r = np.argwhere(rank == r).ravel()
-        yn[front_r] = ys[front_r] / normalization
-        crowd_dist[front_r] = 1. / minkowski_matrix(yn[front_r, :], ideal_point[None, :], p=p).squeeze()
-        
-    # Select the solutions in the last front based on their crowding distances
-    last = np.argwhere(rank == rmax).ravel()
-    selection_rank = np.argsort(crowd_dist[last])[::-1]
-    selected[last[selection_rank[: pop - np.sum(selected)]]] = True
 
+    normalization, p, crowd_dist[front_1] = survival_score(ys, front_1, ideal_point)
+    yn[front_1, :] = ys[front_1] / normalization
+    
+    count = len(front_1)
+    if count < pop:
+        selected[front_1] = True
+        for r in range(1, rmax+1):
+            front_r = np.argwhere(rank == r).ravel()
+            yn[front_r] = ys[front_r] / normalization
+            crowd_dist[front_r] = 1. / minkowski_matrix(yn[front_r, :], ideal_point[None, :], p=p).squeeze()
+            if (count + len(front_r)) < pop:
+                selected[front_r] = True
+                count += len(front_r)
+            else:
+                # Select the solutions in the last front based on their crowding distances
+                selection_rank = np.argsort(crowd_dist[front_r])[::-1]
+                selected[front_r[selection_rank[: pop - count]]] = True
+                break
+    else:
+        selection_rank = np.argsort(crowd_dist[front_1])[::-1]
+        selected[front_1[selection_rank]] = True
+            
+    assert(np.sum(selected) > 0)
     # return selected solutions, number of selected should be equal to population size
-    return population_parm[selected], population_obj[selected], crowd_dist
+    return xs[selected].copy(), ys[selected].copy(), rank[selected].copy(), crowd_dist[selected].copy()
+
