@@ -449,7 +449,7 @@ def environmental_selection(population_parm, population_obj, pop, nInput, nOutpu
                 break
     else:
         selection_rank = np.argsort(crowd_dist[front_1])[::-1]
-        selected[front_1[selection_rank]] = True
+        selected[front_1[np.random.choice(selection_rank, size=pop, replace=False)]] = True
             
     assert(np.sum(selected) > 0)
     # return selected solutions, number of selected should be equal to population size
