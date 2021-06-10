@@ -1,6 +1,14 @@
+#
 # Adaptive evolutionary algorithm based on non-euclidean geometry for
 # many-objective optimization. A. Panichella, Proceedings of the
 # Genetic and Evolutionary Computation Conference, 2019.  
+#
+# Based on implementations in platEMO and PyMOO (by Ben Crulis):
+#
+# 
+# https://github.com/BenCrulis/pymoo/tree/AGE_MOEA/pymoo
+# https://github.com/BIMK/PlatEMO/tree/master/PlatEMO/Algorithms/Multi-objective%20optimization/AGE-MOEA
+#
 
 import numpy as np
 import copy
@@ -85,9 +93,11 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
                 
         population_parm, population_obj, rank, crowd_dist = \
             environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
-                                    
-    bestx = population_parm.copy()
-    besty = population_obj.copy()
+
+    
+    sorted_population = np.lexsort(tuple((metric for metric in [rank, -crowd_dist])), axis=0)
+    bestx = population_parm[sorted_population].copy()
+    besty = population_obj[sorted_population].copy()
         
     return bestx, besty, x, y
 
