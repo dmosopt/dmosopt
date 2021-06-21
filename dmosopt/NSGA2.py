@@ -264,7 +264,7 @@ def crowding_distance(Y):
         Y is the output data matrix
         [n,d] = size(Y)
         n: number of points
-        d: number of dimentions
+        d: number of dimensions
     '''
     n,d = Y.shape
     lb = np.min(Y, axis = 0)

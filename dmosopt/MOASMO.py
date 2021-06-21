@@ -51,6 +51,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     icall = Ninit
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
+        fsbm = FeasibilityModel(Xinit,  C)
         if len(feasible) > 0:
             feasible = feasible.ravel()
             x = Xinit[feasible,:].copy()
@@ -63,11 +64,11 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
         if optimizer == 'nsga2':
             bestx_sm, besty_sm, x_sm, y_sm = \
-                NSGA2.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
+                NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
                                    pop=pop, **optimizer_kwargs)
         elif optimizer == 'age':
             bestx_sm, besty_sm, x_sm, y_sm = \
-                AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
+                AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
                                      pop=pop, **optimizer_kwargs)
         else:
             raise RuntimeError(f"Unknown optimizer {optimizer}")
@@ -77,6 +78,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         y_resample = np.zeros((N_resample,nOutput))
         c_resample = None
         if C is not None:
+            fsbm = FeasibilityModel(x_sm,  C)
             c_resample = np.zeros((N_resample,nConstraints))
             for j in range(N_resample):
                 y_resample[j,:], c_resample[j,:] = model.evaluate(x_resample[j,:])
