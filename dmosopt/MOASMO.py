@@ -112,8 +112,6 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     xub: upper bound of input
     """
     Ninit = nInput * nEval
-    if nPrevious is not None:
-        Ninit -= nPrevious
     
     if Ninit <= 0:
         return None
@@ -129,8 +127,13 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     else:
         raise RuntimeError(f'Unknown method {method}')
 
-    for i in range(Ninit):
+    if nPrevious is None:
+        nPrevious = 0
+
+    for i in range(nPrevious, Ninit):
         Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
+
+    Xinit = Xinit[nPrevious:, :]
 
     return Xinit
 
