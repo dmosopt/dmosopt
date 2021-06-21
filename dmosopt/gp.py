@@ -2,7 +2,7 @@ from __future__ import division, absolute_import
 import numpy as np
 from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern
+from sklearn.gaussian_process.kernels import Matern, ConstantKernel, WhiteKernel
 #from sklearn.gaussian_process.kernels import (RBF, Matern, RationalQuadratic, ExpSineSquared, DotProduct, ConstantKernel)
 import copy
 
@@ -18,7 +18,7 @@ except ImportError as e:
 
 
 class GPR_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", length_scale_bounds=(1e-2, 100.0), logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", length_scale_bounds=(1e-2, 10.0), logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -33,20 +33,20 @@ class GPR_Matern:
         if nOutput == 1:
             y = y.reshape((y.shape[0],1))
 
-        kernel = 1.0 * Matern(length_scale=1.0, length_scale_bounds=length_scale_bounds, nu=2.5)
-
+        kernel = ConstantKernel(1, (0.01, 100)) * Matern(length_scale=1.0, length_scale_bounds=length_scale_bounds, nu=2.5) + \
+            WhiteKernel(noise_level=1e-4, noise_level_bounds=(1e-6, 1e-2))
         smlist = []
         for i in range(nOutput):
             if logger is not None:
                 logger.info(f"GPR_Matern: creating regressor for output {i} of {nOutput}...")
-            #smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, n_restarts_optimizer=5))
             if optimizer == "sceua":
                 optf=partial(sceua_optimizer, logger)
             elif optimizer == "dlib":
                 optf=partial(dlib_optimizer, logger)
             else:
                 optf=partial(sceua_optimizer, logger)                
-            smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, optimizer=optf))
+            #smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, n_restarts_optimizer=5))
+            smlist.append(GaussianProcessRegressor(kernel=kernel, optimizer=optf))
             smlist[i].fit(x,y[:,i])
         self.smlist = smlist
 
