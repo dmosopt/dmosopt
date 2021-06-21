@@ -32,6 +32,7 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
 
     x = sampling.lh(pop, nInput)
     x = x * (xub - xlb) + xlb
+
     y = np.zeros((pop, nOutput))
     for i in range(pop):
         y[i,:] = model.evaluate(x[i,:])
@@ -100,9 +101,13 @@ def crossover_feasibility_selection(feasibility_model, children_list, logger=Non
             fsb_pred = fsb_pred[all_feasible]
             fsb_dist = fsb_dist[all_feasible]
             children = children[all_feasible]
-        sum_dist = np.sum(fsb_dist, axis=1)
-        child = children[np.argmax(sum_dist)]
+            sum_dist = np.sum(fsb_dist, axis=1)
+            child = children[np.argmax(sum_dist)]
+        else:
+            childidx = np.random.choice(np.arange(children.shape[0]), size=1)
+            child = children[childidx[0]]
         child_selection.append(child)
+            
     child1 = child_selection[0]
     child2 = child_selection[1]
     return child1, child2
@@ -115,8 +120,11 @@ def feasibility_selection(feasibility_model, children, logger=None):
         fsb_pred = fsb_pred[all_feasible]
         fsb_dist = fsb_dist[all_feasible]
         children = children[all_feasible]
-    sum_dist = np.sum(fsb_dist, axis=1)
-    child = children[np.argmax(sum_dist)]
+        sum_dist = np.sum(fsb_dist, axis=1)
+        child = children[np.argmax(sum_dist)]
+    else:
+        childidx = np.random.choice(np.arange(children.shape[0]), size=1)
+        child = children[childidx[0]]
     return child
 
 
