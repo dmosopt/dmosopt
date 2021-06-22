@@ -7,7 +7,7 @@ from dmosopt.feasibility import FeasibilityModel
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
                  initial_maxiter=5, initial_method="glp",
-                 gpr_optimizer="sceua", optimizer="nsga2",
+                 gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
                  optimizer_kwargs= { 'gen': 100,
                                      'crossover_rate': 0.9,
                                      'mutation_rate': None,
@@ -61,7 +61,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         y = Yinit.copy()
 
     for i in range(niter):
-        sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
+        sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
         if optimizer == 'nsga2':
             bestx_sm, besty_sm, x_sm, y_sm = \
                 NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
@@ -139,7 +139,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
 
 def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, C, pop=100, 
-            gpr_optimizer="sceua", optimizer="nsga2",
+            gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
             optimizer_kwargs= { 'gen': 100,
                                 'crossover_rate': 0.9,
                                 'mutation_rate': None,
@@ -179,7 +179,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, logger=logger)
+    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
