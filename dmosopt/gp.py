@@ -37,11 +37,12 @@ class GPR_Matern:
         if anisotropic:
             length_scale=np.asarray([0.5]*nInput)
         kernel = ConstantKernel(1, (0.01, 100)) * Matern(length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=1.5) + \
-            WhiteKernel(noise_level=1e-4, noise_level_bounds=(1e-6, 1e-2))
+            WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-6, 1e-4))
         smlist = []
         for i in range(nOutput):
             if logger is not None:
                 logger.info(f"GPR_Matern: creating regressor for output {i} of {nOutput}...")
+                logger.info(f"GPR_Matern: y_{i} range is {(np.min(y[:,i]), np.max(y[:,i]))}...")
             if optimizer == "sceua":
                 optf=partial(sceua_optimizer, logger)
             elif optimizer == "dlib":
@@ -49,7 +50,7 @@ class GPR_Matern:
             else:
                 optf=partial(sceua_optimizer, logger)                
             #smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, n_restarts_optimizer=5))
-            smlist.append(GaussianProcessRegressor(kernel=kernel, optimizer=optf))
+            smlist.append(GaussianProcessRegressor(kernel=kernel, optimizer=optf, normalize_y=True))
             smlist[i].fit(x,y[:,i])
         self.smlist = smlist
 
