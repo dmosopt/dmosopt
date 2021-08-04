@@ -96,11 +96,14 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
 
             for m_i in range(m):
                 points[:, m_i] = points[:, m_i] / np.max(points[:, m_i])
-                
+
+            if points.shape[0] < knn:
+                knn = points.shape[0]
+
             tree = cKDTree(points)
             qp = np.zeros((m, ))
             dnn, nn = tree.query(qp, k=knn)
-            
+
             for i in nn:
                 res_i = { k: res_dict[k][i] for k in objective_names }
                 prms_i = { k: prms_dict[k][i] for k in param_names }
