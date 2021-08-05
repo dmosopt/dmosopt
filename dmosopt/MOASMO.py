@@ -33,7 +33,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     N_resample = int(pop*pct)
     if (Xinit is None and Yinit is None):
         Ninit = nInput * 10
-        Xinit = xinit(Ninit, nInput, method=initial_method, maxiter=initial_maxiter)
+        Xinit = xinit(Ninit, nInput, method=initial_method, maxiter=initial_maxiter, logger=logger)
         for i in range(Ninit):
             Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
         Yinit = np.zeros((Ninit, nOutput))
@@ -104,7 +104,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     return bestx, besty, x, y
 
 
-def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxiter=5):
+def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxiter=5, logger=None):
     """ 
     Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
     nEval: number of evaluations per parameter
@@ -116,10 +116,13 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     Ninit = nInput * nEval
     if nPrevious is not None:
         Ninit -= nPrevious
-    
+
+    if logger is not None:
+        logger.info(f"xinit: generating {Ninit} initial parameters...")
+        
     if Ninit <= 0:
         return None
-
+    
     if method == "glp":
         Xinit = sampling.glp(Ninit, nInput, maxiter=maxiter)
     elif method == "slh":
