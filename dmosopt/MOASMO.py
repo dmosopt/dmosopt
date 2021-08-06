@@ -200,6 +200,40 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     return x_resample
 
 
+def train(nInput, nOutput, xlb, xub, \
+          Xinit, Yinit, C, 
+          gpr_anisotropic=False, gpr_optimizer="sceua", 
+          logger=None):
+    """ 
+    Multi-Objective Adaptive Surrogate Modelling-based Optimization
+    Training of surrogate model.
+
+    nInput: number of model input
+    nOutput: number of output objectives
+    xlb: lower bound of input
+    xub: upper bound of input
+    Xinit and Yinit: initial samplers for surrogate model construction
+    """
+
+    x = Xinit.copy()
+    y = Yinit.copy()
+
+    if C is not None:
+        feasible = np.argwhere(np.all(C > 0., axis=1))
+        if len(feasible) > 0:
+            feasible = feasible.ravel()
+            try:
+                x = x[feasible,:]
+                y = y[feasible,:]
+                logger.info(f"Found {len(feasible)} feasible solutions")
+            except:
+                e = sys.exc_info()[0]
+                logger.warning(f"Unable to fit feasibility model: {e}")
+                
+    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
+
+    return sm
+
 
 def get_best(x, y, f, c, nInput, nOutput, feasible=True):
     xtmp = x.copy()
