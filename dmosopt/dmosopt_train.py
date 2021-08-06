@@ -1,10 +1,10 @@
 
-import os, sys, logging, gc, pprint
-from functools import partial
+import os, sys, logging, time, gc, pprint
 import click
 import numpy as np
 from dmosopt.dmosopt import init_from_h5
-from dmosopt.MOASMO import get_best, onestep
+from dmosopt.MOASMO import train
+from joblib import dump, load
 
 script_name = os.path.basename(__file__)
 
@@ -25,12 +25,10 @@ def list_find(f, lst):
 
 @click.command()
 @click.option("--file-path", '-p', required=True, type=click.Path())
+@click.option("--output-file-path", '-o', required=False, type=click.Path())
 @click.option("--opt-id", required=True, type=str)
-@click.option("--resample-fraction", required=True, type=float)
-@click.option("--population-size", required=True, type=int)
-@click.option("--num-generations", required=True, type=int)
 @click.option("--verbose", '-v', is_flag=True)
-def main(file_path, opt_id, resample_fraction, population_size, num_generations, verbose):
+def main(file_path, opt_id, output_file_path, verbose):
 
     old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
@@ -65,18 +63,16 @@ def main(file_path, opt_id, resample_fraction, population_size, num_generations,
         n_dim = len(lo_bounds)
         n_objectives = len(objective_names)
         
-        x_resample = onestep(n_dim, n_objectives,
-                             np.asarray(lo_bounds), np.asarray(hi_bounds), resample_fraction,
-                             x, y, C=c, pop=population_size, 
-                             optimizer_kwargs= { 'gen': num_generations,
-                                                 'crossover_rate': 0.9,
-                                                 'mutation_rate': None,
-                                                 'mu': 20, 'mum': 20 },
-                             logger=logger)
+        sm = train(n_dim, n_objectives,
+                   np.asarray(lo_bounds), np.asarray(hi_bounds), 
+                   x, y, C=c, logger=logger)
 
-        for i, x in enumerate(x_resample):
-            print(f"resampled coordinates {i}: {pprint.pformat(x)}")
+        if output_file_path is None:
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            output_file_path = f'./{opt_id}_{ts}.joblib'
             
+        dump(sm, output_file_path)
+
             
 
 

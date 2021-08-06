@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
-    version="0.2.0",
+    version="0.3.0",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",
@@ -17,6 +17,7 @@ setup(
     entry_points={
         'console_scripts': [ 'dmosopt_analyze=dmosopt.dmosopt_analyze:main',
                              'dmosopt_onestep=dmosopt.dmosopt_onestep:main',
+                             'dmosopt_train=dmosopt.dmosopt_train:main',
                              'dmosopt_plot=dmosopt.dmosopt_plot:main',
                              ],
     },

@@ -73,7 +73,7 @@ class SOptStrategy():
         if self.x is not None:
             nPrevious = self.x.shape[0]
         xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, nPrevious=nPrevious,
-                          maxiter=initial_maxiter, method=initial_method)
+                          maxiter=initial_maxiter, method=initial_method, logger=self.logger)
         self.reqs = []
         if xinit is not None:
             assert(xinit.shape[1] == prob.dim)
