@@ -49,8 +49,14 @@ class OptProblem():
         return self.eval_fun(x)
     
 class SOptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp", population_size=100, resample_fraction=0.25, num_generations=100, crossover_rate=0.9, mutation_rate=None, gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2", logger=None):
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp",
+                 population_size=100, resample_fraction=0.25, num_generations=100,
+                 crossover_rate=0.9, mutation_rate=None,
+                 gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
+                 feasibility_model=False,
+                 logger=None):
         self.logger = logger
+        self.feasibility_model = feasibility_model
         self.gpr_anisotropic = gpr_anisotropic
         self.gpr_optimizer = gpr_optimizer
         self.optimizer = optimizer
@@ -134,6 +140,7 @@ class SOptStrategy():
                                                    'mutation_rate': self.mutation_rate},
                                  gpr_optimizer=self.gpr_optimizer,
                                  gpr_anisotropic=self.gpr_anisotropic,
+                                 feasibility_model=self.feasibility_model,
                                  logger=self.logger)
         for i in range(x_resample.shape[0]):
             self.reqs.append(x_resample[i,:])
@@ -197,6 +204,7 @@ class DistOptimizer():
         gpr_anisotropic=False,
         gpr_optimizer="sceua",
         optimizer="nsga2",
+        feasibility_model=False,
         **kwargs
     ):
         """
@@ -239,6 +247,7 @@ class DistOptimizer():
         self.gpr_optimizer = gpr_optimizer
         self.gpr_anisotropic = gpr_anisotropic
         self.optimizer = optimizer
+        self.feasibility_model = feasibility_model
 
         if self.resample_fraction > 1.0:
             self.resample_fraction = 1.0
@@ -366,6 +375,7 @@ class DistOptimizer():
                                         gpr_optimizer=self.gpr_optimizer,
                                         gpr_anisotropic=self.gpr_anisotropic,
                                         optimizer=self.optimizer,
+                                        feasibility_model=self.feasibility_model,
                                         logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
             self.storage_dict[problem_id] = []

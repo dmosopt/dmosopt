@@ -7,6 +7,7 @@ from dmosopt.feasibility import FeasibilityModel
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
                  initial_maxiter=5, initial_method="glp",
+                 feasibility_model=False,
                  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
                  optimizer_kwargs= { 'gen': 100,
                                      'crossover_rate': 0.9,
@@ -49,9 +50,11 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     else:
         Ninit = Xinit.shape[0]
     icall = Ninit
+    fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
-        fsbm = FeasibilityModel(Xinit,  C)
+        if feasibility_model:
+            fsbm = FeasibilityModel(Xinit,  C)
         if len(feasible) > 0:
             feasible = feasible.ravel()
             x = Xinit[feasible,:].copy()
@@ -147,8 +150,10 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
 
 
 def onestep(nInput, nOutput, xlb, xub, pct, \
-            Xinit, Yinit, C, pop=100, 
-            gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
+            Xinit, Yinit, C, pop=100,
+            feasibility_model=False,
+            gpr_anisotropic=False, gpr_optimizer="sceua",
+            optimizer="nsga2",
             optimizer_kwargs= { 'gen': 100,
                                 'crossover_rate': 0.9,
                                 'mutation_rate': None,
@@ -181,7 +186,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         if len(feasible) > 0:
             feasible = feasible.ravel()
             try:
-                fsbm = FeasibilityModel(Xinit,  C)
+                if feasibility_model:
+                    fsbm = FeasibilityModel(Xinit,  C)
                 x = x[feasible,:]
                 y = y[feasible,:]
                 logger.info(f"Found {len(feasible)} feasible solutions")
