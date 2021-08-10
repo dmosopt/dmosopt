@@ -53,6 +53,9 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
     if feasibility_model is not None:
         nchildren = poolsize
 
+    x_new = []
+    y_new = []
+        
     for i in range(gen):
         if logger is not None:
             logger.info(f"AGE-MOEA: iteration {i+1} of {gen}...")
@@ -72,8 +75,8 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
                     child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
                 y1 = model.evaluate(child1)
                 y2 = model.evaluate(child2)
-                x  = np.vstack((x,child1,child2))
-                y  = np.vstack((y,y1,y2))
+                x_new.extend([child1, child2])
+                y_new.extend([y1,y2])
                 population_parm = np.vstack((population_parm,child1,child2))
                 population_obj  = np.vstack((population_obj,y1,y2))
                 count += 2
@@ -86,8 +89,8 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
                 else:
                     child = feasibility_selection(feasibility_model, children, logger=logger)
                 y1 = model.evaluate(child)
-                x  = np.vstack((x,child))
-                y  = np.vstack((y,y1))
+                x_new.append(child)
+                y_new.append(y1)
                 population_parm = np.vstack((population_parm,child))
                 population_obj  = np.vstack((population_obj,y1))
                 count += 1
@@ -99,6 +102,9 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
     sorted_population = np.lexsort(tuple((metric for metric in [rank, -crowd_dist])), axis=0)
     bestx = population_parm[sorted_population].copy()
     besty = population_obj[sorted_population].copy()
+
+    x = np.vstack([x] + x_new)
+    y = np.vstack([y] + y_new)
         
     return bestx, besty, x, y
 
