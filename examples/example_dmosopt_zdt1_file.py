@@ -50,7 +50,9 @@ if __name__ == '__main__':
                       'problem_parameters': problem_parameters,
                       'space': space,
                       'objective_names': problem_objectives,
-                      'n_initial': 1,
+                      'population_size': 200,
+                      'initial_maxiter': 10,
+                      'n_initial': 3,
                       'n_iter': 2,
                       'file_path': 'dmosopt.zdt1.h5',
                       'save': True,
@@ -60,7 +62,7 @@ if __name__ == '__main__':
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:
         import matplotlib.pyplot as plt
-        bestx, besty, bestf = best
+        bestx, besty = best
         x, y = dmosopt.sopt_dict['dmosopt_zdt1'].optimizer_dict[0].get_evals()
         besty_dict = dict(besty)
         
