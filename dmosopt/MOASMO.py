@@ -120,12 +120,11 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
 
     if nPrevious is not None:
         Ninit -= nPrevious
+    if Ninit <= 0:
+        return None
 
     if logger is not None:
         logger.info(f"xinit: generating {Ninit} initial parameters...")
-        
-    if Ninit <= 0:
-        return None
     
     if method == "glp":
         Xinit = sampling.glp(Ninit, nInput, maxiter=maxiter)
