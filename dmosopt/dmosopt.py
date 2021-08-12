@@ -180,6 +180,7 @@ class DistOptimizer():
         self,
         opt_id,
         obj_fun,
+        obj_fun_args=None,
         objective_names=None,
         feature_dtypes=None,
         constraint_names=None,
@@ -312,10 +313,11 @@ class DistOptimizer():
         self.n_iter = n_iter
         self.save_eval = save_eval
 
+        self.obj_fun_args = obj_fun_args
         if has_problem_ids:
-            self.eval_fun = partial(eval_obj_fun_mp, obj_fun, self.problem_parameters, self.param_names, self.is_int, problem_ids)
+            self.eval_fun = partial(eval_obj_fun_mp, obj_fun, self.problem_parameters, self.param_names, self.is_int, self.obj_fun_args, problem_ids)
         else:
-            self.eval_fun = partial(eval_obj_fun_sp, obj_fun, self.problem_parameters, self.param_names, self.is_int, 0)
+            self.eval_fun = partial(eval_obj_fun_sp, obj_fun, self.problem_parameters, self.param_names, self.is_int, self.obj_fun_args, 0)
             
         self.reduce_fun = reduce_fun
         self.reduce_fun_args = reduce_fun_args
@@ -879,7 +881,7 @@ def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_n
 
     
 
-def eval_obj_fun_sp(obj_fun, pp, space_params, is_int, problem_id, space_vals):
+def eval_obj_fun_sp(obj_fun, pp, space_params, is_int, obj_fun_args, problem_id, space_vals):
     """
     Objective function evaluation (single problem).
     """
@@ -887,13 +889,15 @@ def eval_obj_fun_sp(obj_fun, pp, space_params, is_int, problem_id, space_vals):
     this_space_vals = space_vals[problem_id]
     for j, key in enumerate(space_params):
         pp[key] = int(this_space_vals[j]) if is_int[j] else this_space_vals[j]
-
-    
-    result = obj_fun(pp)
+        
+    if obj_fun_args is None:
+        obj_fun_args = ()
+        
+    result = obj_fun(pp, *obj_fun_args)
     return { problem_id: result }
 
 
-def eval_obj_fun_mp(obj_fun, pp, space_params, is_int, problem_ids, space_vals):
+def eval_obj_fun_mp(obj_fun, pp, space_params, is_int, obj_fun_args, problem_ids, space_vals):
     """
     Objective function evaluation (multiple problems).
     """
@@ -906,7 +910,10 @@ def eval_obj_fun_mp(obj_fun, pp, space_params, is_int, problem_ids, space_vals):
             this_pp[key] = int(this_space_vals[j]) if is_int[j] else this_space_vals[j]
         mpp[problem_id] = this_pp
 
-    result_dict = obj_fun(mpp)
+    if obj_fun_args is None:
+        obj_fun_args = ()
+
+    result_dict = obj_fun(mpp, *obj_fun_args)
     return result_dict
 
 
