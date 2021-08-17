@@ -1025,7 +1025,10 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
             saved_eval_count = eval_count
 
         if not next_iter:
-            for w in range(len(controller.ready_workers)):
+            n_workers = 1
+            if controller.workers_available:
+                n_workers = len(controller.ready_workers)
+            for w in range(n_workers):
                 eval_x_dict = {}
                 for problem_id in sopt.problem_ids:
                     eval_x = sopt.optimizer_dict[problem_id].get_next_x()
