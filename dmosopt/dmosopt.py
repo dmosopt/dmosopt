@@ -365,7 +365,7 @@ class DistOptimizer():
                     old_eval_cs = [e[3] for e in self.old_evals[problem_id]]
                     c = np.vstack(old_eval_cs)
                 initial = (x, y, f, c)
-            
+
             opt_strategy = SOptStrategy(opt_prob, self.n_initial, initial=initial, 
                                         population_size=self.population_size, 
                                         resample_fraction=self.resample_fraction,
@@ -383,7 +383,6 @@ class DistOptimizer():
             self.storage_dict[problem_id] = []
         if initial is not None:
             self.print_best()
-                
 
     def save_evals(self):
         """Store results of finished evals to file; print best eval"""
@@ -956,6 +955,7 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
 def sopt_ctrl(controller, sopt_params, verbose=True):
     """Controller for distributed surrogate optimization."""
     logger = logging.getLogger(sopt_params['opt_id'])
+    logger.info(f"Initializing optimization controller...")
     if verbose:
         logger.setLevel(logging.INFO)
     sopt = sopt_init(sopt_params, verbose=verbose, init_strategy=True)
@@ -1002,12 +1002,12 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                     lres = None
                     if sopt.feature_names is not None and sopt.constraint_names is not None:
                         lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
-                        lftrs = rres[problem_id][1]
+                        lftrs = [dict(zip(rres[problem_id][1].dtype.names, x)) for x in rres[problem_id][1]]
                         lconstr = list(zip(sopt.constraint_names, rres[problem_id][2].T))
                         logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}")
                     elif sopt.feature_names is not None:
                         lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
-                        lftrs = rres[problem_id][1]
+                        lftrs = [dict(zip(rres[problem_id][1].dtype.names, x)) for x in rres[problem_id][1]]
                         logger.info(f"problem id {problem_id}: optimization iteration {iter_count}: parameters {prms}: {lres} / {lftrs}")
                     elif sopt.constraint_names is not None:
                         lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
