@@ -37,7 +37,7 @@ class GPR_Matern:
         if anisotropic:
             length_scale=np.asarray([0.5]*nInput)
         kernel = ConstantKernel(1, (0.01, 100)) * Matern(length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=1.5) + \
-            WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-6, 1e-4))
+            WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 1e-4))
         smlist = []
         for i in range(nOutput):
             if logger is not None:

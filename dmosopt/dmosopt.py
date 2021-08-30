@@ -451,12 +451,13 @@ class DistOptimizer():
                     ftrs_i = None
                     if ftrs is not None:
                         ftrs_i = ftrs[i]
+                        lftrs_i = dict(zip(ftrs_i.dtype.names, ftrs_i))
                     if (ftrs_i is not None) and (constr_i is not None):
-                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}] [constr: {constr_i}]")
+                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{lftrs_i}] [constr: {constr_i}]")
                     elif (constr_i is not None): 
                         self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [constr: {constr_i}]")
                     elif (ftrs_i is not None): 
-                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{ftrs_i}]")
+                        self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{lftrs_i}]")
                     else:
                         self.logger.info(f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i}")
         else:

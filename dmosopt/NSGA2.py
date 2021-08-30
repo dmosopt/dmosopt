@@ -223,9 +223,9 @@ def fast_non_dominated_sort(Y):
     Q = [] # temp array of Pareto front index
     Sp = [] # temp array of points dominated by p
     S = [] # temp array of Sp
-    rank = np.zeros(N) # Pareto rank
-    n = np.zeros(N)  # domination counter of p
-    dom = np.zeros((N, N))  # the dominate matrix, 1: i doms j, 2: j doms i
+    rank = np.zeros(N, dtype=np.uint) # Pareto rank
+    n = np.zeros(N, dtype=np.uint)  # domination counter of p
+    dom = np.zeros((N, N), dtype=np.uint8)  # the dominate matrix, 1: i doms j, 2: j doms i
 
     # compute the dominate relationship online, much faster
     for i in range(N):
