@@ -89,8 +89,8 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
                 icall += 1
         population_para, population_obj, rank = \
             remove_worst(population_para, population_obj, pop, nInput, nOutput)
-        bestx = population_para.copy()
-        besty = population_obj.copy()
+    bestx = population_para.copy()
+    besty = population_obj.copy()
 
     x = np.vstack([x] + x_new)
     y = np.vstack([y] + y_new)
@@ -240,11 +240,11 @@ def fast_non_dominated_sort(Y):
         if n[i] == 0:
             rank[i] = 0
             Q.append(i)
-        S.append(copy.deepcopy(Sp))
+        S.append(Sp)
         Sp = []
 
     F = []
-    F.append(copy.deepcopy(Q))
+    F.append(Q)
     k = 0
     while len(F[k]) > 0:
         Q = []
@@ -257,7 +257,7 @@ def fast_non_dominated_sort(Y):
                     rank[q]  = k + 1
                     Q.append(q)
         k += 1
-        F.append(copy.deepcopy(Q))
+        F.append(Q)
 
     return rank, dom
 

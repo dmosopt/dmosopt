@@ -187,11 +187,11 @@ def fast_non_dominated_sort(Y):
         if n[i] == 0:
             rank[i] = 0
             Q.append(i)
-        S.append(copy.deepcopy(Sp))
+        S.append(Sp)
         Sp = []
 
     F = []
-    F.append(copy.deepcopy(Q))
+    F.append(Q)
     k = 0
     while len(F[k]) > 0:
         Q = []
@@ -204,7 +204,7 @@ def fast_non_dominated_sort(Y):
                     rank[q]  = k + 1
                     Q.append(q)
         k += 1
-        F.append(copy.deepcopy(Q))
+        F.append(Q)
 
     return rank, dom
 
