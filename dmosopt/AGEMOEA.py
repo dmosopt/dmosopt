@@ -293,7 +293,11 @@ def normalize(front, extreme):
     # Calculate the intercepts of the hyperplane constructed by the extreme
     # points and the axes
 
-    hyperplane = np.linalg.solve(front[extreme], np.ones(n))
+    try:
+        hyperplane = np.linalg.solve(front[extreme], np.ones(n))
+    except:
+        hyperplane = [np.nan]
+        
     if any(np.isnan(hyperplane)) or any(np.isinf(hyperplane)) or any(hyperplane < 0):
         normalization = np.max(front, axis=0)
     else:
