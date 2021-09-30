@@ -202,6 +202,7 @@ class DistOptimizer():
         save_eval=10,
         file_path=None,
         save=False,
+        metadata=None,
         gpr_anisotropic=False,
         gpr_optimizer="sceua",
         optimizer="nsga2",
@@ -249,7 +250,8 @@ class DistOptimizer():
         self.gpr_anisotropic = gpr_anisotropic
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
-
+        self.metadata = metadata
+            
         if self.resample_fraction > 1.0:
             self.resample_fraction = 1.0
         
@@ -405,7 +407,7 @@ class DistOptimizer():
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                        self.param_names, self.objective_names, self.feature_dtypes, self.constraint_names,
                        self.param_spec, finished_evals, self.problem_parameters, 
-                       self.file_path, self.logger)
+                       self.metadata, self.file_path, self.logger)
 
         
 
@@ -814,7 +816,7 @@ def init_from_h5(file_path, param_names, opt_id, logger=None):
 
     return old_evals, params, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids
 
-def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_names, feature_names, constraint_names, spec, evals, problem_parameters, fpath, logger):
+def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_names, feature_names, constraint_names, spec, evals, problem_parameters, metadata, fpath, logger):
     """
     Save progress and settings to an HDF5 file 'fpath'.
     """
@@ -823,9 +825,13 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
     if opt_id not in f.keys():
         h5_init_types(f, opt_id, param_names, objective_names, problem_parameters, constraint_names, spec)
         opt_grp = h5_get_group(f, opt_id)
+        if metadata is not None:
+            opt_grp['metadata'] = metadata
         if has_problem_ids:
             opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
-        
+        else:
+            opt_grp['problem_ids'] = np.asarray([0], dtype=np.int32)
+            
     opt_grp = h5_get_group(f, opt_id)
 
     parameter_enum_dict = h5py.check_enum_dtype(opt_grp['parameter_enum'].dtype)
