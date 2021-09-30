@@ -251,7 +251,7 @@ class DistOptimizer():
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
         self.metadata = metadata
-            
+        
         if self.resample_fraction > 1.0:
             self.resample_fraction = 1.0
         
@@ -345,7 +345,7 @@ class DistOptimizer():
                 init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                         self.param_spec, self.param_names, self.objective_names, 
                         self.feature_dtypes, self.constraint_names,
-                        self.problem_parameters, self.file_path)
+                        self.problem_parameters, self.metadata, self.file_path)
                     
 
 
@@ -871,7 +871,7 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
     f.close()
 
     
-def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_names, feature_dtypes, constraint_names, problem_parameters, fpath):
+def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_names, feature_dtypes, constraint_names, problem_parameters, metadata, fpath):
     """
     Save progress and settings to an HDF5 file 'fpath'.
     """
@@ -879,9 +879,12 @@ def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_n
     f = h5py.File(fpath, "a")
     if opt_id not in f.keys():
         h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, constraint_names, problem_parameters, spec)
+        opt_grp = h5_get_group(f, opt_id)
         if has_problem_ids:
-            opt_grp = h5_get_group(f, opt_id)
             opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
+        if metadata is not None:
+            opt_grp['metadata'] = metadata
+
 
     f.close()
 
