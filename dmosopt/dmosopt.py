@@ -414,7 +414,7 @@ class DistOptimizer():
     def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
         for problem_id in self.problem_ids:
-            best_x, best_y, best_f, best_c = self.optimizer_dict[problem_id].get_best_evals(feasible=feasible)
+            best_x, best_y, best_f, best_c, perm = self.optimizer_dict[problem_id].get_best_evals(feasible=feasible)
             prms = list(zip(self.param_names, list(best_x.T)))
             lres = list(zip(self.objective_names, list(best_y.T)))
             lconstr = None
