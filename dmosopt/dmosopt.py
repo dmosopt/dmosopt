@@ -371,7 +371,7 @@ class DistOptimizer():
                 old_eval_ys = [e.objectives for e in self.old_evals[problem_id]]
                 epochs = None
                 if len(old_eval_epochs) > 0 and old_eval_epochs[0] is not None:
-                    epochs = np.vstack(old_eval_epochs)
+                    epochs = np.concatenate(old_eval_epochs, axis=None)
                 x = np.vstack(old_eval_xs)
                 y = np.vstack(old_eval_ys)
                 f = None

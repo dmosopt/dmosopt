@@ -74,8 +74,8 @@ def main(constraints, file_path, opt_id, start_iter, filter_objectives, best, ve
         sys.stdout.flush()
 
         if best:
-            best_x, best_y, best_f, best_c = get_best(x, y, f, c, len(param_names), len(objective_names), 
-                                                      feasible=constraints)
+            best_x, best_y, best_f, best_c, best_epochs, _ = get_best(x, y, f, c, len(param_names), len(objective_names), 
+                                                                      feasible=constraints)
 
             prms = list(zip(param_names, list(best_x.T)))
             res = list(zip(objective_names, list(best_y.T)))
@@ -117,8 +117,6 @@ def main(constraints, file_path, opt_id, start_iter, filter_objectives, best, ve
         if feature_names is not None:
             for i, feature_name in enumerate(feature_names):
                 if len(f[feature_name].shape) == 1:
-                    print(f"feature: {feature_name} {f[feature_name].shape}")
-                    sys.stdout.flush()
                     f_ax = fig.add_subplot(fig_spec[n_row, 0])
                     plt.plot(f[feature_name][start_iter:])
                     n_row += 1

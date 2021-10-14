@@ -4,7 +4,7 @@ from functools import partial
 import click
 import numpy as np
 from dmosopt.dmosopt import init_from_h5
-from dmosopt.MOASMO import get_best, onestep
+from dmosopt.MOASMO import onestep
 
 script_name = os.path.basename(__file__)
 
