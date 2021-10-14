@@ -384,7 +384,6 @@ class DistOptimizer():
                     c = np.vstack(old_eval_cs)
                 initial = (epochs, x, y, f, c)
 
-            print(f'initial = {initial}')
             opt_strategy = SOptStrategy(opt_prob, self.n_initial, initial=initial, 
                                         population_size=self.population_size, 
                                         resample_fraction=self.resample_fraction,
@@ -408,7 +407,6 @@ class DistOptimizer():
         finished_evals = {}
         for problem_id in self.problem_ids:
             storage_evals = self.storage_dict[problem_id]
-            logger.info(f'storage_evals = {storage_evals}')
             if len(storage_evals) > 0:
                 epochs_completed = [x.epoch for x in storage_evals]
                 x_completed = [x.parameters for x in storage_evals]
@@ -433,7 +431,7 @@ class DistOptimizer():
     def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
         for problem_id in self.problem_ids:
-            best_x, best_y, best_f, best_c, perm = self.optimizer_dict[problem_id].get_best_evals(feasible=feasible)
+            best_x, best_y, best_f, best_c = self.optimizer_dict[problem_id].get_best_evals(feasible=feasible)
             prms = list(zip(self.param_names, list(best_x.T)))
             lres = list(zip(self.objective_names, list(best_y.T)))
             lconstr = None
