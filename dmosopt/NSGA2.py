@@ -212,6 +212,8 @@ def sortMO(x, y, nInput, nOutput, return_perm=False):
 
     if return_perm:
         return x, y, rank, crowd, perm
+    else:
+        return x, y, rank, crowd
 
 def fast_non_dominated_sort(Y):
     ''' a fast non-dominated sorting method

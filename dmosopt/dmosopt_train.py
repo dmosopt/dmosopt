@@ -40,19 +40,19 @@ def main(file_path, opt_id, output_file_path, verbose):
     if problem_ids is None:
         problem_ids = [0]
     for problem_id in problem_ids:
-        old_eval_xs = [e[0] for e in old_evals[problem_id]]
-        old_eval_ys = [e[1] for e in old_evals[problem_id]]
+        old_eval_xs = [e.parameters for e in old_evals[problem_id]]
+        old_eval_ys = [e.objectives for e in old_evals[problem_id]]
         x = np.vstack(old_eval_xs)
         y = np.vstack(old_eval_ys)
         old_eval_fs = None
         f = None
         if feature_names is not None:
-            old_eval_fs = [e[2] for e in old_evals[problem_id]]
+            old_eval_fs = [e.features for e in old_evals[problem_id]]
             f = np.concatenate(old_eval_fs, axis=None)
         old_eval_cs = None
         c = None
         if constraint_names is not None:
-            old_eval_cs = [e[3] for e in old_evals[problem_id]]
+            old_eval_cs = [e.constraints for e in old_evals[problem_id]]
             c = np.vstack(old_eval_cs)
         x = np.vstack(old_eval_xs)
         y = np.vstack(old_eval_ys)
