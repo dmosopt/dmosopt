@@ -156,8 +156,8 @@ class SOptStrategy():
         
     def get_best_evals(self, feasible=True):
         if self.x is not None:
-            bestx, besty, bestf, bestc, perm =  opt.get_best(self.x, self.y, self.f, self.c, self.prob.dim, 
-                                                             self.prob.n_objectives, feasible=feasible)
+            bestx, besty, bestf, bestc, beste, perm =  opt.get_best(self.x, self.y, self.f, self.c, self.prob.dim, 
+                                                                    self.prob.n_objectives, feasible=feasible)
             return bestx, besty, bestf, bestc
         else:
             return None, None, None, None
