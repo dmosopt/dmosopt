@@ -216,7 +216,7 @@ def sortMO(x, y, nInput, nOutput, return_perm=False):
         c += len(idxtt)
     x = x[idxt,:]
     y = y[idxt,:]
-    perm = idxr[idxt]
+    perm = idxr[idxt] if return_perm else None
     rank = rank[idxt]
 
     if return_perm:

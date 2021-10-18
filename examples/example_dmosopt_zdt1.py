@@ -51,7 +51,7 @@ if __name__ == '__main__':
                       'population_size': 200,
                       'initial_maxiter': 10,
                       'n_initial': 3,
-                      'n_iter': 2}
+                      'n_epochs': 2}
     
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:

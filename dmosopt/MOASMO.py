@@ -248,7 +248,7 @@ def train(nInput, nOutput, xlb, xub, \
     return sm
 
 
-def get_best(x, y, f, c, nInput, nOutput, feasible=True):
+def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_perm=False):
     xtmp = x.copy()
     ytmp = y.copy()
     if feasible and c is not None:
@@ -262,13 +262,20 @@ def get_best(x, y, f, c, nInput, nOutput, feasible=True):
             c = c[feasible,:]
     xtmp, ytmp, rank, crowd, perm = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
-    bestx = xtmp[idxp,:]
-    besty = ytmp[idxp,:]
-    bestf = None
+    best_x = xtmp[idxp,:]
+    best_y = ytmp[idxp,:]
+    best_f = None
     if f is not None:
-        bestf = f[perm][idxp]
-    bestc = None
+        best_f = f[perm][idxp]
+    best_c = None
     if c is not None:
-        bestc = c[perm,:][idxp,:]
+        best_c = c[perm,:][idxp,:]
 
-    return bestx, besty, bestf, bestc
+    best_epoch = None
+    if epochs is not None:
+        best_epoch = epochs[perm][idxp]
+
+    if not return_perm:
+        perm = None
+        
+    return best_x, best_y, best_f, best_c, best_epoch, perm

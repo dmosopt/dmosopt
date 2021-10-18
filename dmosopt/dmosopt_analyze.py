@@ -36,27 +36,32 @@ def list_find(f, lst):
 @click.option("--verbose", '-v', is_flag=True)
 def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, output_file, verbose):
 
-    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
+    max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
 
     if problem_ids is None:
         problem_ids = [0]
     for problem_id in problem_ids:
-        old_eval_xs = [e[0] for e in old_evals[problem_id]]
-        old_eval_ys = [e[1] for e in old_evals[problem_id]]
+        
+        old_eval_epochs = [e.epoch for e in old_evals[problem_id]]
+        old_eval_xs = [e.parameters for e in old_evals[problem_id]]
+        old_eval_ys = [e.objectives for e in old_evals[problem_id]]
         old_eval_fs = None
         f = None
         if feature_names is not None:
-            old_eval_fs = [e[2] for e in old_evals[problem_id]]
+            old_eval_fs = [e.features for e in old_evals[problem_id]]
             f = np.concatenate(old_eval_fs, axis=None)
         old_eval_cs = None
         c = None
         if constraint_names is not None:
-            old_eval_cs = [e[3] for e in old_evals[problem_id]]
+            old_eval_cs = [e.constraints for e in old_evals[problem_id]]
             c = np.vstack(old_eval_cs)
         x = np.vstack(old_eval_xs)
         y = np.vstack(old_eval_ys)
-
+        epochs = None
+        if len(old_eval_epochs) > 0 and old_eval_epochs[0] is not None:
+            epochs = np.concatenate(old_eval_epochs, axis=None)
+        
         if filter_objectives is not None:
             filtered_objective_set = set(filter_objectives.split(','))
             filtered_objective_index = []
@@ -71,8 +76,8 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
         print(f'Found {x.shape[0]} results for id {problem_id}')
         sys.stdout.flush()
         
-        best_x, best_y, best_f, best_c = get_best(x, y, f, c, len(param_names), len(objective_names), 
-                                                  feasible=constraints)
+        best_x, best_y, best_f, best_c, best_epoch, _ = get_best(x, y, f, c, len(param_names), len(objective_names), 
+                                                                 epochs=epochs, feasible=constraints)
 
         prms = list(zip(param_names, list(best_x.T)))
         res = list(zip(objective_names, list(best_y.T)))
@@ -108,20 +113,19 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
                 res_i = { k: res_dict[k][i] for k in objective_names }
                 prms_i = { k: prms_dict[k][i] for k in param_names }
                 output_dict[i] = [ float(prms_dict[k][i]) for k in param_names ]
-                constr_i = None
+                constr_label = ""
                 if constr_dict is not None:
                     constr_i = { k: constr_dict[k][i] for k in constraint_names }
-                ftrs_i = None
+                    constr_label = f'constr: {constr_i}'
+                ftrs_label = ""
                 if best_f is not None:
                     ftrs_i = best_f[i]
-                if ftrs_i is not None and constr_i is not None:
-                    print(f"Best eval {i} for id {problem_id}: {pprint.pformat(res_i)}@{prms_i} [{ftrs_i}] constr: {constr_i}")
-                elif ftrs_i is not None:
-                    print(f"Best eval {i} for id {problem_id}: {pprint.pformat(res_i)}@{prms_i} [{ftrs_i}]")
-                elif constr_i is not None:
-                    print(f"Best eval {i} for id {problem_id}: {pprint.pformat(res_i)}@{prms_i} constr: {constr_i}")
-                else:
-                    print(f"Best eval {i} for id {problem_id}: {pprint.pformat(res_i)}@{prms_i}")
+                    ftrs_label = f'[{ftrs_i}]'
+                epoch_label = ""
+                if best_epoch is not None:
+                    epoch_i = best_epoch[i]
+                    epoch_label = f"E{epoch_i}"
+                print(f"Best eval {i} for id {problem_id}: {epoch_label} {pprint.pformat(res_i)}@{prms_i} {ftrs_label} {constr_label}")
         else:
             sort_tuple = tuple(( res_dict[k] for k in sort_key[::-1] ))
             sorted_index = np.lexsort(sort_tuple)
@@ -129,20 +133,19 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
                 res_n = { k: res_dict[k][n] for k in objective_names }
                 prms_n = { k: prms_dict[k][n] for k in param_names }
                 output_dict[n] = [ float(prms_dict[k][n]) for k in param_names ]
-                constr_n = None
+                constr_label = ""
                 if constr_dict is not None:
                     constr_n = { k: constr_dict[k][n] for k in constraint_names }
-                ftrs_n = None
+                    constr_label = f'constr: {constr_n}'
+                ftrs_label = ""
                 if best_f is not None:
                     ftrs_n = best_f[n]
-                if ftrs_n is not None and constr_n is not None:
-                    print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} [{ftrs_n}] constr: {constr_n}")
-                elif ftrs_n is not None:
-                    print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} [{ftrs_n}]")
-                elif constr_n is not None:
-                    print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n} constr: {constr_n}")
-                else:
-                    print(f"Best eval {n} for id {problem_id} / {sort_key}: {pprint.pformat(res_n)}@{prms_n}")
+                    ftrs_label = f'[{ftrs_n}]'
+                epoch_label = ""
+                if best_epoch is not None:
+                    epoch_n = best_epoch[n]
+                    epoch_label = f"E{epoch_n}"
+                print(f"Best eval {n} for id {problem_id} / {sort_key}: {epoch_label} {pprint.pformat(res_n)}@{prms_n} {ftrs_label} {constr_label}")
 
         if output_file is not None:
             with open(output_file, 'w') as out:
