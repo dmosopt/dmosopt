@@ -16,7 +16,7 @@ from functools import reduce
 from dmosopt import sampling
 
 
-def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logger=None, pop=100, gen=100, \
+def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, pop=100, gen=100, \
                  crossover_rate = 0.9, mutation_rate = 0.05, mu = 1., mum = 20.):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
@@ -37,15 +37,23 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
     if mutation_rate is None:
         mutation_rate = 1. / float(nInput)
 
+    x_initial, y_initial = None, None
+    if initial is not None:
+        x_initial, y_initial = initial
+
     x = sampling.lh(pop, nInput)
     x = x * (xub - xlb) + xlb
+    if x_initial is not None:
+        x = np.vstack((x_initial, x))
 
     y = np.zeros((pop, nOutput))
     for i in range(pop):
         y[i,:] = model.evaluate(x[i,:])
+    if y_initial is not None:
+        y = np.vstack((y_initial, y))
         
-    population_parm = x.copy()
-    population_obj  = y.copy()
+    population_parm = x[:pop]
+    population_obj  = y[:pop]
     population_parm, population_obj, rank, crowd_dist = \
         environmental_selection(population_parm, population_obj, pop, nInput, nOutput)
 

@@ -196,11 +196,13 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, x_sm, y_sm = \
-            NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
+            NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
+                               feasibility_model=fsbm, logger=logger, \
                                pop=pop, **optimizer_kwargs)
     elif optimizer == 'age':
         bestx_sm, besty_sm, x_sm, y_sm = \
-            AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
+            AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
+                                 feasibility_model=fsbm, logger=logger, \
                                  pop=pop, **optimizer_kwargs)
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")

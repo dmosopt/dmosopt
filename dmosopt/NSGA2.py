@@ -8,7 +8,7 @@ import copy
 from dmosopt import sampling
 
 
-def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logger=None, pop=100, gen=100, \
+def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, pop=100, gen=100, \
                  crossover_rate = 0.5, mutation_rate = 0.05, mu = 1., mum = 20., ):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
@@ -29,17 +29,26 @@ def optimization(model, nInput, nOutput, xlb, xub, feasibility_model=None, logge
     if mutation_rate is None:
         mutation_rate = 1. / float(nInput)
 
+    x_initial, y_initial = None, None
+    if initial is not None:
+        x_initial, y_initial = initial
+        
     x = sampling.lh(pop, nInput)
     x = x * (xub - xlb) + xlb
-
+    if x_initial is not None:
+        x = np.vstack((x_initial, x))
+    
     y = np.zeros((pop, nOutput))
     for i in range(pop):
         y[i,:] = model.evaluate(x[i,:])
+    if y_initial is not None:
+        y = np.vstack((y_initial, y))
+        
     icall = pop
 
     x, y, rank, crowd = sortMO(x, y, nInput, nOutput)
-    population_para = x.copy()
-    population_obj  = y.copy()
+    population_para = x[:pop]
+    population_obj  = y[:pop]
 
     nchildren=1
     if feasibility_model is not None:
