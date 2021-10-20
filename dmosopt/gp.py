@@ -1,24 +1,13 @@
-from __future__ import division, absolute_import
+
+import copy
 import numpy as np
 from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern, ConstantKernel, WhiteKernel
-#from sklearn.gaussian_process.kernels import (RBF, Matern, RationalQuadratic, ExpSineSquared, DotProduct, ConstantKernel)
-import copy
-
-use_numba = True
-try:
-    from numba import njit
-except ImportError as e:
-    use_numba = False
-    def njit(cache=False, nogil=False):
-        def decorator(func):
-            return func
-        return decorator
+from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteKernel
 
 
 class GPR_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -36,7 +25,7 @@ class GPR_Matern:
         length_scale=0.5
         if anisotropic:
             length_scale=np.asarray([0.5]*nInput)
-        kernel = ConstantKernel(1, (0.01, 100)) * Matern(length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=1.5) + \
+        kernel = ConstantKernel(1, (0.01, 100)) * Matern(length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=2.5) + \
             WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 1e-4))
         smlist = []
         for i in range(nOutput):
@@ -44,11 +33,11 @@ class GPR_Matern:
                 logger.info(f"GPR_Matern: creating regressor for output {i} of {nOutput}...")
                 logger.info(f"GPR_Matern: y_{i} range is {(np.min(y[:,i]), np.max(y[:,i]))}...")
             if optimizer == "sceua":
-                optf=partial(sceua_optimizer, logger)
+                optf=partial(sceua_optimizer, seed, logger)
             elif optimizer == "dlib":
                 optf=partial(dlib_optimizer, logger)
             else:
-                optf=partial(sceua_optimizer, logger)                
+                optf=partial(sceua_optimizer, seed, logger)                
             #smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, n_restarts_optimizer=5))
             smlist.append(GaussianProcessRegressor(kernel=kernel, optimizer=optf, normalize_y=True))
             smlist[i].fit(x,y[:,i])
@@ -56,7 +45,8 @@ class GPR_Matern:
 
     def predict(self,xin):
         x = copy.deepcopy(xin)
-        if len(x.shape) == 1: x = x.reshape((1,self.nInput))
+        if len(x.shape) == 1:
+            x = x.reshape((1,self.nInput))
         N = x.shape[0]
         y = np.zeros((N,self.nOutput))
         for i in range(N):
@@ -67,6 +57,60 @@ class GPR_Matern:
 
     def evaluate(self,x):
         return self.predict(x)
+
+    
+class GPR_RBF:
+    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
+        self.nInput  = nInput
+        self.nOutput = nOutput
+        self.xlb = xlb
+        self.xub = xub
+        self.xrg = xub - xlb
+        self.logger = logger
+
+        x = copy.deepcopy(xin)
+        y = copy.deepcopy(yin)
+        for i in range(N):
+            x[i,:] = (x[i,:] - self.xlb) / self.xrg
+        if nOutput == 1:
+            y = y.reshape((y.shape[0],1))
+
+        length_scale=0.5
+        if anisotropic:
+            length_scale=np.asarray([0.5]*nInput)
+        kernel = ConstantKernel(1, (0.01, 100)) * RBF(length_scale=length_scale, length_scale_bounds=length_scale_bounds) + \
+            WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 1e-4))
+        smlist = []
+        for i in range(nOutput):
+            if logger is not None:
+                logger.info(f"GPR_RBF: creating regressor for output {i} of {nOutput}...")
+                logger.info(f"GPR_RBF: y_{i} range is {(np.min(y[:,i]), np.max(y[:,i]))}...")
+            if optimizer == "sceua":
+                optf=partial(sceua_optimizer, seed, logger)
+            elif optimizer == "dlib":
+                optf=partial(dlib_optimizer, logger)
+            else:
+                optf=partial(sceua_optimizer, seed, logger)                
+            #smlist.append(GaussianProcessRegressor(kernel=kernel, alpha=1e-5, n_restarts_optimizer=5))
+            smlist.append(GaussianProcessRegressor(kernel=kernel, optimizer=optf, normalize_y=True))
+            smlist[i].fit(x,y[:,i])
+        self.smlist = smlist
+
+    def predict(self,xin):
+        x = copy.deepcopy(xin)
+        if len(x.shape) == 1:
+            x = x.reshape((1,self.nInput))
+        N = x.shape[0]
+        y = np.zeros((N,self.nOutput))
+        for i in range(N):
+            x[i,:] = (x[i,:] - self.xlb) / self.xrg
+        for i in range(self.nOutput):
+            y[:,i] = self.smlist[i].predict(x)
+        return y
+
+    def evaluate(self,x):
+        return self.predict(x)
+
 
 
 def dlib_optimizer(logger, obj_func, initial_theta, bounds):
@@ -119,7 +163,7 @@ def dlib_optimizer(logger, obj_func, initial_theta, bounds):
 
 
     
-def sceua_optimizer(logger, obj_func, initial_theta, bounds):
+def sceua_optimizer(seed, logger, obj_func, initial_theta, bounds):
     """
     SCE-UA optimizer for optimizing hyper parameters of GPR
     Input:
@@ -136,37 +180,35 @@ def sceua_optimizer(logger, obj_func, initial_theta, bounds):
       * 'func_min' is the corresponding value of the target function.
     """
     nopt = len(bounds)
-    bl = np.zeros(nopt)
-    bu = np.zeros(nopt)
-    for i,bd in enumerate(bounds):
-        bl[i] = bd[0]
-        bu[i] = bd[1]
+    bl = np.asarray([b[0] for b in bounds])
+    bu = np.asarray([b[1] for b in bounds])
     ngs = nopt
     maxn = 3000
     kstop = 10
     pcento = 0.1
     peps = 0.001
     [bestx, bestf, icall, nloop, bestx_list, bestf_list, icall_list] = \
-        sceua(obj_func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger)
+        sceua(obj_func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=seed, logger=logger)
     theta_opt = bestx
     func_min = bestf
     return theta_opt, func_min
 
-@njit()
-def select_simplex(nps, npg):
-    lcs = np.zeros(nps, dtype=np.int64)
-    lcs[0] = 0
-    for k3 in range(1,nps):
-        for itmp in range(1000):
-            lpos = int(np.floor(
-                    npg + 0.5 - np.sqrt((npg + 0.5)**2 - 
-                    npg * (npg + 1) * np.random.rand())))
-            if len(np.where(lcs[:k3] == lpos)[0]) == 0:
-                break
-        lcs[k3] = lpos
-    return np.sort(lcs)
 
-def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
+
+def select_simplex(nps, npg, local_random):
+    lcs = set([0])
+    for k3 in range(1, nps):
+        apos = np.asarray(np.floor(npg + 0.5 - np.sqrt((npg + 0.5)**2 - npg * (npg + 1) * local_random.uniform(size=1000))),
+                          dtype=np.uint32)
+        for i in range(apos.shape[0]):
+            lpos = apos[i]
+            if lpos not in lcs:
+                break
+        lcs.add(lpos)
+    return list(lcs)
+
+
+def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=None):
     """
     This is the subroutine implementing the SCE algorithm, 
     written by Q.Duan, 9/2004
@@ -211,6 +253,8 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
     """
 
     verbose = (logger is not None)
+    local_random = np.random.default_rng(seed=seed)
+    
     # Initialize SCE parameters:
     npg  = 2 * nopt + 1
     nps  = nopt + 1
@@ -219,13 +263,13 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
     bd   = bu - bl
 
     # Create an initial population to fill array x[npt,nopt]
-    x = np.random.random([npt,nopt])
-    for i in range(npt):
-        x[i,:] = x[i,:] * bd + bl
+    x_sample = local_random.uniform(size=(npt, nopt))
+    x = x_sample * bd + bl
 
     xf = np.zeros(npt)
     for i in range(npt):
         xf[i] = func(x[i,:])[0] # only used the first returned value
+    
     icall = npt
 
     # Sort the population in order of increasing function values
@@ -248,10 +292,10 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
     
     if verbose:
         logger.info('The Initial Loop: 0')
-        logger.info('BESTF  : %f' % bestf)
-        logger.info('BESTX  : %s' % np.array2string(bestx))
-        logger.info('WORSTF : %f' % worstf)
-        logger.info('WORSTX : %s' % np.array2string(worstx))
+        logger.info(f'BESTF  : {bestf:.2f}')
+        logger.info(f'BESTX  : {np.array2string(bestx)}')
+        logger.info(f'WORSTF : {worstf:.2f}')
+        logger.info(f'WORSTX : {np.array2string(worstx)}')
         logger.info(' ')
 
     # Computes the normalized geometric range of the parameters
@@ -281,7 +325,7 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
         
         # Loop on complexes (sub-populations)
         for igs in range(ngs):
-        
+
             # Partition the population into complexes (sub-populations)
             k1 = np.int64(np.linspace(0, npg-1, npg))
             k2 = k1 * ngs + igs
@@ -293,13 +337,13 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
                 
                 # Select simplex by sampling the complex according to a linear
                 # probability distribution
-                lcs = select_simplex(nps, npg)
+                lcs = np.asarray(select_simplex(nps, npg, local_random))
     
                 # Construct the simplex:
                 s = copy.deepcopy(cx[lcs,:])
                 sf = copy.deepcopy(cf[lcs])
                 
-                snew, fnew, icall = cceua(func, s, sf, bl, bu, icall)
+                snew, fnew, icall = cceua(func, s, sf, bl, bu, icall, local_random)
     
                 # Replace the worst point in Simplex with the new point:
                 s[nps-1,:] = snew
@@ -337,11 +381,11 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
         icall_list.append(icall)
         
         if verbose:
-            logger.info('Evolution Loop: %d - Trial - %d' % (nloop, icall))
-            logger.info('BESTF  : %f' % bestf)
-            logger.info('BESTX  : %s' % np.array2string(bestx))
-            logger.info('WORSTF : %f' % worstf)
-            logger.info('WORSTX : %s' % np.array2string(worstx))
+            logger.info(f'Evolution Loop: {nloop} - Trial - {icall}')
+            logger.info(f'BESTF  : {bestf:.2f}')
+            logger.info(f'BESTX  : {np.array2string(bestx)}')
+            logger.info(f'WORSTF : {worstf:.2f}')
+            logger.info(f'WORSTX : {np.array2string(worstx)}')
             logger.info(' ')
         
         # Computes the normalized geometric range of the parameters
@@ -350,7 +394,7 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
         if verbose:
             if icall >= maxn:
                 logger.info('*** OPTIMIZATION SEARCH TERMINATED BECAUSE THE LIMIT')
-                logger.info('ON THE MAXIMUM NUMBER OF TRIALS %d HAS BEEN EXCEEDED!' % maxn)
+                logger.info(f'ON THE MAXIMUM NUMBER OF TRIALS {maxn} HAS BEEN EXCEEDED!')
             if gnrng < peps:
                 logger.info('THE POPULATION HAS CONVERGED TO A PRESPECIFIED SMALL PARAMETER SPACE')
             
@@ -361,21 +405,21 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, logger=None):
             criter_change /= np.mean(np.abs(criter[nloop-kstop:nloop]))
             if criter_change < pcento:
                 if verbose:
-                    logger.info('THE BEST POINT HAS IMPROVED IN LAST %d LOOPS BY LESS THAN THE THRESHOLD %f%%' % (kstop, pcento))
+                    logger.info(f'THE BEST POINT HAS IMPROVED IN LAST {kstop} LOOPS BY LESS THAN THE THRESHOLD {pcento}%')
                     logger.info('CONVERGENCY HAS ACHIEVED BASED ON OBJECTIVE FUNCTION CRITERIA!!!')
         
     # End of the Outer Loops
     
     if verbose:
-        logger.info('SEARCH WAS STOPPED AT TRIAL NUMBER: %d' % icall )
-        logger.info('NORMALIZED GEOMETRIC RANGE = %f' % gnrng )
-        logger.info('THE BEST POINT HAS IMPROVED IN LAST %d LOOPS BY %f%%' % (kstop, criter_change))
+        logger.info(f'SEARCH WAS STOPPED AT TRIAL NUMBER: {icall}')
+        logger.info(f'NORMALIZED GEOMETRIC RANGE = {gnrng}')
+        logger.info(f'THE BEST POINT HAS IMPROVED IN LAST {kstop} LOOPS BY {criter_change:.4f}%')
    
     # END of Subroutine SCEUA_runner
     return bestx, bestf, icall, nloop, bestx_list, bestf_list, icall_list
 
 
-def cceua(func, s, sf, bl, bu, icall):
+def cceua(func, s, sf, bl, bu, icall, local_random):
     """
     This is the subroutine for generating a new point in a simplex
     func:   optimized function
@@ -394,6 +438,8 @@ def cceua(func, s, sf, bl, bu, icall):
              = 0 , no
     """
 
+    
+    
     nps, nopt = s.shape
     n = nps
     alpha = 1.0
@@ -418,7 +464,7 @@ def cceua(func, s, sf, bl, bu, icall):
     if sum(s1 < 0) > 0:
         ibound = 2
     if ibound >= 1:
-        snew = bl + np.random.random(nopt) * (bu - bl)
+        snew = bl + local_random.random(nopt) * (bu - bl)
 
     fnew = func(snew)[0] # only used the first returned value
     icall += 1
@@ -431,7 +477,7 @@ def cceua(func, s, sf, bl, bu, icall):
     
     # Both reflection and contraction have failed, attempt a random point
         if fnew > fw:
-            snew = bl + np.random.random(nopt) * (bu - bl)
+            snew = bl + local_random.random(nopt) * (bu - bl)
             fnew = func(snew)[0] # only used the first returned value
             icall += 1
 

@@ -30,7 +30,7 @@ def list_find(f, lst):
 @click.option("--verbose", '-v', is_flag=True)
 def main(file_path, opt_id, output_file_path, verbose):
 
-    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
+    _, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
 
 

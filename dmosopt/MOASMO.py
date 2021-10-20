@@ -243,7 +243,8 @@ def train(nInput, nOutput, xlb, xub, \
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
                 
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
+    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer,
+                       anisotropic=gpr_anisotropic, logger=logger)
 
     return sm
 
