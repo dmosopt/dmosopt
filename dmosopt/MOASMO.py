@@ -3,6 +3,15 @@ import sys, pprint
 import numpy as np
 from dmosopt import NSGA2, AGEMOEA, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
+# function sharedmoea(selfunc,μ,λ)
+#  \selfunc, selection function to be used.
+# μand λ, population and offspring sizes.
+# t ←0; P0 ←randompopulation(μ).
+# while end criterion not met do
+# Poff←applyvariation(Pt,λ).
+# Pt+1 ←selfunc(Pt ∪Poff,μ).
+# t ←t +1.
+# return nondomset(Pt+1), final non-dominated set
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,

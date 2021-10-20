@@ -60,7 +60,7 @@ class OptProblem():
 class SOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp",
                  population_size=100, resample_fraction=0.25, num_generations=100,
-                 crossover_rate=0.9, mutation_rate=None,
+                 crossover_rate=0.9, mutation_rate=None, distance_metric=None,
                  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
                  feasibility_model=False,
                  logger=None):
@@ -69,6 +69,7 @@ class SOptStrategy():
         self.gpr_anisotropic = gpr_anisotropic
         self.gpr_optimizer = gpr_optimizer
         self.optimizer = optimizer
+        self.distance_metric = distance_metric
         self.prob = prob
         self.completed = []
         self.reqs = []
@@ -140,13 +141,16 @@ class SOptStrategy():
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
             self.completed = []
+        optimizer_kwargs={'gen': self.num_generations,
+                          'crossover_rate': self.crossover_rate,
+                          'mutation_rate': self.mutation_rate}
+        if self.distance_metric is not None:
+            optimizer_kwargs['distance_metric'] = self.distance_metric
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
                                  self.x, self.y, self.c, pop=self.population_size,
                                  optimizer=self.optimizer,
-                                 optimizer_kwargs={'gen': self.num_generations,
-                                                   'crossover_rate': self.crossover_rate,
-                                                   'mutation_rate': self.mutation_rate},
+                                 optimizer_kwargs=optimizer_kwargs,
                                  gpr_optimizer=self.gpr_optimizer,
                                  gpr_anisotropic=self.gpr_anisotropic,
                                  feasibility_model=self.feasibility_model,
@@ -208,6 +212,7 @@ class DistOptimizer():
         resample_fraction=0.25,
         mutation_rate=None,
         crossover_rate=0.9,
+        distance_metric=None,
         n_epochs=10,
         save_eval=10,
         file_path=None,
@@ -256,6 +261,7 @@ class DistOptimizer():
         self.resample_fraction = resample_fraction
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
+        self.distance_metric = distance_metric
         self.gpr_optimizer = gpr_optimizer
         self.gpr_anisotropic = gpr_anisotropic
         self.optimizer = optimizer
@@ -392,6 +398,7 @@ class DistOptimizer():
                                         initial_method=self.initial_method,
                                         mutation_rate=self.mutation_rate,
                                         crossover_rate=self.crossover_rate,
+                                        distance_metric=self.distance_metric,
                                         gpr_optimizer=self.gpr_optimizer,
                                         gpr_anisotropic=self.gpr_anisotropic,
                                         optimizer=self.optimizer,

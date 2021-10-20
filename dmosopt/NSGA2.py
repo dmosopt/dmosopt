@@ -8,8 +8,8 @@ import copy
 from dmosopt import sampling
 
 
-def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, pop=100, gen=100, \
-                 crossover_rate = 0.5, mutation_rate = 0.05, mu = 1., mum = 20., ):
+def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None,
+                 distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05, mu = 1., mum = 20., ):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
         nInput: number of model input
@@ -46,7 +46,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         
     icall = pop
 
-    x, y, rank, crowd = sortMO(x, y, nInput, nOutput)
+    x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
     population_para = x[:pop]
     population_obj  = y[:pop]
 
@@ -97,7 +97,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 count += 1
                 icall += 1
         population_para, population_obj, rank = \
-            remove_worst(population_para, population_obj, pop, nInput, nOutput)
+            remove_worst(population_para, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
     bestx = population_para.copy()
     besty = population_obj.copy()
 
@@ -187,7 +187,7 @@ def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
 
 
 
-def sortMO(x, y, nInput, nOutput, return_perm=False):
+def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metric='crowding'):
     ''' Non domination sorting for multi-objective optimization
         x: input parameter matrix
         y: output objectives matrix
@@ -195,6 +195,14 @@ def sortMO(x, y, nInput, nOutput, return_perm=False):
         nOutput: number of output
         return_perm: if True, return permutation indices of original input
     '''
+    distance_function = crowding_distance
+    if distance_metric is not None:
+        if distance_metric == 'crowding':
+            distance_function = crowding_distance
+        elif distance_metric == 'euclidean':
+            distance_function = euclidean_distance
+        else:
+            raise RuntimeError(f'sortMO: unknown distance metric {distance_metric}')
     rank, dom = fast_non_dominated_sort(y)
     idxr = rank.argsort()
     rank = rank[idxr]
@@ -321,6 +329,11 @@ def crowding_distance(Y):
     return D
 
 
+def euclidean_distance(a):
+    """Row-wise euclidean distance.
+    """
+    return np.sqrt(np.sum(a ** 2, axis=1))
+
 
 def tournament_prob(ax, i):
     p = ax[1]
@@ -338,9 +351,9 @@ def tournament_selection(population_parm, population_obj, pop, poolsize, toursiz
     return population_parm[poolidx,:]
 
 
-def remove_worst(population_para, population_obj, pop, nInput, nOutput):
+def remove_worst(population_para, population_obj, pop, nInput, nOutput, distance_metric=None):
     ''' remove the worst individuals in the population '''
     population_para, population_obj, rank, crowd = \
-        sortMO(population_para, population_obj, nInput, nOutput)
+        sortMO(population_para, population_obj, nInput, nOutput, distance_metric=distance_metric)
     return population_para[0:pop,:], population_obj[0:pop,:], rank[0:pop]
 
