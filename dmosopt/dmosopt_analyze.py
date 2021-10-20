@@ -61,7 +61,7 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
         epochs = None
         if len(old_eval_epochs) > 0 and old_eval_epochs[0] is not None:
             epochs = np.concatenate(old_eval_epochs, axis=None)
-        
+
         if filter_objectives is not None:
             filtered_objective_set = set(filter_objectives.split(','))
             filtered_objective_index = []

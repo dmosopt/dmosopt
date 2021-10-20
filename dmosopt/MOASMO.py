@@ -270,6 +270,8 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
             if f is not None:
                 f = f[feasible]
             c = c[feasible,:]
+            if epochs is not None:
+                epochs = epochs[feasible]
     xtmp, ytmp, rank, crowd, perm = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
     best_x = xtmp[idxp,:]
