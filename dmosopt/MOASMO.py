@@ -258,7 +258,7 @@ def train(nInput, nOutput, xlb, xub, \
     return sm
 
 
-def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_perm=False):
+def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_perm=False, return_feasible=False):
     xtmp = x.copy()
     ytmp = y.copy()
     if feasible and c is not None:
@@ -289,5 +289,8 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
 
     if not return_perm:
         perm = None
+    if return_feasible:
+        return best_x, best_y, best_f, best_c, best_epoch, perm, feasible
+    else:
+        return best_x, best_y, best_f, best_c, best_epoch, perm
         
-    return best_x, best_y, best_f, best_c, best_epoch, perm
