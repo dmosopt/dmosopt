@@ -26,13 +26,27 @@ def obj_fun(pp):
     logger.info(f"Iter: \t pp:{pp}, result:{res}")
     return res
 
+def zdt3_pareto(n_points=100, flatten=True):
+    
+    regions = [[0, 0.0830015349],
+               [0.182228780, 0.2577623634],
+               [0.4093136748, 0.4538821041],
+               [0.6183967944, 0.6525117038],
+               [0.8233317983, 0.8518328654]]
 
-def zdt3_pareto():
-    n = 100
-    f = np.zeros([n,2])
-    f[:,0] = np.linspace(0,1,n)
-    f[:,1] = 1.0 - np.sqrt(f[:,0])
-    return f
+    pf = []
+
+    for r in regions:
+        x1 = np.linspace(r[0], r[1], int(n_points / len(regions)))
+        x2 = 1 - np.sqrt(x1) - x1 * np.sin(10 * np.pi * x1)
+        pf.append(np.array([x1, x2]).T)
+
+    if not flatten:
+        pf = np.concatenate([pf[None,...] for pf in pf])
+    else:
+        pf = np.row_stack(pf)
+
+    return pf
 
 if __name__ == '__main__':
 
@@ -51,7 +65,7 @@ if __name__ == '__main__':
                       'objective_names': objective_names,
                       'n_initial': 3,
                       'n_epochs': 4}
-    
+
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:
         import matplotlib.pyplot as plt
@@ -64,7 +78,7 @@ if __name__ == '__main__':
         plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='MO-ASMO')
     
         y_true = zdt3_pareto()
-        plt.plot(y_true[:,0],y_true[:,1],'k-',label='True Pareto')
+        plt.plot(y_true[:,0],y_true[:,1],'ko',label='True Pareto')
         plt.legend()
         
         plt.savefig("example_dmosopt_zdt3.svg")
