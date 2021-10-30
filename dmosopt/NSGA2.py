@@ -9,7 +9,8 @@ from dmosopt import sampling
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None,
-                 distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05, mu = 1., mum = 20., ):
+                 distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05,
+                 di_crossover = 1., di_mutation = 20., ):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
         nInput: number of model input
@@ -20,8 +21,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
         mutation_rate: ratio of muration in each generation
-        mu: distribution index for crossover
-        mum: distribution index for mutation
+        di_crossover: distribution index for crossover
+        di_mutation: distribution index for mutation
     '''
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
@@ -44,8 +45,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if y_initial is not None:
         y = np.vstack((y_initial, y))
         
-    icall = pop
-
     x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
     population_para = x[:pop]
     population_obj  = y[:pop]
@@ -67,7 +66,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 parentidx = np.random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
-                children1, children2 = crossover(parent1, parent2, mu, xlb, xub, nchildren=nchildren)
+                children1, children2 = crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child1 = children1[0]
                     child2 = children2[0]
@@ -80,11 +79,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 population_para = np.vstack((population_para,child1,child2))
                 population_obj  = np.vstack((population_obj,y1,y2))
                 count += 2
-                icall += 2
             else:
                 parentidx = np.random.randint(poolsize)
                 parent    = pool[parentidx,:]
-                children  = mutation(parent, mutation_rate, mum, xlb, xub, nchildren=nchildren)
+                children  = mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child = children[0]
                 else:
@@ -95,7 +93,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 population_para = np.vstack((population_para,child))
                 population_obj  = np.vstack((population_obj,y1))
                 count += 1
-                icall += 1
         population_para, population_obj, rank = \
             remove_worst(population_para, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
     bestx = population_para.copy()
@@ -143,11 +140,11 @@ def feasibility_selection(feasibility_model, children, logger=None):
     return child
 
 
-def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
+def mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
     ''' Polynomial Mutation in Genetic Algorithm
         For more information about PMut refer the NSGA-II paper.
         muration_rate: mutation rate
-        mum: distribution index for mutation, default = 20
+        di_mutation: distribution index for mutation, default = 20
             This determine how well spread the child will be from its parent.
         parent: sample point before mutation
 	'''
@@ -158,16 +155,16 @@ def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
         u = np.random.rand(n)
         lo = np.argwhere(u < mutation_rate).ravel()
         hi = np.argwhere(u >= mutation_rate).ravel()
-        delta[lo] = (2.0*u[lo])**(1.0/(mum+1)) - 1.0
-        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(mum+1))
+        delta[lo] = (2.0*u[lo])**(1.0/(di_mutation+1)) - 1.0
+        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(di_mutation+1))
         children[i, :] = np.clip(parent + (xub - xlb) * delta, xlb, xub)
     return children
 
 
-def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
+def crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=1):
     ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
          For more information about SBX refer the NSGA-II paper.
-         mu: distribution index for crossover, default = 20
+         di_crossover: distribution index for crossover, default = 20
          This determine how well spread the children will be from their parents.
     '''
     n = len(parent1)
@@ -178,8 +175,8 @@ def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
         u = np.random.rand(n)
         lo = np.argwhere(u <= 0.5).ravel()
         hi = np.argwhere(u > 0.5).ravel()
-        beta[lo] = (2.0*u[lo])**(1.0/(mu+1))
-        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(mu+1))
+        beta[lo] = (2.0*u[lo])**(1.0/(di_crossover+1))
+        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(di_crossover+1))
         children1[i,:] = np.clip(0.5*((1-beta)*parent1 + (1+beta)*parent2), xlb, xub)
         children2[i,:] = np.clip(0.5*((1+beta)*parent1 + (1-beta)*parent2), xlb, xub)
     return children1, children2
@@ -216,7 +213,7 @@ def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metric='crowding')
     c = 0
     for k in range(rmax):
         rankidx = (rank == k)
-        D = crowding_distance(y[rankidx,:])
+        D = distance_function(y[rankidx,:])
         idxd = D.argsort()[::-1]
         crowd[rankidx] = D[idxd]
         idxtt = np.array(range(len(rank)))[rankidx]
@@ -298,8 +295,8 @@ def crowding_distance(Y):
         d: number of dimensions
     '''
     n,d = Y.shape
-    lb = np.min(Y, axis = 0)
-    ub = np.max(Y, axis = 0)
+    lb = np.min(Y, axis = 1, keepdims=True)
+    ub = np.max(Y, axis = 1, keepdims=True)
 
     if n == 1 or np.min(ub-lb) == 0.0:
         D = np.array([1.])
@@ -328,11 +325,17 @@ def crowding_distance(Y):
 
     return D
 
-
-def euclidean_distance(a):
+def euclidean_distance(Y):
     """Row-wise euclidean distance.
     """
-    return np.sqrt(np.sum(a ** 2, axis=1))
+    n, d = Y.shape
+    lb = np.min(Y, axis = 1, keepdims=True)
+    ub = np.max(Y, axis = 1, keepdims=True)
+    if np.min(ub-lb) == 0.0:
+        return np.array([1.]*n)
+    else:
+        U = (Y - lb) / (ub - lb)
+        return np.sqrt(np.sum(U ** 2, axis=1))
 
 
 def tournament_prob(ax, i):
@@ -356,4 +359,5 @@ def remove_worst(population_para, population_obj, pop, nInput, nOutput, distance
     population_para, population_obj, rank, crowd = \
         sortMO(population_para, population_obj, nInput, nOutput, distance_metric=distance_metric)
     return population_para[0:pop,:], population_obj[0:pop,:], rank[0:pop]
+
 

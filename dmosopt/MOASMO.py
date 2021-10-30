@@ -21,7 +21,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  optimizer_kwargs= { 'gen': 100,
                                      'crossover_rate': 0.9,
                                      'mutation_rate': None,
-                                     'mu': 1., 'mum': 20. },
+                                     'di_crossover': 1., 'di_mutation': 20. },
                  logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -37,8 +37,8 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         pop: number of population
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
-        mu: distribution index for crossover
-        mum: distribution index for mutation
+        di_crossover: distribution index for crossover
+        di_mutation: distribution index for mutation
     """
     N_resample = int(pop*pct)
     if (Xinit is None and Yinit is None):
@@ -165,7 +165,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             optimizer_kwargs= { 'gen': 100,
                                 'crossover_rate': 0.9,
                                 'mutation_rate': None,
-                                'mu': 1., 'mum': 20. },
+                                'di_crossover': 1., 'di_mutation': 20. },
             logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -182,8 +182,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
         mutation_rate: ratio of mutation in each generation
-        mu: distribution index for crossover
-        mum: distribution index for mutation
+        di_crossover: distribution index for crossover
+        di_mutation: distribution index for mutation
     """
     N_resample = int(pop*pct)
     x = Xinit.copy()

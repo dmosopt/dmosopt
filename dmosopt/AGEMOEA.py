@@ -17,7 +17,7 @@ from dmosopt import sampling
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, pop=100, gen=100, \
-                 crossover_rate = 0.9, mutation_rate = 0.05, mu = 1., mum = 20.):
+                 crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
         nInput: number of model input
@@ -28,8 +28,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         gen: number of generation
         crossover_rate: ratio of crossover in each generation
         mutation_rate: ratio of muration in each generation
-        mu: distribution index for crossover
-        mum: distribution index for mutation
+        di_crossover: distribution index for crossover
+        di_mutation: distribution index for mutation
     '''
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
@@ -75,7 +75,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 parentidx = np.random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
-                children1, children2 = crossover(parent1, parent2, mu, xlb, xub, nchildren=nchildren)
+                children1, children2 = crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child1 = children1[0]
                     child2 = children2[0]
@@ -91,7 +91,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             else:
                 parentidx = np.random.randint(poolsize)
                 parent    = pool[parentidx,:]
-                children  = mutation(parent, mutation_rate, mum, xlb, xub, nchildren=nchildren)
+                children  = mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child = children[0]
                 else:
@@ -231,11 +231,11 @@ def dominates(p,q):
 
 
 
-def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
+def mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
     ''' Polynomial Mutation in Genetic Algorithm
         For more information about PMut refer the NSGA-II paper.
         muration_rate: mutation rate
-        mum: distribution index for mutation, default = 20
+        di_mutation: distribution index for mutation, default = 20
             This determine how well spread the child will be from its parent.
         parent: sample point before mutation
 	'''
@@ -246,16 +246,16 @@ def mutation(parent, mutation_rate, mum, xlb, xub, nchildren=1):
         u = np.random.rand(n)
         lo = np.argwhere(u < mutation_rate).ravel()
         hi = np.argwhere(u >= mutation_rate).ravel()
-        delta[lo] = (2.0*u[lo])**(1.0/(mum+1)) - 1.0
-        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(mum+1))
+        delta[lo] = (2.0*u[lo])**(1.0/(di_mutation+1)) - 1.0
+        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(di_mutation+1))
         children[i, :] = np.clip(parent + (xub - xlb) * delta, xlb, xub)
     return children
 
 
-def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
+def crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=1):
     ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
          For more information about SBX refer the NSGA-II paper.
-         mu: distribution index for crossover, default = 20
+         di_crossover: distribution index for crossover, default = 20
          This determine how well spread the children will be from their parents.
     '''
     n = len(parent1)
@@ -266,8 +266,8 @@ def crossover(parent1, parent2, mu, xlb, xub, nchildren=1):
         u = np.random.rand(n)
         lo = np.argwhere(u <= 0.5).ravel()
         hi = np.argwhere(u > 0.5).ravel()
-        beta[lo] = (2.0*u[lo])**(1.0/(mu+1))
-        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(mu+1))
+        beta[lo] = (2.0*u[lo])**(1.0/(di_crossover+1))
+        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(di_crossover+1))
         children1[i,:] = np.clip(0.5*((1-beta)*parent1 + (1+beta)*parent2), xlb, xub)
         children2[i,:] = np.clip(0.5*((1+beta)*parent1 + (1-beta)*parent2), xlb, xub)
     return children1, children2

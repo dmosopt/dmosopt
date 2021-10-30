@@ -60,8 +60,8 @@ class OptProblem():
 class SOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp",
                  population_size=100, resample_fraction=0.25, num_generations=100,
-                 crossover_rate=0.9, mutation_rate=None, distance_metric=None,
-                 gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
+                 crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
+                 distance_metric=None,  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
                  feasibility_model=False,
                  logger=None):
         self.logger = logger
@@ -85,6 +85,8 @@ class SOptStrategy():
         self.num_generations = num_generations
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
+        self.di_mutation = di_mutation
+        self.di_crossover = di_crossover
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
@@ -143,7 +145,9 @@ class SOptStrategy():
             self.completed = []
         optimizer_kwargs={'gen': self.num_generations,
                           'crossover_rate': self.crossover_rate,
-                          'mutation_rate': self.mutation_rate}
+                          'mutation_rate': self.mutation_rate,
+                          'di_crossover': self.di_crossover,
+                          'di_mutation': self.di_mutation}
         if self.distance_metric is not None:
             optimizer_kwargs['distance_metric'] = self.distance_metric
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
@@ -212,6 +216,8 @@ class DistOptimizer():
         resample_fraction=0.25,
         mutation_rate=None,
         crossover_rate=0.9,
+        di_crossover=1.0,
+        di_mutation=20.0,
         distance_metric=None,
         n_epochs=10,
         save_eval=10,
@@ -261,6 +267,8 @@ class DistOptimizer():
         self.resample_fraction = resample_fraction
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
+        self.di_crossover = di_crossover
+        self.di_mutation = di_mutation
         self.distance_metric = distance_metric
         self.gpr_optimizer = gpr_optimizer
         self.gpr_anisotropic = gpr_anisotropic
@@ -398,6 +406,8 @@ class DistOptimizer():
                                         initial_method=self.initial_method,
                                         mutation_rate=self.mutation_rate,
                                         crossover_rate=self.crossover_rate,
+                                        di_mutation=self.di_mutation,
+                                        di_crossover=self.di_crossover,
                                         distance_metric=self.distance_metric,
                                         gpr_optimizer=self.gpr_optimizer,
                                         gpr_anisotropic=self.gpr_anisotropic,
