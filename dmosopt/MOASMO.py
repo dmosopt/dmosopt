@@ -22,6 +22,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                                      'crossover_rate': 0.9,
                                      'mutation_rate': None,
                                      'di_crossover': 1., 'di_mutation': 20. },
+                 termination=None,
                  logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -77,11 +78,11 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         if optimizer == 'nsga2':
             bestx_sm, besty_sm, x_sm, y_sm = \
                 NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
-                                   pop=pop, **optimizer_kwargs)
+                                   pop=pop, termination=termination, **optimizer_kwargs)
         elif optimizer == 'age':
             bestx_sm, besty_sm, x_sm, y_sm = \
                 AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
-                                     pop=pop, **optimizer_kwargs)
+                                     pop=pop, termination=termination, **optimizer_kwargs)
         else:
             raise RuntimeError(f"Unknown optimizer {optimizer}")
         D = NSGA2.crowding_distance(besty_sm)
@@ -166,6 +167,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                                 'crossover_rate': 0.9,
                                 'mutation_rate': None,
                                 'di_crossover': 1., 'di_mutation': 20. },
+            termination=None,
             logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -207,12 +209,12 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         bestx_sm, besty_sm, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                feasibility_model=fsbm, logger=logger, \
-                               pop=pop, **optimizer_kwargs)
+                               pop=pop, termination=termination, **optimizer_kwargs)
     elif optimizer == 'age':
         bestx_sm, besty_sm, x_sm, y_sm = \
             AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                  feasibility_model=fsbm, logger=logger, \
-                                 pop=pop, **optimizer_kwargs)
+                                 pop=pop, termination=termination, **optimizer_kwargs)
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
         

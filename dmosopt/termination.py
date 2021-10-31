@@ -33,12 +33,14 @@ class SlidingWindow(list):
 
 class Termination:
 
-    def __init__(self) -> None:
+    def __init__(problem) -> None:
         """
         Base class for the implementation of a termination criterion for an optimization.
         """
         super().__init__()
 
+        self.problem = problem
+        
         # the optimization can be forced to terminate by setting this attribute to true
         self.force_termination = False
 
@@ -74,14 +76,14 @@ class Termination:
         Instead of asking if the optimization should continue it can also ask if it has terminated.
         (just negates the continue method.)
         """
-        return not self.do_continue(optimization)
+        return not self.do_continue(opt)
 
 
 
 class TerminationCollection(Termination):
 
-    def __init__(self, *args) -> None:
-        super().__init__()
+    def __init__(self, problem, *args) -> None:
+        super().__init__(problem)
         self.terminations = args
 
     def _do_continue(self, opt):
@@ -91,24 +93,13 @@ class TerminationCollection(Termination):
         return True
 
 
-class MaximumFunctionCallTermination(Termination):
-
-    def __init__(self, n_max_evals) -> None:
-        super().__init__()
-        self.n_max_evals = n_max_evals
-
-        if self.n_max_evals is None:
-            self.n_max_evals = float("inf")
-
-    def _do_continue(self, opt):
-        return opt.n_eval < self.n_max_evals
-
 
 
 class MaximumGenerationTermination(Termination):
 
-    def __init__(self, n_max_gen) -> None:
-        super().__init__()
+    def __init__(self, problem, n_max_gen) -> None:
+        super().__init__(problem)
+        
         self.n_max_gen = n_max_gen
 
         if self.n_max_gen is None:
@@ -122,12 +113,12 @@ class MaximumGenerationTermination(Termination):
 class SlidingWindowTermination(TerminationCollection):
 
     def __init__(self,
+                 problem,
                  metric_window_size=None,
                  data_window_size=None,
                  min_data_for_metric=1,
                  nth_gen=1,
                  n_max_gen=None,
-                 n_max_evals=None,
                  truncate_metrics=True,
                  truncate_data=True,
                  ):
@@ -147,8 +138,8 @@ class SlidingWindowTermination(TerminationCollection):
 
         """
 
-        super().__init__(MaximumGenerationTermination(n_max_gen=n_max_gen),
-                         MaximumFunctionCallTermination(n_max_evals=n_max_evals))
+        super().__init__(problem,
+                         MaximumGenerationTermination(n_max_gen=n_max_gen))
 
         # the window sizes stored in objects
         self.data_window_size = data_window_size
@@ -216,29 +207,29 @@ class SlidingWindowTermination(TerminationCollection):
 class ParameterToleranceTermination(SlidingWindowTermination):
 
     def __init__(self,
+                 problem,
                  n_last=20,
                  tol=1e-6,
                  nth_gen=1,
                  n_max_gen=None,
-                 n_max_evals=None,
                  **kwargs):
 
-        super().__init__(metric_window_size=n_last,
+        super().__init__(problem,
+                         metric_window_size=n_last,
                          data_window_size=2,
                          min_data_for_metric=2,
                          nth_gen=nth_gen,
                          n_max_gen=n_max_gen,
-                         n_max_evals=n_max_evals,
                          **kwargs)
         self.tol = tol
 
     def _store(self, opt):
-        problem = opt.problem
+        problem = self.problem
         X = opt.x
 
         if X.dtype != object:
-            if problem.xl is not None and problem.xu is not None:
-                X = normalize(X, xl=problem.xl, xu=problem.xu)
+            if problem.lb is not None and problem.ub is not None:
+                X = normalize(X, xl=problem.lb, xu=problem.ub)
             return X
 
     def _metric(self, data):
@@ -256,18 +247,18 @@ def calc_delta_norm(a, b, norm):
 class MultiObjectiveToleranceTermination(SlidingWindowTermination):
 
     def __init__(self,
+                 problem,
                  tol=0.0025,
                  n_last=30,
                  nth_gen=5,
                  n_max_gen=None,
-                 n_max_evals=None,
                  **kwargs) -> None:
-        super().__init__(metric_window_size=n_last,
+        super().__init__(problem,
+                         metric_window_size=n_last,
                          data_window_size=2,
                          min_data_for_metric=2,
                          nth_gen=nth_gen,
                          n_max_gen=n_max_gen,
-                         n_max_evals=n_max_evals,
                          **kwargs)
         self.tol = tol
 
@@ -318,19 +309,19 @@ class MultiObjectiveToleranceTermination(SlidingWindowTermination):
 class ConstraintViolationToleranceTermination(SlidingWindowTermination):
 
     def __init__(self,
+                 problem,
                  n_last=20,
                  tol=1e-6,
                  nth_gen=1,
                  n_max_gen=None,
-                 n_max_evals=None,
                  **kwargs):
 
-        super().__init__(metric_window_size=n_last,
+        super().__init__(problem,
+                         metric_window_size=n_last,
                          data_window_size=2,
                          min_data_for_metric=2,
                          nth_gen=nth_gen,
                          n_max_gen=n_max_gen,
-                         n_max_evals=n_max_evals,
                          **kwargs)
         self.tol = tol
 
@@ -362,22 +353,20 @@ class ConstraintViolationToleranceTermination(SlidingWindowTermination):
 class StdTermination(SlidingWindowTermination):
 
     def __init__(self,
+                 problem,
                  x_tol,
-                 cv_tol,
                  f_tol,
                  n_max_gen=1000,
-                 n_max_evals=100000,
                  **kwargs):
         
-        super().__init__(metric_window_size=1,
+        super().__init__(problem,
+                         metric_window_size=1,
                          data_window_size=1,
                          min_data_for_metric=1,
                          n_max_gen=n_max_gen,
-                         n_max_evals=n_max_evals,
                          **kwargs)
 
         self.x_tol = x_tol
-        self.cv_tol = cv_tol
         self.f_tol = f_tol
 
     def metric(self, data):
@@ -394,15 +383,16 @@ class StdTermination(SlidingWindowTermination):
 
 
     
-class MultiObjectiveStdTermination(DefaultTermination):
+class MultiObjectiveStdTermination(StdTermination):
     def __init__(self,
+                 problem,
                  x_tol=1e-8,
-                 cv_tol=1e-6,
                  f_tol=0.01,
                  nth_gen=5,
                  n_last=30,
                  **kwargs) -> None:
-        super().__init__(ParameterToleranceTermination(tol=x_tol, n_last=n_last),
-                         ConstraintViolationToleranceTermination(tol=cv_tol, n_last=n_last),
+        super().__init__(problem,
+                         ParameterToleranceTermination(tol=x_tol, n_last=n_last),
+                         #ConstraintViolationToleranceTermination(tol=cv_tol, n_last=n_last),
                          MultiObjectiveToleranceTermination(tol=f_tol, n_last=n_last, nth_gen=nth_gen),
                          **kwargs)

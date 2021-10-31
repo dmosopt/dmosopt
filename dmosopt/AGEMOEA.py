@@ -14,10 +14,11 @@ import numpy as np
 import copy
 from functools import reduce
 from dmosopt import sampling
+from dmosopt.datatypes import OptHistory
 
 
-def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, pop=100, gen=100, \
-                 crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.):
+def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, termination=None,
+                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
         nInput: number of model input
@@ -64,6 +65,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     x_new = []
     y_new = []
         
+    n_eval = 0
     for i in range(gen):
         if logger is not None:
             logger.info(f"AGE-MOEA: iteration {i+1} of {gen}...")
@@ -102,9 +104,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 population_parm = np.vstack((population_parm,child))
                 population_obj  = np.vstack((population_obj,y1))
                 count += 1
-                
+        n_eval += count
         population_parm, population_obj, rank, crowd_dist = \
             environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
+        if termination is not None:
+            opt = OptHistory(i, n_eval, population_parm, population_obj, None)
+            if termination.has_terminated(opt):
+                break
 
     
     sorted_population = np.lexsort(tuple((metric for metric in [rank, -crowd_dist])), axis=0)

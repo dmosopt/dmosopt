@@ -4,6 +4,8 @@ from collections import namedtuple
 import numpy as np  
 import distwq
 import dmosopt.MOASMO as opt
+from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry
+from dmosopt.termination import MultiObjectiveStdTermination
 
 logger = logging.getLogger('dmosopt')
 
@@ -14,55 +16,19 @@ except ImportError as e:
 
 sopt_dict = {}
 
-ParamSpec = namedtuple('ParamSpec',
-                       ['bound1',
-                        'bound2',
-                        'is_integer',
-                       ])
-
-
-EvalEntry = namedtuple('EvalEntry',
-                       ['epoch',
-                        'parameters',
-                        'objectives',
-                        'features',
-                        'constraints'
-                       ])
-
 def anyclose(a, b, rtol=1e-4, atol=1e-4):
     for i in range(b.shape[0]):
         if np.allclose(a, b[i, :]):
             return True
     return False
         
-
-class OptProblem():
-
-    def __init__(self, param_names, objective_names, feature_dtypes, constraint_names, spec, eval_fun):
-
-        self.dim = len(spec.bound1)
-        assert(self.dim > 0)
-        self.lb = spec.bound1
-        self.ub = spec.bound2
-        self.int_var = spec.is_integer
-        self.eval_fun = eval_fun
-        self.param_names = param_names
-        self.objective_names = objective_names
-        self.feature_dtypes = feature_dtypes
-        self.constraint_names = constraint_names
-        self.n_objectives = len(objective_names)
-        self.n_features = len(feature_dtypes) if feature_dtypes is not None else None
-        self.n_constraints = len(constraint_names) if constraint_names is not None else None
-        
-    def eval(self, x):
-        return self.eval_fun(x)
     
 class SOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp",
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
                  distance_metric=None,  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
-                 feasibility_model=False,
+                 feasibility_model=False, termination_conditions=None,
                  logger=None):
         self.logger = logger
         self.feasibility_model = feasibility_model
@@ -87,6 +53,15 @@ class SOptStrategy():
         self.crossover_rate = crossover_rate
         self.di_mutation = di_mutation
         self.di_crossover = di_crossover
+        self.termination = None
+        if termination_conditions:
+            termination_kwargs = { 'x_tol': 1e-6,
+                                   'f_tol': 0.01,
+                                   'nth_gen': num_generations,
+                                   'n_last': 30 }
+            if isinstance(termination_conditions, dict):
+                termination_kwargs.update(termination_conditions)
+            self.termination = MultiObjectiveStdTermination(problem, **termination_kwargs)
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
@@ -158,6 +133,7 @@ class SOptStrategy():
                                  gpr_optimizer=self.gpr_optimizer,
                                  gpr_anisotropic=self.gpr_anisotropic,
                                  feasibility_model=self.feasibility_model,
+                                 termination=self.termination,
                                  logger=self.logger)
         for i in range(x_resample.shape[0]):
             self.reqs.append(x_resample[i,:])

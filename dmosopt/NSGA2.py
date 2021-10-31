@@ -6,11 +6,11 @@ import numpy as np
 from functools import reduce
 import copy
 from dmosopt import sampling
+from dmosopt.datatypes import OptHistory
 
-
-def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None,
+def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
                  distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05,
-                 di_crossover = 1., di_mutation = 20., ):
+                 di_crossover=1., di_mutation=20., logger=None):
     ''' Nondominated Sorting Genetic Algorithm II, An multi-objective algorithm
         model: the evaluated model function
         nInput: number of model input
@@ -55,7 +55,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
 
     x_new = []
     y_new = []
-        
+
+    n_eval = 0
     for i in range(gen):
         if logger is not None:
             logger.info(f"NSGA2: iteration {i+1} of {gen}...")
@@ -95,6 +96,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 count += 1
         population_para, population_obj, rank = \
             remove_worst(population_para, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
+        n_eval += count
+        if termination is not None:
+            opt = OptHistory(i, n_eval, population_para, population_obj, None)
+            if termination.has_terminated(opt):
+                break
+            
     bestx = population_para.copy()
     besty = population_obj.copy()
 

@@ -2,12 +2,16 @@
 # Indicator routines from PyMOO:
 # https://github.com/anyoptimization/pymoo
 #
+from abc import abstractmethod
 
 import numpy as np
 from dmosopt.normalization import PreNormalization
 
+def euclidean_distance(a, b, norm=None):
+    return np.sqrt((((a - b) / norm) ** 2).sum(axis=1))
 
-def vectorized_cdist(A, B, func_dist=func_euclidean_distance, fill_diag_with_inf=False, **kwargs) -> object:
+
+def vectorized_cdist(A, B, func_dist=euclidean_distance, fill_diag_with_inf=False, **kwargs) -> object:
     assert A.ndim <= 2 and B.ndim <= 2
 
     A, only_row = at_least_2d_array(A, extend_as="row", return_if_reshaped=True)
@@ -54,9 +58,6 @@ def at_least_2d_array(x, extend_as="row", return_if_reshaped=False):
         return x
 
 
-def euclidean_distance(a, b, norm=None):
-    return np.sqrt((((a - b) / norm) ** 2).sum(axis=1))
-
 
 
 def derive_ideal_and_nadir_from_pf(pf, ideal=None, nadir=None):
@@ -94,7 +95,7 @@ class Indicator(PreNormalization):
 
         return self._do(F, *args, **kwargs)
 
-    @abc.abstractmethod
+    @abstractmethod
     def _do(self, F, *args, **kwargs):
         return
 
