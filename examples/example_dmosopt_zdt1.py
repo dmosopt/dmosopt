@@ -50,6 +50,7 @@ if __name__ == '__main__':
                       'objective_names': objective_names,
                       'population_size': 200,
                       'initial_maxiter': 10,
+                      'optimizer': 'age',
                       'n_initial': 3,
                       'n_epochs': 2}
     

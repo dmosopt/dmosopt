@@ -61,6 +61,7 @@ if __name__ == '__main__':
                       'obj_fun_name': 'obj_fun',
                       'obj_fun_module': 'example_dmosopt_zdt3',
                       'problem_parameters': problem_parameters,
+                      'optimizer': 'age',
                       'space': space,
                       'objective_names': objective_names,
                       'n_initial': 3,
