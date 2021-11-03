@@ -300,9 +300,8 @@ def normalize(front, extreme):
 
     # if system is abnormal, use min-max normalization
     if len(extreme) != len(np.unique(extreme, axis=0)):
-        normalization = np.max(front, axis=0)
-        front = front / normalization
-        return front, normalization
+        normalization = np.max(front, axis=1, keepdims=True)
+        return normalization
 
     # Calculate the intercepts of the hyperplane constructed by the extreme
     # points and the axes
@@ -313,11 +312,11 @@ def normalize(front, extreme):
         hyperplane = [np.nan]
         
     if any(np.isnan(hyperplane)) or any(np.isinf(hyperplane)) or any(hyperplane < 0):
-        normalization = np.max(front, axis=0)
+        normalization = np.max(front, axis=1, keepdims=True)
     else:
         normalization = 1. / hyperplane
         if any(np.isnan(normalization)) or any(np.isinf(normalization)):
-            normalization = np.max(front, axis=0)
+            normalization = np.max(front, axis=1, keepdims=True)
 
     return normalization
 
@@ -408,7 +407,7 @@ def survival_score(y, front, ideal_point):
     
     if m < n:
         p = 1
-        normalization = np.max(y[front, :], axis=0)
+        normalization = np.max(y[front, :], axis=1, keepdims=True)
         return normalization, p, crowd_dist
 
     # shift the ideal point to the origin
