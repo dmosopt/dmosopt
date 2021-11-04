@@ -11,7 +11,7 @@
 #
 
 import numpy as np
-import copy
+import copy, gc
 from functools import reduce
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
@@ -72,6 +72,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             
         pool = tournament_selection(population_parm, population_obj, pop, poolsize, toursize, rank, -crowd_dist)
         count = 0
+        xs_gen = []
         while (count < pop - 1):
             if (np.random.rand() < crossover_rate):
                 parentidx = np.random.choice(poolsize, 2, replace = False)
@@ -83,12 +84,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                     child2 = children2[0]
                 else:
                     child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
-                y1 = model.evaluate(child1)
-                y2 = model.evaluate(child2)
-                x_new.extend([child1, child2])
-                y_new.extend([y1,y2])
-                population_parm = np.vstack((population_parm,child1,child2))
-                population_obj  = np.vstack((population_obj,y1,y2))
+                x_gen.extend([child1, child2])
                 count += 2
             else:
                 parentidx = np.random.randint(poolsize)
@@ -99,20 +95,23 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 else:
                     child = feasibility_selection(feasibility_model, children, logger=logger)
                 y1 = model.evaluate(child)
-                x_new.append(child)
-                y_new.append(y1)
-                population_parm = np.vstack((population_parm,child))
-                population_obj  = np.vstack((population_obj,y1))
+                x_gen.append(child)
                 count += 1
-        n_eval += count
+        x_gen = np.vstack(xs_gen)
+        y_gen = model.evaluate(x_gen)
+        x_new.append(x_gen)
+        y_new.append(y_gen)
+        population_para = np.vstack((population_para, x_gen))
+        population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj, rank, crowd_dist = \
             environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
+        gc.collect()
+        n_eval += count
         if termination is not None:
             opt = OptHistory(i, n_eval, population_parm, population_obj, None)
             if termination.has_terminated(opt):
                 break
 
-    
     sorted_population = np.lexsort(tuple((metric for metric in [rank, -crowd_dist])), axis=0)
     bestx = population_parm[sorted_population].copy()
     besty = population_obj[sorted_population].copy()

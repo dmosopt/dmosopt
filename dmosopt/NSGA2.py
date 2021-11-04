@@ -1,7 +1,7 @@
 # Nondominated Sorting Genetic Algorithm II (NSGA-II)
 # An multi-objective optimization algorithm
 
-import sys
+import sys, gc
 import numpy as np
 from functools import reduce
 import copy
@@ -62,6 +62,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             logger.info(f"NSGA2: iteration {i+1} of {gen}...")
         pool = tournament_selection(population_para, population_obj, pop, poolsize, toursize, rank)
         count = 0
+        xs_gen = []
         while (count < pop - 1):
             if (np.random.rand() < crossover_rate):
                 parentidx = np.random.choice(poolsize, 2, replace = False)
@@ -73,12 +74,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                     child2 = children2[0]
                 else:
                     child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
-                y1 = model.evaluate(child1)
-                y2 = model.evaluate(child2)
-                x_new.extend([child1, child2])
-                y_new.extend([y1,y2])
-                population_para = np.vstack((population_para,child1,child2))
-                population_obj  = np.vstack((population_obj,y1,y2))
+                xs_gen.extend([child1, child2])
                 count += 2
             else:
                 parentidx = np.random.randint(poolsize)
@@ -88,14 +84,17 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                     child = children[0]
                 else:
                     child = feasibility_selection(feasibility_model, children, logger=logger)
-                y1 = model.evaluate(child)
-                x_new.append(child)
-                y_new.append(y1)
-                population_para = np.vstack((population_para,child))
-                population_obj  = np.vstack((population_obj,y1))
+                xs_gen.append(child)
                 count += 1
+        x_gen = np.vstack(xs_gen)
+        y_gen = model.evaluate(x_gen)
+        x_new.append(x_gen)
+        y_new.append(y_gen)
+        population_para = np.vstack((population_para, x_gen))
+        population_obj  = np.vstack((population_obj, y_gen))
         population_para, population_obj, rank = \
             remove_worst(population_para, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
+        gc.collect()
         n_eval += count
         if termination is not None:
             opt = OptHistory(i, n_eval, population_para, population_obj, None)

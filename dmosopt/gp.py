@@ -14,11 +14,11 @@ class GPR_Matern:
         self.xub = xub
         self.xrg = xub - xlb
         self.logger = logger
-
-        x = copy.deepcopy(xin)
-        y = copy.deepcopy(yin)
+        
+        x = np.zeros_like(xin)
+        y = np.copy(yin)
         for i in range(N):
-            x[i,:] = (x[i,:] - self.xlb) / self.xrg
+            x[i,:] = (xin[i,:] - self.xlb) / self.xrg
         if nOutput == 1:
             y = y.reshape((y.shape[0],1))
 
@@ -44,13 +44,14 @@ class GPR_Matern:
         self.smlist = smlist
 
     def predict(self,xin):
-        x = copy.deepcopy(xin)
+        x = np.zeros_like(xin)
         if len(x.shape) == 1:
             x = x.reshape((1,self.nInput))
+            xin = xin.reshape((1,self.nInput))
         N = x.shape[0]
         y = np.zeros((N,self.nOutput))
         for i in range(N):
-            x[i,:] = (x[i,:] - self.xlb) / self.xrg
+            x[i,:] = (xin[i,:] - self.xlb) / self.xrg
         for i in range(self.nOutput):
             y[:,i] = self.smlist[i].predict(x)
         return y
@@ -68,10 +69,10 @@ class GPR_RBF:
         self.xrg = xub - xlb
         self.logger = logger
 
-        x = copy.deepcopy(xin)
-        y = copy.deepcopy(yin)
+        x = np.zeros_like(xin)
+        y = np.copy(yin)
         for i in range(N):
-            x[i,:] = (x[i,:] - self.xlb) / self.xrg
+            x[i,:] = (xin[i,:] - self.xlb) / self.xrg
         if nOutput == 1:
             y = y.reshape((y.shape[0],1))
 
@@ -97,13 +98,14 @@ class GPR_RBF:
         self.smlist = smlist
 
     def predict(self,xin):
-        x = copy.deepcopy(xin)
+        x = np.zeros_like(xin)
         if len(x.shape) == 1:
             x = x.reshape((1,self.nInput))
+            xin = xin.reshape((1,self.nInput))
         N = x.shape[0]
-        y = np.zeros((N,self.nOutput))
+        y = np.zeros((N, self.nOutput))
         for i in range(N):
-            x[i,:] = (x[i,:] - self.xlb) / self.xrg
+            x[i,:] = (xin[i,:] - self.xlb) / self.xrg
         for i in range(self.nOutput):
             y[:,i] = self.smlist[i].predict(x)
         return y
@@ -278,10 +280,10 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
     x = x[idx,:]
 
     # Record the best and worst points
-    bestx  = copy.deepcopy(x[0,:])
-    bestf  = copy.deepcopy(xf[0])
-    worstx = copy.deepcopy(x[-1,:])
-    worstf = copy.deepcopy(xf[-1])
+    bestx  = np.copy(x[0,:])
+    bestf  = np.copy(xf[0])
+    worstx = np.copy(x[-1,:])
+    worstf = np.copy(xf[-1])
     
     bestf_list = []
     bestf_list.append(bestf)
@@ -329,8 +331,8 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
             # Partition the population into complexes (sub-populations)
             k1 = np.int64(np.linspace(0, npg-1, npg))
             k2 = k1 * ngs + igs
-            cx[k1,:] = copy.deepcopy(x[k2,:])
-            cf[k1] = copy.deepcopy(xf[k2])
+            cx[k1,:] = np.copy(x[k2,:])
+            cf[k1] = np.copy(xf[k2])
             
             # Evolve sub-population igs for nspl steps
             for loop in range(nspl):
@@ -340,8 +342,8 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
                 lcs = np.asarray(select_simplex(nps, npg, local_random))
     
                 # Construct the simplex:
-                s = copy.deepcopy(cx[lcs,:])
-                sf = copy.deepcopy(cf[lcs])
+                s = np.copy(cx[lcs,:])
+                sf = np.copy(cf[lcs])
                 
                 snew, fnew, icall = cceua(func, s, sf, bl, bu, icall, local_random)
     
@@ -350,8 +352,8 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
                 sf[nps-1] = fnew
                 
                 # Replace the simplex into the complex
-                cx[lcs,:] = copy.deepcopy(s)
-                cf[lcs] = copy.deepcopy(sf)
+                cx[lcs,:] = np.copy(s)
+                cf[lcs] = np.copy(sf)
                 
                 # Sort the complex
                 idx = np.argsort(cf)
@@ -361,8 +363,8 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
             # End of Inner Loop for Competitive Evolution of Simplexes
     
             # Replace the complex back into the population
-            x[k2,:] = copy.deepcopy(cx[k1,:])
-            xf[k2] = copy.deepcopy(cf[k1])
+            x[k2,:] = np.copy(cx[k1,:])
+            xf[k2] = np.copy(cf[k1])
         
         # End of Loop on Complex Evolution;
         
@@ -372,10 +374,10 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
         x = x[idx,:]
         
         # Record the best and worst points
-        bestx  = copy.deepcopy(x[0,:])
-        bestf  = copy.deepcopy(xf[0])
-        worstx = copy.deepcopy(x[-1,:])
-        worstf = copy.deepcopy(xf[-1])
+        bestx  = np.copy(x[0,:])
+        bestf  = np.copy(xf[0])
+        worstx = np.copy(x[-1,:])
+        worstf = np.copy(xf[-1])
         bestf_list.append(bestf)
         bestx_list.append(bestx)
         icall_list.append(icall)
