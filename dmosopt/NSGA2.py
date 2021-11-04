@@ -301,8 +301,8 @@ def crowding_distance(Y):
         d: number of dimensions
     '''
     n,d = Y.shape
-    lb = np.min(Y, axis = 1, keepdims=True)
-    ub = np.max(Y, axis = 1, keepdims=True)
+    lb = np.min(Y, axis=0, keepdims=True)
+    ub = np.max(Y, axis=0, keepdims=True)
 
     if n == 1 or np.min(ub-lb) == 0.0:
         D = np.array([1.])
@@ -335,8 +335,8 @@ def euclidean_distance(Y):
     """Row-wise euclidean distance.
     """
     n, d = Y.shape
-    lb = np.min(Y, axis = 1, keepdims=True)
-    ub = np.max(Y, axis = 1, keepdims=True)
+    lb = np.min(Y, axis=0)
+    ub = np.max(Y, axis=0)
     if np.min(ub-lb) == 0.0:
         return np.array([1.]*n)
     else:
