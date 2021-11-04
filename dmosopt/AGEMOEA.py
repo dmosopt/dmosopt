@@ -66,10 +66,20 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     y_new = []
         
     n_eval = 0
-    for i in range(gen):
+    it = range(gen)
+    if termination is not None:
+        it = itertools.count()
+    for i in it:
+        if termination is not None:
+            opt = OptHistory(i, n_eval, population_para, population_obj, None)
+            if termination.has_terminated(opt):
+                break
         if logger is not None:
-            logger.info(f"AGE-MOEA: iteration {i+1} of {gen}...")
-            
+            if termination is not None:
+                logger.info(f"AGE-MOEA: generation {i+1}...")
+            else:
+                logger.info(f"AGE-MOEA: generation {i+1} of {gen}...")
+
         pool = tournament_selection(population_parm, population_obj, pop, poolsize, toursize, rank, -crowd_dist)
         count = 0
         xs_gen = []

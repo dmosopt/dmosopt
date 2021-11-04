@@ -1,14 +1,16 @@
 #
 # Optimization termination conditions.
 #
-# Based on termination clasess from PyMOO: 
+# Based on termination classes from PyMOO: 
 # https://github.com/anyoptimization/pymoo
 #
 
+import logging
 import numpy as np
 from abc import abstractmethod
 from dmosopt.normalization import normalize
 from dmosopt.indicators import IGD
+
 
 class SlidingWindow(list):
 
@@ -33,7 +35,7 @@ class SlidingWindow(list):
 
 class Termination:
 
-    def __init__(problem) -> None:
+    def __init__(self, problem) -> None:
         """
         Base class for the implementation of a termination criterion for an optimization.
         """
@@ -106,6 +108,8 @@ class MaximumGenerationTermination(Termination):
             self.n_max_gen = float("inf")
 
     def _do_continue(self, opt):
+        if opt.n_gen >= self.n_max_gen:
+            self.problem.logger.info(f'Optimization terminated: maximum number of generations ({opt.n_gen}) has been reached')
         return opt.n_gen < self.n_max_gen
 
     
@@ -139,7 +143,7 @@ class SlidingWindowTermination(TerminationCollection):
         """
 
         super().__init__(problem,
-                         MaximumGenerationTermination(n_max_gen=n_max_gen))
+                         MaximumGenerationTermination(problem, n_max_gen=n_max_gen))
 
         # the window sizes stored in objects
         self.data_window_size = data_window_size
@@ -237,7 +241,10 @@ class ParameterToleranceTermination(SlidingWindowTermination):
         return IGD(current).do(last)
 
     def _decide(self, metrics):
-        return to_numpy(metrics).mean() > self.tol
+        metrics_mean = np.asarray(metrics).mean()
+        if metrics_mean <= self.tol:
+            self.problem.logger.info(f'Optimization terminated: mean parameter distance {metrics_mean} is below tolerance {self.tol}')
+        return metrics_mean > self.tol
 
 
 def calc_delta_norm(a, b, norm):
@@ -303,7 +310,15 @@ class MultiObjectiveToleranceTermination(SlidingWindowTermination):
         delta_ideal = [e["delta_ideal"] for e in metrics]
         delta_nadir = [e["delta_nadir"] for e in metrics]
         delta_f = [e["delta_f"] for e in metrics]
-        return max(max(delta_ideal), max(delta_nadir), max(delta_f)) > self.tol
+        metrics_max = max(max(delta_ideal), max(delta_nadir), max(delta_f))
+        if metrics_max <= self.tol:
+            self.problem.logger.info(f'Optimization terminated: objective max delta {(max(delta_ideal), max(delta_nadir), max(delta_f))} '
+                                     f'is below tolerance {self.tol}')
+        else:
+            self.problem.logger.info(f'Objective max delta: {(max(delta_ideal), max(delta_nadir), max(delta_f))} ')
+            
+
+        return  metrics_max > self.tol
 
 
 class ConstraintViolationToleranceTermination(SlidingWindowTermination):
@@ -335,8 +350,8 @@ class ConstraintViolationToleranceTermination(SlidingWindowTermination):
                 }
 
     def _decide(self, metrics):
-        cv = to_numpy([e["cv"] for e in metrics])
-        delta_cv = to_numpy([e["delta_cv"] for e in metrics])
+        cv = np.asarray([e["cv"] for e in metrics])
+        delta_cv = np.asarray([e["delta_cv"] for e in metrics])
         n_feasible = (cv > 0).sum()
 
         # if the whole window had only feasible solutions
@@ -369,17 +384,16 @@ class StdTermination(SlidingWindowTermination):
         self.x_tol = x_tol
         self.f_tol = f_tol
 
-    def metric(self, data):
+    def _metric(self, data):
         opt = data[-1]
         return {
             "x_tol": self.x_tol.do_continue(opt),
-            "cv_tol": self.cv_tol.do_continue(opt),
             "f_tol": self.f_tol.do_continue(opt)
         }
 
     def _decide(self, metrics):
         decisions = metrics[-1]
-        return decisions["x_tol"] and (decisions["cv_tol"] or decisions["f_tol"])
+        return decisions["x_tol"] and decisions["f_tol"]
 
 
     
@@ -392,7 +406,7 @@ class MultiObjectiveStdTermination(StdTermination):
                  n_last=30,
                  **kwargs) -> None:
         super().__init__(problem,
-                         ParameterToleranceTermination(tol=x_tol, n_last=n_last),
+                         ParameterToleranceTermination(problem, tol=x_tol, n_last=n_last),
                          #ConstraintViolationToleranceTermination(tol=cv_tol, n_last=n_last),
-                         MultiObjectiveToleranceTermination(tol=f_tol, n_last=n_last, nth_gen=nth_gen),
+                         MultiObjectiveToleranceTermination(problem, tol=f_tol, n_last=n_last, nth_gen=nth_gen),
                          **kwargs)

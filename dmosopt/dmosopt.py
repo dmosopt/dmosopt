@@ -57,11 +57,12 @@ class SOptStrategy():
         if termination_conditions:
             termination_kwargs = { 'x_tol': 1e-6,
                                    'f_tol': 0.01,
-                                   'nth_gen': num_generations,
+                                   'nth_gen': 5,
+                                   'n_max_gen': num_generations,
                                    'n_last': 30 }
             if isinstance(termination_conditions, dict):
                 termination_kwargs.update(termination_conditions)
-            self.termination = MultiObjectiveStdTermination(problem, **termination_kwargs)
+            self.termination = MultiObjectiveStdTermination(prob, **termination_kwargs)
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
@@ -204,6 +205,7 @@ class DistOptimizer():
         gpr_optimizer="sceua",
         optimizer="nsga2",
         feasibility_model=False,
+        termination_conditions=None,
         **kwargs
     ):
         """
@@ -250,6 +252,7 @@ class DistOptimizer():
         self.gpr_anisotropic = gpr_anisotropic
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
+        self.termination_conditions = termination_conditions
         self.metadata = metadata
         
         if self.resample_fraction > 1.0:
@@ -352,7 +355,9 @@ class DistOptimizer():
 
 
     def init_strategy(self):
-        opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes, self.constraint_names, self.param_spec, self.eval_fun)
+        opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes,
+                              self.constraint_names, self.param_spec, self.eval_fun,
+                              logger=self.logger )
         for problem_id in self.problem_ids:
             initial = None
             if problem_id in self.old_evals:
@@ -389,6 +394,7 @@ class DistOptimizer():
                                         gpr_anisotropic=self.gpr_anisotropic,
                                         optimizer=self.optimizer,
                                         feasibility_model=self.feasibility_model,
+                                        termination_conditions=self.termination_conditions,
                                         logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
             self.storage_dict[problem_id] = []

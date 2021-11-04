@@ -51,10 +51,12 @@ if __name__ == '__main__':
                       'space': space,
                       'objective_names': problem_objectives,
                       'population_size': 200,
+                      'num_generations': 1000,
                       'initial_maxiter': 10,
                       'n_initial': 3,
                       'n_epochs': 2,
                       'file_path': 'dmosopt.zdt1.h5',
+                      'termination_conditions': True,
                       'save': True,
                       'feature_dtypes': feature_dtypes
                       }
