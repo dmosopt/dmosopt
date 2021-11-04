@@ -84,7 +84,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                     child2 = children2[0]
                 else:
                     child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
-                x_gen.extend([child1, child2])
+                xs_gen.extend([child1, child2])
                 count += 2
             else:
                 parentidx = np.random.randint(poolsize)
@@ -95,13 +95,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 else:
                     child = feasibility_selection(feasibility_model, children, logger=logger)
                 y1 = model.evaluate(child)
-                x_gen.append(child)
+                xs_gen.append(child)
                 count += 1
         x_gen = np.vstack(xs_gen)
         y_gen = model.evaluate(x_gen)
         x_new.append(x_gen)
         y_new.append(y_gen)
-        population_para = np.vstack((population_para, x_gen))
+        population_parm = np.vstack((population_parm, x_gen))
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj, rank, crowd_dist = \
             environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
