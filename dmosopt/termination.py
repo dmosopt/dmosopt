@@ -28,11 +28,8 @@ class SlidingWindow(list):
     def is_full(self):
         return self.size == len(self)
 
-    def to_numpy(self):
-        return np.array(self)
 
-
-
+    
 class Termination:
 
     def __init__(self, problem) -> None:
@@ -150,9 +147,11 @@ class SlidingWindowTermination(TerminationCollection):
         self.metric_window_size = metric_window_size
 
         # the obtained data at each iteration
+        self.truncate_data = truncate_data
         self.data = SlidingWindow(data_window_size) if truncate_data else []
 
         # the metrics calculated also in a sliding window
+        self.truncate_metrics = truncate_metrics
         self.metrics = SlidingWindow(metric_window_size) if truncate_metrics else []
 
         # each n-th generation the termination decides whether to terminate or not
@@ -160,6 +159,10 @@ class SlidingWindowTermination(TerminationCollection):
 
         # number of entries of data need to be stored to calculate the metric at all
         self.min_data_for_metric = min_data_for_metric
+
+    def reset(self):
+        self.data = SlidingWindow(self.data_window_size) if self.truncate_data else []
+        self.metrics = SlidingWindow(self.metric_window_size) if self.truncate_metrics else []
 
         
     def _do_continue(self, opt):
@@ -384,6 +387,11 @@ class StdTermination(SlidingWindowTermination):
         self.x_tol = x_tol
         self.f_tol = f_tol
 
+    def reset(self):
+        super().reset()
+        self.x_tol.reset()
+        self.f_tol.reset()
+        
     def _metric(self, data):
         opt = data[-1]
         return {
