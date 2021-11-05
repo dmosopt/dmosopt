@@ -22,7 +22,7 @@ def g(x, num_objectives):
     return 1.0 + 9.0 * g / k
 
 
-def dtlz7(x, num_objectives=3):
+def dtlz7(x, num_objectives=2):
     num_variables = len(x)
     g_value = g(x, num_objectives)
     obj_values = np.asarray([x[i] for i in range(num_objectives)])
@@ -33,9 +33,27 @@ def dtlz7(x, num_objectives=3):
         obj_values[num_objectives - 1] = (1.0 + g_value) * h
     return obj_values
     
+
+def dtlz7_pareto(n_points=100):
+    
+    regions = [[0, 0.2514118360],
+               [0.6316265307, 0.8594008566],
+               [1.3596178367, 1.5148392681],
+               [2.0518383519, 2.116426807]]
+
+    pf = []
+
+    for r in regions:
+        x1 = np.linspace(r[0], r[1], int(n_points / len(regions)))
+        x2 = 4 - x1*(1 + np.sin(3 * np.pi * x1))
+        pf.append(np.array([x1, x2]).T)
+
+    pf = np.row_stack(pf)
+
+    return pf
          
          
-def obj_fun(pp, num_objectives=3):
+def obj_fun(pp, num_objectives=2):
     """ Objective function to be minimized. """
     param_values = np.asarray([pp[k] for k in sorted(pp)])
     res = dtlz7(param_values, num_objectives=num_objectives)
@@ -48,11 +66,11 @@ def obj_fun(pp, num_objectives=3):
 if __name__ == '__main__':
          
     space = {}
-    for i in range(20):
+    for i in range(10):
         space['x%d' % (i+1)] = [0.0, 1.0]
         
     problem_parameters = {}
-    objective_names = ['y1', 'y2', 'y3']
+    objective_names = ['y1', 'y2']
          
     # Create an optimizer
     dmosopt_params = {'opt_id': 'dmosopt_dtlz7',
@@ -63,8 +81,10 @@ if __name__ == '__main__':
                       'objective_names': objective_names,
                       'population_size': 200,
                       'initial_maxiter': 10,
-                      'n_initial': 4,
-                      'n_epochs': 2, }
+                      'num_generations': 1000,
+                      'termination_conditions': True,
+                      'n_initial': 5,
+                      'n_epochs': 4, }
          
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:
@@ -79,8 +99,12 @@ if __name__ == '__main__':
         besty_dict = dict(besty)
          
         # plot results
-        ax.scatter(y[:,0],y[:,1],y[:,2],c='b',label='evaluated points')
-        ax.scatter(besty_dict['y1'],besty_dict['y2'],besty_dict['y3'],c='r',label='MO-ASMO')
+        plt.plot(y[:,0],y[:,1],'b.',label='evaluated points')
+        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='MO-ASMO')
+    
+        y_true = dtlz7_pareto()
+        plt.plot(y_true[:,0],y_true[:,1],'ko',label='True Pareto')
+        plt.legend()
              
         plt.savefig("example_dmosopt_dtlz.svg")
          

@@ -10,9 +10,10 @@ def zdt3(x):
         Bound: XUB = [1,1,...]; XLB = [0,0,...]
         dim = 30
     '''
+    num_variables = len(x)
     f = np.zeros(2)
     f[0] = x[0]
-    g = 1. + 9./29.*np.sum(x[1:])
+    g = 1. + 9./float(num_variables-1).*np.sum(x[1:])
     h = 1. - np.sqrt(f[0]/g)
     j = (x[0]/g) * np.sin(10*np.pi*x[0])
     f[1] = g*h - j
