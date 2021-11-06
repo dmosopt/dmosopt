@@ -11,7 +11,7 @@
 #
 
 import numpy as np
-import copy, gc
+import copy, gc, itertools
 from functools import reduce
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
@@ -71,7 +71,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         it = itertools.count()
     for i in it:
         if termination is not None:
-            opt = OptHistory(i, n_eval, population_para, population_obj, None)
+            opt = OptHistory(i, n_eval, population_parm, population_obj, None)
             if termination.has_terminated(opt):
                 break
         if logger is not None:
