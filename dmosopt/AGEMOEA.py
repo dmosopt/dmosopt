@@ -327,6 +327,8 @@ def normalize(front, extreme):
         if any(np.isnan(normalization)) or any(np.isinf(normalization)):
             normalization = np.max(front, axis=0)
 
+    normalization[np.isclose(normalization, 0.0, rtol=1e-4, atol=1e-4)] = 1.0
+
     return normalization
 
 
