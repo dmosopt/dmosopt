@@ -90,20 +90,20 @@ if __name__ == '__main__':
     if best is not None:
         
         import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
+
         fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+        ax = fig.add_subplot(111)
 
         bestx, besty = best
         x, y = dmosopt.sopt_dict['dmosopt_dtlz7'].optimizer_dict[0].get_evals()
         besty_dict = dict(besty)
          
         # plot results
-        plt.plot(y[:,0],y[:,1],'b.',label='evaluated points')
-        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='MO-ASMO')
+        plt.plot(y[:,0],y[:,1],'b.',label='Evaluated points')
+        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='Best solutions')
     
         y_true = dtlz7_pareto()
-        plt.plot(y_true[:,0],y_true[:,1],'ko',label='True Pareto')
+        plt.plot(y_true[:,0],y_true[:,1],'ko',fillstyle='none',label='True Pareto')
         plt.legend()
              
         plt.savefig("example_dmosopt_dtlz.svg")

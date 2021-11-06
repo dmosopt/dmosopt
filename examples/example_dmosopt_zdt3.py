@@ -13,7 +13,7 @@ def zdt3(x):
     num_variables = len(x)
     f = np.zeros(2)
     f[0] = x[0]
-    g = 1. + 9./float(num_variables-1).*np.sum(x[1:])
+    g = 1. + 9./float(num_variables-1)*np.sum(x[1:])
     h = 1. - np.sqrt(f[0]/g)
     j = (x[0]/g) * np.sin(10*np.pi*x[0])
     f[1] = g*h - j
@@ -79,11 +79,11 @@ if __name__ == '__main__':
         besty_dict = dict(besty)
         
         # plot results
-        plt.plot(y[:,0],y[:,1],'b.',label='evaluated points')
-        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='MO-ASMO')
+        plt.plot(y[:,0],y[:,1],'b.',label='Evaluated points')
+        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='Best solutions')
     
         y_true = zdt3_pareto()
-        plt.plot(y_true[:,0],y_true[:,1],'ko',label='True Pareto')
+        plt.plot(y_true[:,0],y_true[:,1],'ko',fillstyle='none',label='True Pareto')
         plt.legend()
         
         plt.savefig("example_dmosopt_zdt3.svg")

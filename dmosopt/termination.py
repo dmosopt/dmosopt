@@ -313,15 +313,17 @@ class MultiObjectiveToleranceTermination(SlidingWindowTermination):
         delta_ideal = [e["delta_ideal"] for e in metrics]
         delta_nadir = [e["delta_nadir"] for e in metrics]
         delta_f = [e["delta_f"] for e in metrics]
-        metrics_max = max(max(delta_ideal), max(delta_nadir), max(delta_f))
-        if metrics_max <= self.tol:
-            self.problem.logger.info(f'Optimization terminated: objective max delta {(max(delta_ideal), max(delta_nadir), max(delta_f))} '
+        max_delta_ideal_f = max(max(delta_ideal), max(delta_f))
+        metrics_convergence = (max_delta_ideal_f + max(delta_nadir))/2. if max_delta_ideal_f < self.tol else max(max_delta_ideal_f, max(delta_nadir))
+        if metrics_convergence <= self.tol:
+            self.problem.logger.info(f'Optimization terminated: '
+                                     f'convergence of objective max delta {(max(delta_ideal), max(delta_nadir), max(delta_f))} '
                                      f'is below tolerance {self.tol}')
         else:
             self.problem.logger.info(f'Objective max delta: {(max(delta_ideal), max(delta_nadir), max(delta_f))} ')
             
 
-        return  metrics_max > self.tol
+        return  metrics_convergence > self.tol
 
 
 class ConstraintViolationToleranceTermination(SlidingWindowTermination):
