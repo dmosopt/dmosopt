@@ -215,7 +215,7 @@ class ParameterToleranceTermination(SlidingWindowTermination):
 
     def __init__(self,
                  problem,
-                 n_last=20,
+                 n_last=10,
                  tol=1e-6,
                  nth_gen=1,
                  n_max_gen=None,
@@ -259,8 +259,8 @@ class MultiObjectiveToleranceTermination(SlidingWindowTermination):
     def __init__(self,
                  problem,
                  tol=0.0025,
-                 n_last=30,
-                 nth_gen=5,
+                 n_last=10,
+                 nth_gen=1,
                  n_max_gen=None,
                  **kwargs) -> None:
         super().__init__(problem,
@@ -291,7 +291,6 @@ class MultiObjectiveToleranceTermination(SlidingWindowTermination):
 
         # calculate the change from last to current in ideal and nadir point
         delta_ideal = calc_delta_norm(current["ideal"], last["ideal"], norm)
-        delta_nadir = calc_delta_norm(current["nadir"], last["nadir"], norm)
 
         # get necessary data from the current population
         c_F, c_ideal, c_nadir = current["F"], current["ideal"], current["nadir"]
@@ -305,32 +304,29 @@ class MultiObjectiveToleranceTermination(SlidingWindowTermination):
 
         return {
             "delta_ideal": delta_ideal,
-            "delta_nadir": delta_nadir,
             "delta_f": delta_f
         }
 
     def _decide(self, metrics):
         delta_ideal = [e["delta_ideal"] for e in metrics]
-        delta_nadir = [e["delta_nadir"] for e in metrics]
         delta_f = [e["delta_f"] for e in metrics]
-        max_delta_ideal_f = max(max(delta_ideal), max(delta_f))
-        metrics_convergence = (max_delta_ideal_f + max(delta_nadir))/2. if max_delta_ideal_f < self.tol else max(max_delta_ideal_f, max(delta_nadir))
-        if metrics_convergence <= self.tol:
+        max_delta = max(np.mean(delta_ideal), np.mean(delta_f))
+        if max_delta <= self.tol:
             self.problem.logger.info(f'Optimization terminated: '
-                                     f'convergence of objective max delta {(max(delta_ideal), max(delta_nadir), max(delta_f))} '
+                                     f'convergence of objective mean delta {(np.mean(delta_ideal), np.mean(delta_f))} '
                                      f'is below tolerance {self.tol}')
         else:
-            self.problem.logger.info(f'Objective max delta: {(max(delta_ideal), max(delta_nadir), max(delta_f))} ')
+            self.problem.logger.info(f'Objective mean delta: {(np.mean(delta_ideal), np.mean(delta_f))} ')
             
 
-        return  metrics_convergence > self.tol
+        return  max_delta > self.tol
 
 
 class ConstraintViolationToleranceTermination(SlidingWindowTermination):
 
     def __init__(self,
                  problem,
-                 n_last=20,
+                 n_last=10,
                  tol=1e-6,
                  nth_gen=1,
                  n_max_gen=None,
@@ -411,9 +407,9 @@ class MultiObjectiveStdTermination(StdTermination):
     def __init__(self,
                  problem,
                  x_tol=1e-8,
-                 f_tol=0.01,
+                 f_tol=0.0001,
                  nth_gen=5,
-                 n_last=30,
+                 n_last=50,
                  **kwargs) -> None:
         super().__init__(problem,
                          ParameterToleranceTermination(problem, tol=x_tol, n_last=n_last),
