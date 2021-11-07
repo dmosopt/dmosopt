@@ -56,7 +56,7 @@ class SOptStrategy():
         self.termination = None
         if termination_conditions:
             termination_kwargs = { 'x_tol': 1e-6,
-                                   'f_tol': 0.01,
+                                   'f_tol': 0.0001,
                                    'nth_gen': 5,
                                    'n_max_gen': num_generations,
                                    'n_last': 50 }
@@ -126,7 +126,8 @@ class SOptStrategy():
                           'di_mutation': self.di_mutation}
         if self.distance_metric is not None:
             optimizer_kwargs['distance_metric'] = self.distance_metric
-        self.termination.reset()
+        if self.termination is not None:
+            self.termination.reset()
         x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
                                  self.prob.lb, self.prob.ub, self.resample_fraction,
                                  self.x, self.y, self.c, pop=self.population_size,
