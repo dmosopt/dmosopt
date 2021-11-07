@@ -117,10 +117,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
         gc.collect()
         n_eval += count
-        if termination is not None:
-            opt = OptHistory(i, n_eval, population_parm, population_obj, None)
-            if termination.has_terminated(opt):
-                break
 
     sorted_population = np.lexsort(tuple((metric for metric in [rank, -crowd_dist])), axis=0)
     bestx = population_parm[sorted_population].copy()
@@ -419,6 +415,7 @@ def survival_score(y, front, ideal_point):
     if m < n:
         p = 1
         normalization = np.max(y[front, :], axis=0)
+        normalization[np.isclose(normalization, 0.0, rtol=1e-4, atol=1e-4)] = 1.0
         return normalization, p, crowd_dist
 
     # shift the ideal point to the origin
@@ -465,8 +462,11 @@ def survival_score(y, front, ideal_point):
 
 def environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=None):
 
+    # get max int value
+    max_int = np.iinfo(np.int).max
+
     xs, ys, rank = sortMO(population_parm, population_obj)
-    rmax = int(np.max(rank))
+    rmax = int(np.max(rank[rank != max_int]))
     rmin = int(np.min(rank))
 
     yn = np.zeros_like(ys)
