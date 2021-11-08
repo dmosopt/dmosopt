@@ -49,7 +49,7 @@ if __name__ == '__main__':
                       'space': space,
                       'objective_names': objective_names,
                       'population_size': 200,
-                      'num_generations': 1000,
+                      'num_generations': 200,
                       'initial_maxiter': 10,
                       'optimizer': 'nsga2',
                       'termination_conditions': True,
@@ -65,7 +65,7 @@ if __name__ == '__main__':
         
         # plot results
         plt.plot(y[:,0],y[:,1],'b.',label='evaluated points')
-        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='MO-ASMO')
+        plt.plot(besty_dict['y1'],besty_dict['y2'],'r.',label='best points')
     
         y_true = zdt1_pareto()
         plt.plot(y_true[:,0],y_true[:,1],'k-',label='True Pareto')
