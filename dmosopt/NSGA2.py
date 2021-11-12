@@ -7,6 +7,7 @@ from functools import reduce
 import copy, itertools
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
+from dmosopt.dda import dda_non_dominated_sort
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
                  distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05,
@@ -212,7 +213,7 @@ def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metric='crowding')
             distance_function = euclidean_distance
         else:
             raise RuntimeError(f'sortMO: unknown distance metric {distance_metric}')
-    rank, dom = fast_non_dominated_sort(y)
+    rank = dda_non_dominated_sort(y)
     idxr = rank.argsort()
     rank = rank[idxr]
     x = x[idxr,:]
@@ -240,64 +241,8 @@ def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metric='crowding')
         return x, y, rank, crowd, perm
     else:
         return x, y, rank, crowd
-
-def fast_non_dominated_sort(Y):
-    ''' a fast non-dominated sorting method
-        Y: output objective matrix
-    '''
-    N, d = Y.shape
-    Q = [] # temp array of Pareto front index
-    Sp = [] # temp array of points dominated by p
-    S = [] # temp array of Sp
-    rank = np.zeros(N, dtype=np.uint32) # Pareto rank
-    n = np.zeros(N, dtype=np.uint32)  # domination counter of p
-    dom = np.zeros((N, N), dtype=np.uint8)  # the dominate matrix, 1: i doms j, 2: j doms i
-
-    # compute the dominate relationship online, much faster
-    for i in range(N):
-        for j in range(N):
-            if i != j:
-                if dominates(Y[i,:], Y[j,:]):
-                    dom[i,j] = 1
-                    Sp.append(j)
-                elif dominates(Y[j,:], Y[i,:]):
-                    dom[i,j] = 2
-                    n[i] += 1
-        if n[i] == 0:
-            rank[i] = 0
-            Q.append(i)
-        S.append(Sp)
-        Sp = []
-
-    F = []
-    F.append(Q)
-    k = 0
-    while len(F[k]) > 0:
-        Q = []
-        for i in range(len(F[k])):
-            p = F[k][i]
-            for j in range(len(S[p])):
-                q = S[p][j]
-                n[q] -= 1
-                if n[q] == 0:
-                    rank[q]  = k + 1
-                    Q.append(q)
-        k += 1
-        F.append(Q)
-
-    return rank, dom
-
-def dominates(p,q):
-    ''' comparison for multi-objective optimization
-        d = True, if p dominates q
-        d = False, if p not dominates q
-        p and q are 1*nOutput array
-    '''
-    if np.sum(p > q) == 0:
-        d = True
-    else:
-        d = False
-    return d
+                
+        
 
 def crowding_distance(Y):
     ''' compute crowding distance in NSGA-II

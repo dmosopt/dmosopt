@@ -49,7 +49,7 @@ if __name__ == '__main__':
                       'space': space,
                       'objective_names': objective_names,
                       'population_size': 200,
-                      'num_generations': 200,
+                      'num_generations': 100,
                       'initial_maxiter': 10,
                       'optimizer': 'nsga2',
                       'termination_conditions': True,

@@ -15,6 +15,7 @@ import copy, gc, itertools
 from functools import reduce
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
+from dmosopt.dda import dda_non_dominated_sort
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, termination=None,
@@ -171,7 +172,7 @@ def sortMO(x, y):
         nOutput: number of output
         return_perm: if True, return permutation indices of original input
     '''
-    rank, dom = fast_non_dominated_sort(y)
+    rank = dda_non_dominated_sort(y)
     idxr = rank.argsort()
     rank = rank[idxr]
     x = x[idxr,:]

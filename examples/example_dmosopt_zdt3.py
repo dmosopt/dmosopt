@@ -69,7 +69,7 @@ if __name__ == '__main__':
                       'termination_conditions': True,
                       'space': space,
                       'objective_names': objective_names,
-                      'n_initial': 3,
+                      'n_initial': 5,
                       'n_epochs': 4}
 
     best = dmosopt.run(dmosopt_params, verbose=True)
