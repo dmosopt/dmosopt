@@ -213,25 +213,26 @@ def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metric='crowding')
             distance_function = euclidean_distance
         else:
             raise RuntimeError(f'sortMO: unknown distance metric {distance_metric}')
+
     rank = dda_non_dominated_sort(y)
     idxr = rank.argsort()
     rank = rank[idxr]
     x = x[idxr,:]
     y = y[idxr,:]
     T = x.shape[0]
-
+    
     crowd = np.zeros(T)
     rmax = int(rank.max())
     idxt = np.zeros(T, dtype = np.int)
-    c = 0
-    for k in range(rmax):
+    count = 0
+    for k in range(rmax+1):
         rankidx = (rank == k)
         D = distance_function(y[rankidx,:])
         idxd = D.argsort()[::-1]
         crowd[rankidx] = D[idxd]
         idxtt = np.array(range(len(rank)))[rankidx]
-        idxt[c:(c+len(idxtt))] = idxtt[idxd]
-        c += len(idxtt)
+        idxt[count:(count+len(idxtt))] = idxtt[idxd]
+        count += len(idxtt)
     x = x[idxt,:]
     y = y[idxt,:]
     perm = idxr[idxt] if return_perm else None
@@ -255,10 +256,13 @@ def crowding_distance(Y):
     lb = np.min(Y, axis=0, keepdims=True)
     ub = np.max(Y, axis=0, keepdims=True)
 
-    if n == 1 or np.min(ub-lb) == 0.0:
+    if n == 1:
         D = np.array([1.])
     else:
-        U = (Y - lb) / (ub - lb)
+        ub_minus_lb = ub - lb
+        ub_minus_lb[ub_minus_lb == 0.0] = 1.
+        
+        U = (Y - lb) / ub_minus_lb
 
         D = np.zeros(n)
         DS = np.zeros((n,d))
@@ -288,11 +292,10 @@ def euclidean_distance(Y):
     n, d = Y.shape
     lb = np.min(Y, axis=0)
     ub = np.max(Y, axis=0)
-    if np.min(ub-lb) == 0.0:
-        return np.array([1.]*n)
-    else:
-        U = (Y - lb) / (ub - lb)
-        return np.sqrt(np.sum(U ** 2, axis=1))
+    ub_minus_lb = ub - lb
+    ub_minus_lb[ub_minus_lb == 0.0] = 1.
+    U = (Y - lb) / ub_minus_lb
+    return np.sqrt(np.sum(U ** 2, axis=1))
 
 
 def tournament_prob(ax, i):
