@@ -1158,6 +1158,8 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 else:
                     sopt.optimizer_dict[problem_id].step()
                 logger.info(f"completed optimization step {epoch_count+1} for problem {problem_id} ...")
+            controller.info()
+            sys.stdout.flush()
             next_epoch = False
             if eval_count > 0:
                 epoch_count += 1
