@@ -112,7 +112,9 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
 
             if isinstance(nn, int):
                 nn = [nn]
-            
+            else:
+                nn = nn[~np.isinf(dnn)]
+                
             for i in nn:
                 
                 res_i = { k: res_dict[k][i] for k in objective_names }
