@@ -1,9 +1,16 @@
+#
+# An implementation of the Dominance Degree Matrix ranking algorithm:
+#
+# Y. Zhou, Z. Chen and J. Zhang,
+# "Ranking Vectors by Means of the Dominance Degree Matrix,"
+# IEEE Transactions on Evolutionary Computation, vol. 21, no. 1, pp. 34-51, Feb. 2017
+# doi: 10.1109/TEVC.2016.2567648.
+#
+
 import numpy as np
 
-
-
 def comparison_matrix(y, output=None):
-    ''' Construct comparison matrix for input vector y
+    ''' Constructs comparison matrix for input vector y
         y: input vector (N,)
         output: optional output matrix argument of dimension (N, N)
     '''

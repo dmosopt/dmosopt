@@ -88,7 +88,7 @@ class SOptStrategy():
         assert(y.shape[0] == self.prob.n_objectives)
         self.completed.append((x,y,f,c))
     
-    def step(self):
+    def step(self, return_sm=False):
         if len(self.completed) > 0:
             x_completed = np.vstack([x[0] for x in self.completed])
             y_completed = np.vstack([x[1] for x in self.completed])
@@ -128,18 +128,33 @@ class SOptStrategy():
             optimizer_kwargs['distance_metric'] = self.distance_metric
         if self.termination is not None:
             self.termination.reset()
-        x_resample = opt.onestep(self.prob.dim, self.prob.n_objectives,
-                                 self.prob.lb, self.prob.ub, self.resample_fraction,
-                                 self.x, self.y, self.c, pop=self.population_size,
-                                 optimizer=self.optimizer,
-                                 optimizer_kwargs=optimizer_kwargs,
-                                 gpr_optimizer=self.gpr_optimizer,
-                                 gpr_anisotropic=self.gpr_anisotropic,
-                                 feasibility_model=self.feasibility_model,
-                                 termination=self.termination,
-                                 logger=self.logger)
+
+        x_sm = None
+        y_sm = None
+        x_resample = None
+        res = opt.onestep(self.prob.dim, self.prob.n_objectives,
+                          self.prob.lb, self.prob.ub, self.resample_fraction,
+                          self.x, self.y, self.c, pop=self.population_size,
+                          optimizer=self.optimizer,
+                          optimizer_kwargs=optimizer_kwargs,
+                          gpr_optimizer=self.gpr_optimizer,
+                          gpr_anisotropic=self.gpr_anisotropic,
+                          feasibility_model=self.feasibility_model,
+                          termination=self.termination,
+                          logger=self.logger, return_sm=return_sm)
+        
+        if return_sm:
+            x_resample, x_sm, y_sm = res
+        else:
+            x_resample = res
+            
         for i in range(x_resample.shape[0]):
             self.reqs.append(x_resample[i,:])
+            
+        if return_sm:
+            return x_resample, x_sm, y_sm
+        else:
+            return x_resample
         
     def get_best_evals(self, feasible=True):
         if self.x is not None:
@@ -202,6 +217,7 @@ class DistOptimizer():
         save_eval=10,
         file_path=None,
         save=False,
+        save_surrogate_eval=False,
         metadata=None,
         gpr_anisotropic=False,
         gpr_optimizer="sceua",
@@ -321,7 +337,8 @@ class DistOptimizer():
         self.start_epoch = max_epoch + 1
         self.n_epochs = n_epochs
         self.save_eval = save_eval
-
+        self.save_surrogate_eval = save_surrogate_eval
+        
         self.obj_fun_args = obj_fun_args
         if has_problem_ids:
             self.eval_fun = partial(eval_obj_fun_mp, obj_fun, self.problem_parameters, self.param_names, self.is_int, self.obj_fun_args, problem_ids)
@@ -404,7 +421,7 @@ class DistOptimizer():
             self.print_best()
 
     def save_evals(self):
-        """Store results of finished evals to file; print best eval"""
+        """Store results of finished evals to file."""
         finished_evals = {}
         for problem_id in self.problem_ids:
             storage_evals = self.storage_dict[problem_id]
@@ -427,7 +444,13 @@ class DistOptimizer():
                        self.param_spec, finished_evals, self.problem_parameters, 
                        self.metadata, self.file_path, self.logger)
 
-        
+
+    def save_surrogate_evals(self, problem_id, epoch, x_sm, y_sm):
+        """Store results of surrogate evals to file."""
+        if x_sm.shape[0] > 0:
+            save_surrogate_evals_to_h5(self.opt_id, problem_id, 
+                                       self.param_names, self.objective_names, 
+                                       epoch, x_sm, y_sm, self.file_path, self.logger)
 
     def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
@@ -841,6 +864,7 @@ def init_from_h5(file_path, param_names, opt_id, logger=None):
     
     return max_epoch, old_evals, params, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids
 
+
 def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_names, feature_names, constraint_names, spec, evals, problem_parameters, metadata, fpath, logger):
     """
     Save progress and settings to an HDF5 file 'fpath'.
@@ -897,6 +921,40 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
                                   dtype=opt_grp['constraint_type'])
             data = np.array([tuple(c) for c in prob_evals_c], dtype=opt_grp['constraint_type'])
             h5_concat_dataset(dset, data)
+        
+    f.close()
+
+
+def save_surrogate_evals_to_h5(opt_id, problem_id, param_names, objective_names, epoch, x_sm, y_sm, fpath, logger):
+    """
+    Save surrogate evaluations to an HDF5 file 'fpath'.
+    """
+
+    f = h5py.File(fpath, "a")
+            
+    opt_grp = h5_get_group(f, opt_id)
+
+    opt_prob = h5_get_group(opt_grp, str(problem_id))
+    opt_sm = h5_get_group(opt_grp, 'surrogate_evals')
+        
+    n_evals = x_sm.shape[0]
+    if logger is not None:
+        logger.info(f"Saving {n_evals} surrogate evaluations for problem id {problem_id} to {fpath}.")
+
+    dset = h5_get_dataset(opt_sm, 'epochs', maxshape=(None,),
+                          dtype=np.uint32)
+    data = np.asarray([epoch]*n_evals, dtype=np.uint32)
+    h5_concat_dataset(dset, data)
+
+    dset = h5_get_dataset(opt_sm, 'objectives', maxshape=(None,),
+                          dtype=opt_grp['objective_type'])
+    data = np.array([tuple(y) for y in y_sm], dtype=opt_grp['objective_type'])
+    h5_concat_dataset(dset, data)
+
+    dset = h5_get_dataset(opt_sm, 'parameters', maxshape=(None,),
+                          dtype=opt_grp['parameter_space_type'])
+    data = np.array([tuple(x) for x in x_sm], dtype=opt_grp['parameter_space_type'])
+    h5_concat_dataset(dset, data)
         
     f.close()
 
@@ -1093,8 +1151,15 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 saved_eval_count = eval_count
             for problem_id in sopt.problem_ids:
                 logger.info(f"performing optimization step {epoch_count+1} for problem {problem_id} ...")
-                sopt.optimizer_dict[problem_id].step()
+                x_sm, y_sm = None, None
+                if sopt.save and sopt.save_surrogate_eval:
+                    _, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(return_sm=True)
+                    sopt.save_surrogate_evals(problem_id, epoch_count, x_sm, y_sm)
+                else:
+                    sopt.optimizer_dict[problem_id].step()
                 logger.info(f"completed optimization step {epoch_count+1} for problem {problem_id} ...")
+            controller.info()
+            sys.stdout.flush()
             next_epoch = False
             if eval_count > 0:
                 epoch_count += 1

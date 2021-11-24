@@ -168,6 +168,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                                 'mutation_rate': None,
                                 'di_crossover': 1., 'di_mutation': 20. },
             termination=None,
+            return_sm=False,
             logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -221,7 +222,10 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     D = NSGA2.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]
-    return x_resample
+    if return_sm:
+        return x_resample, x_sm, y_sm
+    else:
+        return x_resample
 
 
 def train(nInput, nOutput, xlb, xub, \
