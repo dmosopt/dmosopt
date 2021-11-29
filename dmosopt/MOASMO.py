@@ -1,17 +1,9 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
+
 import sys, pprint
 import numpy as np
-from dmosopt import NSGA2, AGEMOEA, gp, sampling
+from dmosopt import MOEA, NSGA2, AGEMOEA, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
-# function sharedmoea(selfunc,μ,λ)
-#  \selfunc, selection function to be used.
-# μand λ, population and offspring sizes.
-# t ←0; P0 ←randompopulation(μ).
-# while end criterion not met do
-# Poff←applyvariation(Pt,λ).
-# Pt+1 ←selfunc(Pt ∪Poff,μ).
-# t ←t +1.
-# return nondomset(Pt+1), final non-dominated set
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
@@ -85,7 +77,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                                      pop=pop, termination=termination, **optimizer_kwargs)
         else:
             raise RuntimeError(f"Unknown optimizer {optimizer}")
-        D = NSGA2.crowding_distance(besty_sm)
+        D = MOEA.crowding_distance(besty_sm)
         idxr = D.argsort()[::-1][:N_resample]
         x_resample = bestx_sm[idxr,:]
         y_resample = np.zeros((N_resample,nOutput))
@@ -109,7 +101,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
 
     xtmp = x.copy()
     ytmp = y.copy()
-    xtmp, ytmp, rank, crowd = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput)
+    xtmp, ytmp, rank, crowd = MOEA.sortMO(xtmp, ytmp, nInput, nOutput)
     idxp = (rank == 0)
     bestx = xtmp[idxp,:]
     besty = ytmp[idxp,:]
@@ -219,7 +211,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
         
-    D = NSGA2.crowding_distance(besty_sm)
+    D = MOEA.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]
     if return_sm:
@@ -278,7 +270,7 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
             c = c[feasible,:]
             if epochs is not None:
                 epochs = epochs[feasible]
-    xtmp, ytmp, rank, crowd, perm = NSGA2.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
+    xtmp, ytmp, rank, crowd, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
     best_x = xtmp[idxp,:]
     best_y = ytmp[idxp,:]

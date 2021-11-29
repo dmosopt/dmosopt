@@ -16,6 +16,7 @@ from functools import reduce
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
+from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, termination=None,
@@ -89,12 +90,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 parentidx = np.random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
-                children1, children2 = crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
+                children1, children2 = crossover_sbx(parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child1 = children1[0]
                     child2 = children2[0]
                 else:
-                    child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
+                    child1, child2 = crossover_sbx_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
                 xs_gen.extend([child1, child2])
                 count += 2
             else:
@@ -129,40 +130,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     return bestx, besty, x, y
 
 
-def crossover_feasibility_selection(feasibility_model, children_list, logger=None):
-    child_selection = []
-    for children in children_list:
-        fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
-        all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
-        if len(all_feasible) > 0:
-            fsb_pred = fsb_pred[all_feasible]
-            fsb_dist = fsb_dist[all_feasible]
-            children = children[all_feasible]
-            sum_dist = np.sum(fsb_dist, axis=1)
-            child = children[np.argmax(sum_dist)]
-        else:
-            childidx = np.random.choice(np.arange(children.shape[0]), size=1)
-            child = children[childidx[0]]
-        child_selection.append(child)
-    child1 = child_selection[0]
-    child2 = child_selection[1]
-    return child1, child2
-
-
-def feasibility_selection(feasibility_model, children, logger=None):
-    fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
-    all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
-    if len(all_feasible) > 0:
-        fsb_pred = fsb_pred[all_feasible]
-        fsb_dist = fsb_dist[all_feasible]
-        children = children[all_feasible]
-        sum_dist = np.sum(fsb_dist, axis=1)
-        child = children[np.argmax(sum_dist)]
-    else:
-        childidx = np.random.choice(np.arange(children.shape[0]), size=1)
-        child = children[childidx[0]]
-    return child
-
 
 def sortMO(x, y):
     ''' Non domination sorting for multi-objective optimization
@@ -182,47 +149,6 @@ def sortMO(x, y):
 
 
 
-
-def mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
-    ''' Polynomial Mutation in Genetic Algorithm
-        For more information about PMut refer the NSGA-II paper.
-        muration_rate: mutation rate
-        di_mutation: distribution index for mutation, default = 20
-            This determine how well spread the child will be from its parent.
-        parent: sample point before mutation
-	'''
-    n = len(parent)
-    children = np.ndarray((nchildren,n))
-    delta = np.ndarray((n,))
-    for i in range(nchildren):
-        u = np.random.rand(n)
-        lo = np.argwhere(u < mutation_rate).ravel()
-        hi = np.argwhere(u >= mutation_rate).ravel()
-        delta[lo] = (2.0*u[lo])**(1.0/(di_mutation+1)) - 1.0
-        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(di_mutation+1))
-        children[i, :] = np.clip(parent + (xub - xlb) * delta, xlb, xub)
-    return children
-
-
-def crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=1):
-    ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
-         For more information about SBX refer the NSGA-II paper.
-         di_crossover: distribution index for crossover, default = 20
-         This determine how well spread the children will be from their parents.
-    '''
-    n = len(parent1)
-    children1 = np.ndarray((nchildren, n))
-    children2 = np.ndarray((nchildren, n))
-    beta = np.ndarray((n,))
-    for i in range(nchildren):
-        u = np.random.rand(n)
-        lo = np.argwhere(u <= 0.5).ravel()
-        hi = np.argwhere(u > 0.5).ravel()
-        beta[lo] = (2.0*u[lo])**(1.0/(di_crossover+1))
-        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(di_crossover+1))
-        children1[i,:] = np.clip(0.5*((1-beta)*parent1 + (1+beta)*parent2), xlb, xub)
-        children2[i,:] = np.clip(0.5*((1+beta)*parent1 + (1-beta)*parent2), xlb, xub)
-    return children1, children2
 
 
 
@@ -328,22 +254,6 @@ def find_corner_solutions(front):
         
     return indexes
 
-
-def tournament_prob(ax, i):
-    p = ax[1]
-    p1 = p*(1. - p)**i
-    ax[0].append(p1)
-    return (ax[0], p)
-
-
-def tournament_selection(population_parm, population_obj, pop, poolsize, toursize, *metrics):
-    ''' tournament selecting the best individuals into the mating pool'''
-
-    candidates = np.arange(pop)
-    sorted_candidates = np.lexsort(tuple((metric[candidates] for metric in metrics)))
-    prob, _ = reduce(tournament_prob, candidates, ([], 0.5))
-    poolidx = np.random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
-    return population_parm[poolidx,:]
 
 
 def survival_score(y, front, ideal_point):
