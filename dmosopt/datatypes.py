@@ -3,6 +3,24 @@ from functools import partial
 from collections import namedtuple
 import numpy as np  
 
+class Struct(object):
+    def __init__(self, **items):
+        self.__dict__.update(items)
+
+    def update(self, items):
+        self.__dict__.update(items)
+
+    def __call__(self):
+        return self.__dict__
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __repr__(self):
+        return f'Struct({self.__dict__})'
+
+    def __str__(self):
+        return f'<Struct>'
 
 
 ParamSpec = namedtuple('ParamSpec',

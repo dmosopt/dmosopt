@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gs
 from dmosopt.dmosopt import init_from_h5
 from dmosopt.MOASMO import get_best
+from dmosopt.visualization import save_figure
 
 script_name = os.path.basename(__file__)
 
@@ -34,11 +35,15 @@ def list_find(f, lst):
 @click.option("--opt-id", required=True, type=str)
 @click.option("--start-iter", default=0, type=int)
 @click.option("--filter-objectives", required=False, type=str)
+@click.option("--normalize-objectives", '-n', is_flag=True)
 @click.option("--best", '-b', is_flag=True)
+@click.option("--font-size", type=float, default=14)
+@click.option("--fig-size", type=(float,float), default=(15,8))
+@click.option("--fig-format", type=str, default='png')
 @click.option("--verbose", '-v', is_flag=True)
-def main(constraints, file_path, opt_id, start_iter, filter_objectives, best, verbose):
+def main(constraints, file_path, opt_id, start_iter, filter_objectives, normalize_objectives, best, font_size, fig_size, fig_format, verbose):
 
-    old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
+    max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
 
     if problem_ids is None:
@@ -82,6 +87,11 @@ def main(constraints, file_path, opt_id, start_iter, filter_objectives, best, ve
             prms_dict = dict(prms)
             res_dict = dict(res)
             constr_dict = None
+            ftrs_dict = None
+            
+            if best_f is not None:
+                ftrs = list(zip(feature_names, list(best_f.T)))
+                ftrs_dict = dict(ftrs)
             
             if constraints and best_c is not None:
                 constr = list(zip(constraint_names, list(best_c.T)))
@@ -94,33 +104,29 @@ def main(constraints, file_path, opt_id, start_iter, filter_objectives, best, ve
             prms_dict = dict(prms)
             res_dict = dict(res)
             constr_dict = None
-
+            ftrs_dict = None
+            
             if constraints and c is not None:
                 constr = list(zip(constraint_names, list(c.T)))
                 constr_dict = dict(constr)
+            if f is not None:
+                ftrs = list(zip(feature_names, list(best_f.T)))
+                ftrs_dict = dict(ftrs)
             n_res = y.shape[0]
 
         n_rows = len(objective_names)
-        n_rows = 0
-        if feature_names is not None:
-            n_rows += len(feature_names)
-
         n_row = 0
-        fig = plt.figure(constrained_layout=True)
+        mpl.rcParams['font.size'] = font_size
+        fig = plt.figure(constrained_layout=True, figsize=fig_size)
         fig_spec = gs.GridSpec(ncols=1, nrows=n_rows, figure=fig)
         for i, objective_name in enumerate(objective_names):
             if len(res_dict[objective_name].shape) == 1:
                 f_ax = fig.add_subplot(fig_spec[n_row, 0])
-                plt.plot(res_dict[objective_name][start_iter:])
+                f_ax.set_title(f"Objective {objective_name}")
+                plt.plot(res_dict[objective_name][start_iter:], marker='o')
                 n_row += 1
-
-        if feature_names is not None:
-            for i, feature_name in enumerate(feature_names):
-                if len(f[feature_name].shape) == 1:
-                    f_ax = fig.add_subplot(fig_spec[n_row, 0])
-                    plt.plot(f[feature_name][start_iter:])
-                    n_row += 1
-
-        fig.set_figheight(50)
+                    
+        save_figure(opt_id, fig)
+                
         plt.show()
             
