@@ -1181,10 +1181,10 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                         y_completed = np.vstack([x.objectives for x in completed_epoch_evals])
                         pred_completed = np.vstack([x.prediction for x in completed_epoch_evals])
                         n_objectives = y_completed.shape[1]
-                        mse = []
+                        mae = []
                         for i in range(n_objectives):
-                            mse.append(np.mean((y_completed[:,i] - pred_completed[:,i])**2))
-                        logger.info(f"surrogate accuracy at step {epoch_count} for problem {problem_id} was {mse}")
+                            mae.append(np.mean(np.abs(y_completed[:,i] - pred_completed[:,i])))
+                        logger.info(f"surrogate accuracy at step {epoch_count} for problem {problem_id} was {mae}")
                 logger.info(f"performing optimization step {epoch_count+1} for problem {problem_id} ...")
                 x_sm, y_sm = None, None
                 if sopt.save and sopt.save_surrogate_eval:
