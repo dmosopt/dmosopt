@@ -35,8 +35,14 @@ EvalEntry = namedtuple('EvalEntry',
                         'parameters',
                         'objectives',
                         'features',
-                        'constraints'
+                        'constraints',
+                        'prediction',
                        ])
+
+EvalRequest = namedtuple('EvalRequest',
+                         ['parameters',
+                          'prediction',
+                         ])
 
 OptHistory = namedtuple('OptHistory',
                         ['n_gen',

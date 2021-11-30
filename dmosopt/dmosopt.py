@@ -4,7 +4,7 @@ from collections import namedtuple
 import numpy as np  
 import distwq
 import dmosopt.MOASMO as opt
-from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry
+from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry, EvalRequest
 from dmosopt.termination import MultiObjectiveStdTermination
 
 logger = logging.getLogger('dmosopt')
@@ -72,33 +72,35 @@ class SOptStrategy():
         if xinit is not None:
             assert(xinit.shape[1] == prob.dim)
             if initial is None:
-                self.reqs = [ xinit[i,:] for i in range(xinit.shape[0]) ]
+                self.reqs = [ EvalRequest(xinit[i,:], None) for i in range(xinit.shape[0]) ]
             else:
-                self.reqs = list(filter(lambda xs: not anyclose(xs, self.x), 
-                                        [ xinit[i,:] for i in range(xinit.shape[0]) ]))
+                self.reqs = list(filter(lambda req: not anyclose(req.parameters, self.x), 
+                                        [ EvalRequest(xinit[i,:], None) for i in range(xinit.shape[0]) ]))
             
-    def get_next_x(self):
-        result = None
+    def get_next_request(self):
+        req = None
         if len(self.reqs) > 0:
-            result = self.reqs.pop(0)
-        return result
+            req = self.reqs.pop(0)
+        return req
 
-    def complete_x(self, x, y, f=None, c=None):
+    def complete_request(self, x, y, epoch=None, f=None, c=None, pred=None):
         assert(x.shape[0] == self.prob.dim)
         assert(y.shape[0] == self.prob.n_objectives)
-        self.completed.append((x,y,f,c))
+        entry = EvalEntry(epoch,x,y,f,c,pred)
+        self.completed.append(entry)
+        return entry
     
     def step(self, return_sm=False):
         if len(self.completed) > 0:
-            x_completed = np.vstack([x[0] for x in self.completed])
-            y_completed = np.vstack([x[1] for x in self.completed])
+            x_completed = np.vstack([x.parameters for x in self.completed])
+            y_completed = np.vstack([x.objectives for x in self.completed])
 
             f_completed = None
             if self.prob.n_features is not None:
-                f_completed = np.concatenate([x[2] for x in self.completed], axis=None)
+                f_completed = np.concatenate([x.features for x in self.completed], axis=None)
             c_completed = None
             if self.prob.n_constraints is not None:
-                c_completed = np.vstack([x[3] for x in self.completed])
+                c_completed = np.vstack([x.constraints for x in self.completed])
             
             assert(x_completed.shape[1] == self.prob.dim)
             assert(y_completed.shape[1] == self.prob.n_objectives)
@@ -144,17 +146,17 @@ class SOptStrategy():
                           logger=self.logger, return_sm=return_sm)
         
         if return_sm:
-            x_resample, x_sm, y_sm = res
+            x_resample, y_pred, x_sm, y_sm = res
         else:
-            x_resample = res
+            x_resample, y_pred = res
             
         for i in range(x_resample.shape[0]):
-            self.reqs.append(x_resample[i,:])
+            self.reqs.append(EvalRequest(x_resample[i,:], y_pred[i,:]))
             
         if return_sm:
-            return x_resample, x_sm, y_sm
+            return x_resample, y_pred, x_sm, y_sm
         else:
-            return x_resample
+            return x_resample, y_pred
         
     def get_best_evals(self, feasible=True):
         if self.x is not None:
@@ -174,14 +176,14 @@ class SOptStrategy():
 
     def get_completed(self):
         if len(self.completed) > 0:
-            x_completed = [x[0] for x in self.completed]
-            y_completed = [x[1] for x in self.completed]
+            x_completed = [x.parameters for x in self.completed]
+            y_completed = [x.objectives for x in self.completed]
             f_completed = None
             c_completed = None
             if self.prob.n_features is not None:
-                f_completed = [x[2] for x in self.completed]
+                f_completed = [x.features for x in self.completed]
             if self.prob.n_constraints is not None:
-                c_completed = [x[3] for x in self.completed]
+                c_completed = [x.constraints for x in self.completed]
             
             return (x_completed, y_completed, f_completed, c_completed)
         else:
@@ -348,7 +350,7 @@ class DistOptimizer():
         self.reduce_fun = reduce_fun
         self.reduce_fun_args = reduce_fun_args
         
-        self.evals = { problem_id: {} for problem_id in problem_ids }
+        self.eval_reqs = { problem_id: {} for problem_id in problem_ids }
         self.old_evals = old_evals
 
         self.has_problem_ids = has_problem_ids
@@ -426,16 +428,19 @@ class DistOptimizer():
         for problem_id in self.problem_ids:
             storage_evals = self.storage_dict[problem_id]
             if len(storage_evals) > 0:
+                n = len(self.objective_names)
                 epochs_completed = [x.epoch for x in storage_evals]
                 x_completed = [x.parameters for x in storage_evals]
                 y_completed = [x.objectives for x in storage_evals]
+                y_pred_completed = map(lambda x: [np.nan]*n if x is None else x,
+                                       [x.prediction for x in storage_evals])
                 f_completed = None
                 if self.feature_names is not None:
                     f_completed = [x.features for x in storage_evals]
                 c_completed = None
                 if self.constraint_names is not None:
                     c_completed = [x.constraints for x in storage_evals]
-                finished_evals[problem_id] = (epochs_completed, x_completed, y_completed, f_completed, c_completed)
+                finished_evals[problem_id] = (epochs_completed, x_completed, y_completed, f_completed, c_completed, y_pred_completed)
                 self.storage_dict[problem_id] = []
 
         if len(finished_evals) > 0:
@@ -743,6 +748,8 @@ def h5_load_raw(input_file, opt_id):
                 raw_results[problem_id]['constraints'] = opt_grp[str(problem_id)]['constraints'][:]
             if 'epochs' in opt_grp[str(problem_id)]:
                 raw_results[problem_id]['epochs'] = opt_grp[str(problem_id)]['epochs'][:]
+            if 'predictions' in opt_grp[str(problem_id)]:
+                raw_results[problem_id]['predictions'] = opt_grp[str(problem_id)]['predictions'][:]
                                         
     f.close()
     
@@ -809,19 +816,23 @@ def h5_load_all(file_path, opt_id):
         xs = raw_results['parameters']
         fs = raw_results.get('features', None)
         cs = raw_results.get('constraints', None)
+        ypreds = raw_results.get('predictions', None)
         for i in range(ys.shape[0]):
             epoch_i = None
             if epochs is not None:
                 epoch_i = epochs[i]
             x_i = list(xs[i])
             y_i = list(ys[i])
+            y_pred_i = None
+            if ypreds is not None:
+                y_pred_i = list(ypreds[i])
             f_i = None
             if fs is not None:
                 f_i = fs[i]
             c_i = None
             if cs is not None:
                 c_i = list(cs[i])
-            problem_evals.append(EvalEntry(epoch_i, x_i, y_i, f_i, c_i))
+            problem_evals.append(EvalEntry(epoch_i, x_i, y_i, f_i, c_i, y_pred_i))
         evals[problem_id] = problem_evals
     return raw_spec, spec, evals, info
     
@@ -889,7 +900,7 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
 
     for problem_id in problem_ids:
 
-        prob_evals_epoch, prob_evals_x, prob_evals_y, prob_evals_f, prob_evals_c = evals[problem_id]
+        prob_evals_epoch, prob_evals_x, prob_evals_y, prob_evals_f, prob_evals_c, prob_evals_y_pred = evals[problem_id]
         opt_prob = h5_get_group(opt_grp, str(problem_id))
 
         if logger is not None:
@@ -921,6 +932,11 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
                                   dtype=opt_grp['constraint_type'])
             data = np.array([tuple(c) for c in prob_evals_c], dtype=opt_grp['constraint_type'])
             h5_concat_dataset(dset, data)
+            
+        dset = h5_get_dataset(opt_prob, 'predictions', maxshape=(None,),
+                              dtype=opt_grp['objective_type'])
+        data = np.array([tuple(y) for y in prob_evals_y_pred], dtype=opt_grp['objective_type'])
+        h5_concat_dataset(dset, data)
         
     f.close()
 
@@ -1084,19 +1100,25 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                         rres = sopt.reduce_fun(res, *sopt.reduce_fun_args)
 
                 for problem_id in rres:
-                    eval_x = sopt.evals[problem_id][task_id]
+                    eval_req = sopt.eval_reqs[problem_id][task_id]
+                    eval_x = eval_req.parameters
+                    eval_pred = eval_req.prediction
                     if sopt.feature_names is not None and sopt.constraint_names is not None:
-                        sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id][0], f=rres[problem_id][1], c=rres[problem_id][2])
-                        sopt.storage_dict[problem_id].append(EvalEntry(epoch, eval_x, rres[problem_id][0], rres[problem_id][1], rres[problem_id][2]))
+                        entry = sopt.optimizer_dict[problem_id].complete_request(eval_x, rres[problem_id][0],
+                                                                                 f=rres[problem_id][1], c=rres[problem_id][2],
+                                                                                 pred=eval_pred, epoch=epoch)
+                        sopt.storage_dict[problem_id].append(entry)
                     elif sopt.feature_names is not None:
-                        sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id][0], f=rres[problem_id][1])
-                        sopt.storage_dict[problem_id].append(EvalEntry(epoch, eval_x, rres[problem_id][0], rres[problem_id][1], None))
+                        entry = sopt.optimizer_dict[problem_id].complete_request(eval_x, rres[problem_id][0], f=rres[problem_id][1],
+                                                                                 pred=eval_pred, epoch=epoch)
+                        sopt.storage_dict[problem_id].append(entry)
                     elif sopt.constraint_names is not None:
-                        sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id][0], c=rres[problem_id][1])
-                        sopt.storage_dict[problem_id].append(EvalEntry(epoch, eval_x, rres[problem_id][0], None, rres[problem_id][1]))
+                        entry = sopt.optimizer_dict[problem_id].complete_request(eval_x, rres[problem_id][0], c=rres[problem_id][1],
+                                                                                 pred=eval_pred, epoch=epoch)
+                        sopt.storage_dict[problem_id].append(entry)
                     else:
-                        sopt.optimizer_dict[problem_id].complete_x(eval_x, rres[problem_id])
-                        sopt.storage_dict[problem_id].append(EvalEntry(epoch, eval_x, rres[problem_id], None, None))
+                        entry = sopt.optimizer_dict[problem_id].complete_request(eval_x, rres[problem_id], pred=eval_pred, epoch=epoch)
+                        sopt.storage_dict[problem_id].append(entry)
                     prms = list(zip(sopt.param_names, list(eval_x.T)))
                     lftrs = None
                     lres = None
@@ -1129,13 +1151,15 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
             if controller.workers_available:
                 n_workers = len(controller.ready_workers)
             for w in range(n_workers):
+                eval_req_dict = {}
                 eval_x_dict = {}
                 for problem_id in sopt.problem_ids:
-                    eval_x = sopt.optimizer_dict[problem_id].get_next_x()
-                    if eval_x is None:
+                    eval_req = sopt.optimizer_dict[problem_id].get_next_request()
+                    if eval_req is None:
                         next_epoch = True
                     else:
-                        eval_x_dict[problem_id] = eval_x
+                        eval_req_dict[problem_id] = eval_req
+                        eval_x_dict[problem_id] = eval_req.parameters
                 if next_epoch:
                     break
 
@@ -1143,17 +1167,28 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                                                  args=(sopt.opt_id, eval_x_dict,))
                 task_ids.append(task_id)
                 for problem_id in sopt.problem_ids:
-                    sopt.evals[problem_id][task_id] = eval_x_dict[problem_id]
+                    sopt.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
         if next_epoch and (len(task_ids) == 0):
             if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count):
                 sopt.save_evals()
                 saved_eval_count = eval_count
+                    
             for problem_id in sopt.problem_ids:
+                if epoch_count > 0:
+                    completed_epoch_evals = list(filter(lambda x: x.epoch == epoch_count, sopt.optimizer_dict[problem_id].completed))
+                    if len(completed_epoch_evals) > 0:
+                        y_completed = np.vstack([x.objectives for x in completed_epoch_evals])
+                        pred_completed = np.vstack([x.prediction for x in completed_epoch_evals])
+                        n_objectives = y_completed.shape[1]
+                        mse = []
+                        for i in range(n_objectives):
+                            mse.append(np.mean((y_completed[:,i] - pred_completed[:,i])**2))
+                        logger.info(f"surrogate accuracy at step {epoch_count} for problem {problem_id} was {mse}")
                 logger.info(f"performing optimization step {epoch_count+1} for problem {problem_id} ...")
                 x_sm, y_sm = None, None
                 if sopt.save and sopt.save_surrogate_eval:
-                    _, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(return_sm=True)
+                    _, _, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(return_sm=True)
                     sopt.save_surrogate_evals(problem_id, epoch_count, x_sm, y_sm)
                 else:
                     sopt.optimizer_dict[problem_id].step()

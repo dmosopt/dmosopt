@@ -222,10 +222,11 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     D = NSGA2.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]
+    y_pred = besty_sm[idxr,:]
     if return_sm:
-        return x_resample, x_sm, y_sm
+        return x_resample, y_pred, x_sm, y_sm
     else:
-        return x_resample
+        return x_resample, y_pred
 
 
 def train(nInput, nOutput, xlb, xub, \
