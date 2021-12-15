@@ -27,13 +27,14 @@ class SOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp",
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
-                 distance_metric=None,  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
-                 feasibility_model=False, termination_conditions=None,
+                 distance_metric=None,  surrogate_method='gpr',
+                 surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
+                 optimizer="nsga2", feasibility_model=False, termination_conditions=None,
                  logger=None):
         self.logger = logger
         self.feasibility_model = feasibility_model
-        self.gpr_anisotropic = gpr_anisotropic
-        self.gpr_optimizer = gpr_optimizer
+        self.surrogate_options = surrogate_options
+        self.surrogate_method = surrogate_method
         self.optimizer = optimizer
         self.distance_metric = distance_metric
         self.prob = prob
@@ -139,8 +140,8 @@ class SOptStrategy():
                           self.x, self.y, self.c, pop=self.population_size,
                           optimizer=self.optimizer,
                           optimizer_kwargs=optimizer_kwargs,
-                          gpr_optimizer=self.gpr_optimizer,
-                          gpr_anisotropic=self.gpr_anisotropic,
+                          surrogate_method=self.surrogate_method,
+                          surrogate_options=self.surrogate_options,
                           feasibility_model=self.feasibility_model,
                           termination=self.termination,
                           logger=self.logger, return_sm=return_sm)
@@ -221,8 +222,9 @@ class DistOptimizer():
         save=False,
         save_surrogate_eval=False,
         metadata=None,
-        gpr_anisotropic=False,
-        gpr_optimizer="sceua",
+        surrogate_method="gpr",
+        surrogate_options={'anisotropic': False,
+                           'optimizer': "sceua" },
         optimizer="nsga2",
         feasibility_model=False,
         termination_conditions=None,
@@ -268,8 +270,8 @@ class DistOptimizer():
         self.di_crossover = di_crossover
         self.di_mutation = di_mutation
         self.distance_metric = distance_metric
-        self.gpr_optimizer = gpr_optimizer
-        self.gpr_anisotropic = gpr_anisotropic
+        self.surrogate_method = surrogate_method
+        self.surrogate_options = surrogate_options
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
@@ -411,8 +413,8 @@ class DistOptimizer():
                                         di_mutation=self.di_mutation,
                                         di_crossover=self.di_crossover,
                                         distance_metric=self.distance_metric,
-                                        gpr_optimizer=self.gpr_optimizer,
-                                        gpr_anisotropic=self.gpr_anisotropic,
+                                        surrogate_method=self.surrogate_method,
+                                        surrogate_options=self.surrogate_options,
                                         optimizer=self.optimizer,
                                         feasibility_model=self.feasibility_model,
                                         termination_conditions=self.termination_conditions,

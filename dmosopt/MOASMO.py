@@ -1,7 +1,7 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
 import sys, pprint
 import numpy as np
-from dmosopt import NSGA2, AGEMOEA, gp, sampling
+from dmosopt import NSGA2, AGEMOEA, gp, pod, sampling
 from dmosopt.feasibility import FeasibilityModel
 # function sharedmoea(selfunc,μ,λ)
 #  \selfunc, selection function to be used.
@@ -161,12 +161,13 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
 def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, C, pop=100,
             feasibility_model=False,
-            gpr_anisotropic=False, gpr_optimizer="sceua",
             optimizer="nsga2",
             optimizer_kwargs= { 'gen': 100,
                                 'crossover_rate': 0.9,
                                 'mutation_rate': None,
                                 'di_crossover': 1., 'di_mutation': 20. },
+            surrogate_method="gpr",
+            surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
             termination=None,
             return_sm=False,
             logger=None):
@@ -205,7 +206,14 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
+    if surrogate_method == 'gpr':
+        gpr_anisotropic = surrogate_options.get('anisotropic', False)
+        gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
+        sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
+    elif surrogate_method == 'pod':
+        sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
+    else:
+        raise RuntimeError(f'Unknown surrogate method {surrogate_method}')
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \

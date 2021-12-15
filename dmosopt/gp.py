@@ -7,14 +7,15 @@ from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteK
 
 
 class GPR_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
         self.xub = xub
         self.xrg = xub - xlb
         self.logger = logger
-        
+
+        N = x.shape[0]
         x = np.zeros_like(xin)
         y = np.copy(yin)
         for i in range(N):
@@ -61,7 +62,7 @@ class GPR_Matern:
 
     
 class GPR_RBF:
-    def __init__(self, xin, yin, nInput, nOutput, N, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -69,6 +70,7 @@ class GPR_RBF:
         self.xrg = xub - xlb
         self.logger = logger
 
+        N = x.shape[0]
         x = np.zeros_like(xin)
         y = np.copy(yin)
         for i in range(N):

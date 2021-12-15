@@ -65,7 +65,7 @@ if __name__ == '__main__':
                       'optimizer': 'nsga2',
                       'population_size': 200,
                       'num_generations': 200,
-                      'optimizer': 'nsga2',
+                      'optimizer': 'age',
                       'termination_conditions': True,
                       'space': space,
                       'objective_names': objective_names,
