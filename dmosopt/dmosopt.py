@@ -962,6 +962,11 @@ def save_surrogate_evals_to_h5(opt_id, problem_id, param_names, objective_names,
     data = np.asarray([epoch]*n_evals, dtype=np.uint32)
     h5_concat_dataset(dset, data)
 
+    dset = h5_get_dataset(opt_sm, 'generations', maxshape=(None,),
+                          dtype=np.uint32)
+    data = np.arange(n_evals, dtype=np.uint32)
+    h5_concat_dataset(dset, data)
+
     dset = h5_get_dataset(opt_sm, 'objectives', maxshape=(None,),
                           dtype=opt_grp['objective_type'])
     data = np.array([tuple(y) for y in y_sm], dtype=opt_grp['objective_type'])
