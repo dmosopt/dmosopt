@@ -65,14 +65,14 @@ def main(file_path, opt_id, resample_fraction, population_size, num_generations,
         n_dim = len(lo_bounds)
         n_objectives = len(objective_names)
         
-        x_resample = onestep(n_dim, n_objectives,
-                             np.asarray(lo_bounds), np.asarray(hi_bounds), resample_fraction,
-                             x, y, C=c, pop=population_size, 
-                             optimizer_kwargs= { 'gen': num_generations,
-                                                 'crossover_rate': 0.9,
-                                                 'mutation_rate': None,
-                                                 'mu': 20, 'mum': 20 },
-                             logger=logger)
+        x_resample, _ = onestep(n_dim, n_objectives,
+                                np.asarray(lo_bounds), np.asarray(hi_bounds), resample_fraction,
+                                x, y, C=c, pop=population_size, 
+                                optimizer_kwargs= { 'gen': num_generations,
+                                                    'crossover_rate': 0.9,
+                                                    'mutation_rate': None,
+                                                    'mu': 20, 'mum': 20 },
+                                logger=logger)
 
         for i, x in enumerate(x_resample):
             print(f"resampled coordinates {i}: {pprint.pformat(x)}")

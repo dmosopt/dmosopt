@@ -146,7 +146,7 @@ class SOptStrategy():
                           logger=self.logger, return_sm=return_sm)
         
         if return_sm:
-            x_resample, y_pred, x_sm, y_sm = res
+            x_resample, y_pred, gen_index, x_sm, y_sm = res
         else:
             x_resample, y_pred = res
             
@@ -154,7 +154,7 @@ class SOptStrategy():
             self.reqs.append(EvalRequest(x_resample[i,:], y_pred[i,:]))
             
         if return_sm:
-            return x_resample, y_pred, x_sm, y_sm
+            return x_resample, y_pred, gen_index, x_sm, y_sm
         else:
             return x_resample, y_pred
         
@@ -450,12 +450,13 @@ class DistOptimizer():
                        self.metadata, self.file_path, self.logger)
 
 
-    def save_surrogate_evals(self, problem_id, epoch, x_sm, y_sm):
+    def save_surrogate_evals(self, problem_id, epoch, gen_index, x_sm, y_sm):
         """Store results of surrogate evals to file."""
         if x_sm.shape[0] > 0:
             save_surrogate_evals_to_h5(self.opt_id, problem_id, 
                                        self.param_names, self.objective_names, 
-                                       epoch, x_sm, y_sm, self.file_path, self.logger)
+                                       epoch, gen_index, x_sm, y_sm,
+                                       self.file_path, self.logger)
 
     def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
@@ -941,7 +942,7 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
     f.close()
 
 
-def save_surrogate_evals_to_h5(opt_id, problem_id, param_names, objective_names, epoch, x_sm, y_sm, fpath, logger):
+def save_surrogate_evals_to_h5(opt_id, problem_id, param_names, objective_names, epoch, gen_index, x_sm, y_sm, fpath, logger):
     """
     Save surrogate evaluations to an HDF5 file 'fpath'.
     """
@@ -964,8 +965,7 @@ def save_surrogate_evals_to_h5(opt_id, problem_id, param_names, objective_names,
 
     dset = h5_get_dataset(opt_sm, 'generations', maxshape=(None,),
                           dtype=np.uint32)
-    data = np.arange(n_evals, dtype=np.uint32)
-    h5_concat_dataset(dset, data)
+    h5_concat_dataset(dset, gen_index)
 
     dset = h5_get_dataset(opt_sm, 'objectives', maxshape=(None,),
                           dtype=opt_grp['objective_type'])
@@ -1193,8 +1193,8 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 logger.info(f"performing optimization step {epoch_count+1} for problem {problem_id} ...")
                 x_sm, y_sm = None, None
                 if sopt.save and sopt.save_surrogate_eval:
-                    _, _, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(return_sm=True)
-                    sopt.save_surrogate_evals(problem_id, epoch, x_sm, y_sm)
+                    _, _, gen_index, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(return_sm=True)
+                    sopt.save_surrogate_evals(problem_id, epoch, gen_index, x_sm, y_sm)
                 else:
                     sopt.optimizer_dict[problem_id].step()
                 logger.info(f"completed optimization step {epoch_count+1} for problem {problem_id} ...")

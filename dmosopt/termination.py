@@ -105,9 +105,9 @@ class MaximumGenerationTermination(Termination):
             self.n_max_gen = float("inf")
 
     def _do_continue(self, opt):
-        if opt.n_gen >= self.n_max_gen:
+        if opt.n_gen > self.n_max_gen:
             self.problem.logger.info(f'Optimization terminated: maximum number of generations ({opt.n_gen}) has been reached')
-        return opt.n_gen < self.n_max_gen
+        return opt.n_gen <= self.n_max_gen
 
     
     
@@ -409,7 +409,7 @@ class MultiObjectiveStdTermination(StdTermination):
                  x_tol=1e-8,
                  f_tol=0.0001,
                  nth_gen=5,
-                 n_last=50,
+                 n_last=49,
                  **kwargs) -> None:
         super().__init__(problem,
                          ParameterToleranceTermination(problem, tol=x_tol, n_last=n_last),
