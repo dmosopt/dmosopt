@@ -1194,7 +1194,7 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 x_sm, y_sm = None, None
                 if sopt.save and sopt.save_surrogate_eval:
                     _, _, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(return_sm=True)
-                    sopt.save_surrogate_evals(problem_id, epoch_count, x_sm, y_sm)
+                    sopt.save_surrogate_evals(problem_id, epoch, x_sm, y_sm)
                 else:
                     sopt.optimizer_dict[problem_id].step()
                 logger.info(f"completed optimization step {epoch_count+1} for problem {problem_id} ...")
