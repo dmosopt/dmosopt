@@ -1,9 +1,10 @@
 #
-# Common routines used by multi-objective evolutionary algorithm.
+# Common routines used by multi-objective evolutionary algorithms.
 #
 
 import numpy as np
-
+from functools import reduce
+from dmosopt.dda import dda_non_dominated_sort
 
 # function sharedmoea(selfunc,μ,λ)
 #  \selfunc, selection function to be used.
@@ -16,7 +17,7 @@ import numpy as np
 # return nondomset(Pt+1), final non-dominated set
 
 
-def crossover_sbx_feasibility_selection(feasibility_model, children_list, logger=None):
+def crossover_sbx_feasibility_selection(local_random, feasibility_model, children_list, logger=None):
     child_selection = []
     for children in children_list:
         fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
@@ -28,7 +29,7 @@ def crossover_sbx_feasibility_selection(feasibility_model, children_list, logger
             sum_dist = np.sum(fsb_dist, axis=1)
             child = children[np.argmax(sum_dist)]
         else:
-            childidx = np.random.choice(np.arange(children.shape[0]), size=1)
+            childidx = local_random.choice(np.arange(children.shape[0]), size=1)
             child = children[childidx[0]]
         child_selection.append(child)
             
@@ -37,7 +38,7 @@ def crossover_sbx_feasibility_selection(feasibility_model, children_list, logger
     return child1, child2
 
 
-def feasibility_selection(feasibility_model, children, logger=None):
+def feasibility_selection(local_random, feasibility_model, children, logger=None):
     fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
     all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
     if len(all_feasible) > 0:
@@ -47,12 +48,12 @@ def feasibility_selection(feasibility_model, children, logger=None):
         sum_dist = np.sum(fsb_dist, axis=1)
         child = children[np.argmax(sum_dist)]
     else:
-        childidx = np.random.choice(np.arange(children.shape[0]), size=1)
+        childidx = local_random.choice(np.arange(children.shape[0]), size=1)
         child = children[childidx[0]]
     return child
 
 
-def mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
+def mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
     ''' Polynomial Mutation in Genetic Algorithm
         muration_rate: mutation rate
         di_mutation: distribution index for mutation, default = 20
@@ -63,7 +64,7 @@ def mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
     children = np.ndarray((nchildren,n))
     delta = np.ndarray((n,))
     for i in range(nchildren):
-        u = np.random.rand(n)
+        u = local_random.random(n)
         lo = np.argwhere(u < mutation_rate).ravel()
         hi = np.argwhere(u >= mutation_rate).ravel()
         delta[lo] = (2.0*u[lo])**(1.0/(di_mutation+1)) - 1.0
@@ -72,7 +73,7 @@ def mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
     return children
 
 
-def crossover_sbx(parent1, parent2, di_crossover, xlb, xub, nchildren=1):
+def crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=1):
     ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
 
          di_crossover: distribution index for crossover, default = 20
@@ -83,7 +84,7 @@ def crossover_sbx(parent1, parent2, di_crossover, xlb, xub, nchildren=1):
     children2 = np.ndarray((nchildren, n))
     beta = np.ndarray((n,))
     for i in range(nchildren):
-        u = np.random.rand(n)
+        u = local_random.random(n)
         lo = np.argwhere(u <= 0.5).ravel()
         hi = np.argwhere(u > 0.5).ravel()
         beta[lo] = (2.0*u[lo])**(1.0/(di_crossover+1))
@@ -203,19 +204,19 @@ def tournament_prob(ax, i):
     ax[0].append(p1)
     return (ax[0], p)
 
-def tournament_selection(population_parm, population_obj, pop, poolsize, toursize, *metrics):
+def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
     ''' tournament selecting the best individuals into the mating pool'''
 
     candidates = np.arange(pop)
     sorted_candidates = np.lexsort(tuple((metric[candidates] for metric in metrics)))
     prob, _ = reduce(tournament_prob, candidates, ([], 0.5))
-    poolidx = np.random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
-    return population_parm[poolidx,:]
+    poolidx = local_random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
+    return poolidx
 
 
-def remove_worst(population_para, population_obj, pop, nInput, nOutput, distance_metric=None):
+def remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=None):
     ''' remove the worst individuals in the population '''
-    population_para, population_obj, rank, crowd = \
-        sortMO(population_para, population_obj, nInput, nOutput, distance_metric=distance_metric)
-    return population_para[0:pop,:], population_obj[0:pop,:], rank[0:pop]
+    population_parm, population_obj, rank, crowd = \
+        sortMO(population_parm, population_obj, nInput, nOutput, distance_metric=distance_metric)
+    return population_parm[0:pop,:], population_obj[0:pop,:], rank[0:pop]
 

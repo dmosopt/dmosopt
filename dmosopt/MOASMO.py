@@ -2,7 +2,8 @@
 
 import sys, pprint
 import numpy as np
-from dmosopt import MOEA, NSGA2, AGEMOEA, gp, sampling
+from numpy.random import default_rng
+from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
@@ -15,6 +16,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                                      'mutation_rate': None,
                                      'di_crossover': 1., 'di_mutation': 20. },
                  termination=None,
+                 local_random=None,
                  logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -70,11 +72,15 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
         if optimizer == 'nsga2':
             bestx_sm, besty_sm, x_sm, y_sm = \
                 NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
-                                   pop=pop, termination=termination, **optimizer_kwargs)
+                                   pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
         elif optimizer == 'age':
             bestx_sm, besty_sm, x_sm, y_sm = \
                 AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
-                                     pop=pop, termination=termination, **optimizer_kwargs)
+                                     pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+        elif optimizer == 'smpso':
+            bestx_sm, besty_sm, x_sm, y_sm = \
+                SMPSO.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
+                                   pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
         else:
             raise RuntimeError(f"Unknown optimizer {optimizer}")
         D = MOEA.crowding_distance(besty_sm)
@@ -109,7 +115,7 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     return bestx, besty, x, y
 
 
-def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxiter=5, logger=None):
+def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxiter=5, local_random=None, logger=None):
     """ 
     Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
     nEval: number of evaluations per parameter
@@ -120,8 +126,9 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     """
     Ninit = nInput * nEval
 
-    if nPrevious is not None:
-        Ninit -= nPrevious
+    if local_random is None:
+        local_random = default_rng()
+
     if Ninit <= 0:
         return None
 
@@ -129,13 +136,13 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
         logger.info(f"xinit: generating {Ninit} initial parameters...")
     
     if method == "glp":
-        Xinit = sampling.glp(Ninit, nInput, maxiter=maxiter)
+        Xinit = sampling.glp(Ninit, nInput, local_random=local_random, maxiter=maxiter)
     elif method == "slh":
-        Xinit = sampling.slh(Ninit, nInput, maxiter=maxiter)
+        Xinit = sampling.slh(Ninit, nInput, local_random=local_random, maxiter=maxiter)
     elif method == "lh":
-        Xinit = sampling.lh(Ninit, nInput, maxiter=maxiter)
+        Xinit = sampling.lh(Ninit, nInput, local_random=local_random, maxiter=maxiter)
     elif method == "mc":
-        Xinit = sampling.mc(Ninit, nInput)
+        Xinit = sampling.mc(Ninit, nInput, local_random=local_random)
     else:
         raise RuntimeError(f'Unknown method {method}')
 
@@ -160,6 +167,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                                 'mutation_rate': None,
                                 'di_crossover': 1., 'di_mutation': 20. },
             termination=None,
+            local_random=None,
             return_sm=False,
             logger=None):
     """ 
@@ -202,12 +210,17 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         bestx_sm, besty_sm, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                feasibility_model=fsbm, logger=logger, \
-                               pop=pop, termination=termination, **optimizer_kwargs)
+                               pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
     elif optimizer == 'age':
         bestx_sm, besty_sm, x_sm, y_sm = \
             AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                  feasibility_model=fsbm, logger=logger, \
-                                 pop=pop, termination=termination, **optimizer_kwargs)
+                                 pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+    elif optimizer == 'smpso':
+        bestx_sm, besty_sm, x_sm, y_sm = \
+            SMPSO.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
+                               feasibility_model=fsbm, logger=logger, \
+                               pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
         

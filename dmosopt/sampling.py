@@ -1,31 +1,30 @@
 # -*- coding: utf-8 -*-
 """
 Definition of Sampling Methods
-Created on Mon May 12 19:53:23 2015
-@author: gongwei
 """
 
 import numpy as np
 from dmosopt import GLP
+from scipy.stats import qmc
 
-def MonteCarloDesign(n,s):
+
+def MonteCarloDesign(n,s,local_random):
     ''' Generate Monte Carlo Design
         n: number of samples
         s: number of dimensions
     '''
-    return np.random.rand(n,s)
+    return local_random.random(size=(n,s))
 
-def LatinHypercubeDesign(n,s):
+def LatinHypercubeDesign(n,s,local_random):
     ''' Generate Latin Hypercube Design
         n: number of samples
         s: number of dimensions
     '''
-    x = np.ndarray([n,s])
-    for i in range(s):
-        x[:,i] = (np.random.permutation(n) + 0.5)/n
-    return x
+    gen = qmc.LatinHypercube(d=s, seed=local_random)
+    sample = gen.random(n=n)
+    return sample
 
-def SymmetricLatinHypercubeDesign(n,s):
+def SymmetricLatinHypercubeDesign(n,s,local_random):
     ''' Generate Symmetric Latin Hypercube Design
         n: number of samples
         s: number of dimensions
@@ -46,9 +45,9 @@ def SymmetricLatinHypercubeDesign(n,s):
         p[k, :] = (k + 1) * np.ones((1, s))
 
     for j in range(1, s):
-        p[0:k, j] = np.random.permutation(np.arange(k))
+        p[0:k, j] = local_random.permutation(np.arange(k))
         for i in range(int(k)):
-            if np.random.random() < 0.5:
+            if local_random.random() < 0.5:
                 p[n - 1 - i, j] = n - 1 - p[i, j]
             else:
                 p[n - 1 - i, j] = p[i, j]
@@ -92,68 +91,68 @@ def decorr(x,n,s):
 
 
 
-def LatinHypercubeDesignDecorrelation(n,s,maxiter = 5):
+def LatinHypercubeDesignDecorrelation(n,s,local_random,maxiter = 5):
     ''' Generate Latin Hypercube Design with de-correlation
         n: number of samples
         s: number of dimensions
         maxiter: number of iterations of de-correlation
     '''
-    x = LatinHypercubeDesign(n,s)
+    x = LatinHypercubeDesign(n,s,local_random)
     for i in range(maxiter):
         x = decorr(x,n,s)
     return x
 
-def SymmetricLatinHypercubeDesignDecorrelation(n,s,maxiter = 5):
+def SymmetricLatinHypercubeDesignDecorrelation(n,s,local_random,maxiter = 5):
     ''' Generate Symmetric Latin Hypercube Design with de-correlation
         n: number of samples
         s: number of dimensions
         maxiter: number of iterations of de-correlation
     '''
-    x = SymmetricLatinHypercubeDesign(n,s)
+    x = SymmetricLatinHypercubeDesign(n,s,local_random)
     for i in range(maxiter):
         x = decorr(x,n,s)
     return x
 
-def GoodLatticePointsDesign(n,s):
+def GoodLatticePointsDesign(n,s,local_random):
     ''' Generate Good Lattice Points Design
         n: number of samples
         s: number of dimensions
     '''
-    return GLP.sample(n,s)
+    return GLP.sample(n,s,local_random)
 
-def GoodLatticePointsDesignDecorrelation(n,s,maxiter = 5):
+def GoodLatticePointsDesignDecorrelation(n,s,local_random,maxiter = 5):
     ''' Generate Good Lattice Points Design with de-correlation
         n: number of samples
         s: number of dimensions
         maxiter: number of iterations of de-correlation
     '''
-    x = GLP.sample(n,s)
+    x = GLP.sample(n,s,local_random)
     for i in range(maxiter):
         x = decorr(x,n,s)
     return x
 
-def mc(n,s):
+def mc(n,s,local_random):
     ''' short name of MonteCarloDesign'''
-    return MonteCarloDesign(n,s)
+    return (n,s,local_random)
 
-def lh(n,s,maxiter = 0):
+def lh(n,s,local_random,maxiter = 0):
     ''' short name of LatinHypercubeDesign'''
     if maxiter == 0:
-        return LatinHypercubeDesign(n,s)
+        return LatinHypercubeDesign(n,s,local_random)
     else:
-        return LatinHypercubeDesignDecorrelation(n,s,maxiter)
+        return LatinHypercubeDesignDecorrelation(n,s,local_random,maxiter)
 
-def slh(n,s,maxiter = 0):
+def slh(n,s,local_random,maxiter = 0):
     ''' short name of SymmetricLatinHypercubeDesign'''
     if maxiter == 0:
-        return SymmetricLatinHypercubeDesign(n,s)
+        return SymmetricLatinHypercubeDesign(n,s,local_random)
     else:
-        return SymmetricLatinHypercubeDesignDecorrelation(n,s,maxiter)
+        return SymmetricLatinHypercubeDesignDecorrelation(n,s,local_random,maxiter)
 
-def glp(n,s,maxiter = 0):
+def glp(n,s,local_random,maxiter = 0):
     ''' short name of GoodLatticePointsDesign'''
     if maxiter == 0:
-        return GoodLatticePointsDesign(n,s)
+        return GoodLatticePointsDesign(n,s,local_random)
     else:
-        return GoodLatticePointsDesignDecorrelation(n,s,maxiter)
+        return GoodLatticePointsDesignDecorrelation(n,s,local_random,maxiter)
 

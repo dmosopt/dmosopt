@@ -51,7 +51,7 @@ if __name__ == '__main__':
                       'population_size': 200,
                       'num_generations': 100,
                       'initial_maxiter': 10,
-                      'optimizer': 'nsga2',
+                      'optimizer': 'age',
                       'termination_conditions': True,
                       'n_initial': 3,
                       'n_epochs': 2}

@@ -11,7 +11,7 @@
 #
 
 import numpy as np
-import copy, gc, itertools
+import gc, itertools
 from functools import reduce
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
@@ -19,8 +19,9 @@ from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection
 
 
-def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, termination=None,
-                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.):
+def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
+                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.,
+                 local_random=None, logger=None):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
         nInput: number of model input
@@ -34,6 +35,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     '''
+        
+    if local_random is None:
+        local_random = default_rng()
+
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
 
@@ -44,7 +49,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if initial is not None:
         x_initial, y_initial = initial
 
-    x = sampling.lh(pop, nInput)
+    x = sampling.lh(pop, nInput, local_random)
     x = x * (xub - xlb) + xlb
     if x_initial is not None:
         x = np.vstack((x_initial, x))
@@ -58,7 +63,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     population_parm = x[:pop]
     population_obj  = y[:pop]
     population_parm, population_obj, rank, crowd_dist = \
-        environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
+        environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=logger)
 
     nchildren=1
     if feasibility_model is not None:
@@ -82,30 +87,32 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             else:
                 logger.info(f"AGE-MOEA: generation {i+1} of {gen}...")
 
-        pool = tournament_selection(population_parm, population_obj, pop, poolsize, toursize, rank, -crowd_dist)
+        pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank, -crowd_dist)
+        pool = population_parm[pool_idxs,:]
+
         count = 0
         xs_gen = []
         while (count < pop - 1):
-            if (np.random.rand() < crossover_rate):
-                parentidx = np.random.choice(poolsize, 2, replace = False)
+            if (local_random.random() < crossover_rate):
+                parentidx = local_random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
-                children1, children2 = crossover_sbx(parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
+                children1, children2 = crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child1 = children1[0]
                     child2 = children2[0]
                 else:
-                    child1, child2 = crossover_sbx_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
+                    child1, child2 = crossover_sbx_feasibility_selection(local_random, feasibility_model, [children1, children2], logger=logger)
                 xs_gen.extend([child1, child2])
                 count += 2
             else:
-                parentidx = np.random.randint(poolsize)
+                parentidx = local_random.integers(low=0, high=poolsize)
                 parent    = pool[parentidx,:]
-                children  = mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
+                children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child = children[0]
                 else:
-                    child = feasibility_selection(feasibility_model, children, logger=logger)
+                    child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
                 y1 = model.evaluate(child)
                 xs_gen.append(child)
                 count += 1
@@ -116,7 +123,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         population_parm = np.vstack((population_parm, x_gen))
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj, rank, crowd_dist = \
-            environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
+            environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=logger)
         gc.collect()
         n_eval += count
 
@@ -311,7 +318,7 @@ def survival_score(y, front, ideal_point):
     return normalization, p, crowd_dist
 
 
-def environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=None):
+def environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=None):
 
     # get max int value
     max_int = np.iinfo(np.int).max
@@ -351,7 +358,7 @@ def environmental_selection(population_parm, population_obj, pop, nInput, nOutpu
 
     else:
         selection_rank = np.argsort(crowd_dist[front_1])[::-1]
-        selected[front_1[np.random.choice(selection_rank, size=pop, replace=False)]] = True
+        selected[front_1[local_random.choice(selection_rank, size=pop, replace=False)]] = True
             
     assert(np.sum(selected) > 0)
     # return selected solutions, number of selected should be equal to population size

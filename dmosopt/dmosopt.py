@@ -1,7 +1,8 @@
 import os, sys, importlib, logging, pprint, copy
 from functools import partial
 from collections import namedtuple
-import numpy as np  
+import numpy as np
+from numpy.random import default_rng
 import distwq
 import dmosopt.MOASMO as opt
 from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry
@@ -28,8 +29,11 @@ class SOptStrategy():
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
                  distance_metric=None,  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
-                 feasibility_model=False, termination_conditions=None,
+                 feasibility_model=False, termination_conditions=None, local_random=None,
                  logger=None):
+        if local_random is None:
+            local_random = default_rng()
+        self.local_random = local_random
         self.logger = logger
         self.feasibility_model = feasibility_model
         self.gpr_anisotropic = gpr_anisotropic
@@ -67,7 +71,8 @@ class SOptStrategy():
         if self.x is not None:
             nPrevious = self.x.shape[0]
         xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, nPrevious=nPrevious,
-                          maxiter=initial_maxiter, method=initial_method, logger=self.logger)
+                          maxiter=initial_maxiter, method=initial_method, local_random=self.local_random,
+                          logger=self.logger)
         self.reqs = []
         if xinit is not None:
             assert(xinit.shape[1] == prob.dim)
@@ -141,6 +146,7 @@ class SOptStrategy():
                           gpr_anisotropic=self.gpr_anisotropic,
                           feasibility_model=self.feasibility_model,
                           termination=self.termination,
+                          local_random=self.local_random,
                           logger=self.logger, return_sm=return_sm)
         
         if return_sm:
@@ -222,6 +228,7 @@ class DistOptimizer():
         gpr_anisotropic=False,
         gpr_optimizer="sceua",
         optimizer="nsga2",
+        local_random=None,
         feasibility_model=False,
         termination_conditions=None,
         **kwargs
@@ -272,7 +279,7 @@ class DistOptimizer():
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
         self.metadata = metadata
-        
+        self.local_random = local_random
         if self.resample_fraction > 1.0:
             self.resample_fraction = 1.0
         
@@ -334,7 +341,10 @@ class DistOptimizer():
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
-        self.start_epoch = max_epoch + 1
+        self.start_epoch = max_epoch
+        if self.start_epoch != 0:
+            self.start_epoch += 1
+            
         self.n_epochs = n_epochs
         self.save_eval = save_eval
         self.save_surrogate_eval = save_surrogate_eval
@@ -376,7 +386,7 @@ class DistOptimizer():
     def init_strategy(self):
         opt_prob = OptProblem(self.param_names, self.objective_names, self.feature_dtypes,
                               self.constraint_names, self.param_spec, self.eval_fun,
-                              logger=self.logger )
+                              logger=self.logger)
         for problem_id in self.problem_ids:
             initial = None
             if problem_id in self.old_evals:
@@ -414,6 +424,7 @@ class DistOptimizer():
                                         optimizer=self.optimizer,
                                         feasibility_model=self.feasibility_model,
                                         termination_conditions=self.termination_conditions,
+                                        local_random=self.local_random,
                                         logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
             self.storage_dict[problem_id] = []
