@@ -109,25 +109,16 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y_gen = model.evaluate(x_gen)
         x_new.append(x_gen)
         y_new.append(y_gen)
-<<<<<<< HEAD
-        population_parm = np.vstack((population_parm, x_gen))
-=======
         gen_indexes.append(np.ones((x_gen.shape[0],),dtype=np.uint32)*i)
 
-        population_para = np.vstack((population_para, x_gen))
->>>>>>> master
+        population_parm = np.vstack((population_parm, x_gen))
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj, rank = \
             remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
         gc.collect()
         n_eval += count
-<<<<<<< HEAD
             
     bestx = population_parm.copy()
-=======
-        
-    bestx = population_para.copy()
->>>>>>> master
     besty = population_obj.copy()
 
     gen_index = np.concatenate(gen_indexes)
