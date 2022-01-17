@@ -2,6 +2,7 @@
 ## SMPSO: A New PSO Metaheuristic for Multi-objective Optimization
 ##
 
+import gc, itertools
 import numpy  as np
 from numpy.random import default_rng
 from dmosopt import sampling
@@ -38,34 +39,32 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     x_initial, y_initial = None, None
     if initial is not None:
         x_initial, y_initial = initial
-
-    x = np.zeros((swarm_size*pop, nInput), dtype=np.float32)
-
+    
     xs = []
+    ys = []
     for sl in pop_slices:
         x_s = sampling.lh(pop, nInput, local_random)
         x_s = x_s * (xub - xlb) + xlb
         if x_initial is not None:
             x_s = np.vstack((x_initial, x_s))
+        y_s = model.evaluate(x_s)
         xs.append(x_s)
-    
-    y = np.zeros((swarm_size*pop, nOutput), dtype=np.float32)
-    y[:] = model.evaluate(x)
-    for sl in pop_slices:
-        if y_initial is not None:
-            y[sl] = np.vstack((y_initial, y[sl]))
-    
+        ys.append(y_s)
+
     population_parm = np.zeros((swarm_size*pop, nInput), dtype=np.float32)
     population_obj = np.zeros((swarm_size*pop, nOutput), dtype=np.float32)
     
     velocity = local_random.uniform(size=(swarm_size*pop, nInput)) * (xub - xlb) + xlb
     
     ranks = []
-    for sl in pop_slices:
-        x[sl], y[sl], rank_p, _ = sortMO(x[sl], y[sl], nInput, nOutput, distance_metric=distance_metric)
-        population_parm[sl] = x[sl,:pop]
-        population_obj[sl]  = y[sl,:pop]
+    for p, sl in enumerate(pop_slices):
+        xs[p], ys[p], rank_p, _ = sortMO(xs[p], ys[p], nInput, nOutput, distance_metric=distance_metric)
+        population_parm[sl] = xs[p][:pop]
+        population_obj[sl]  = ys[p][:pop]
         ranks.append(rank_p)
+
+    x = population_parm.copy()
+    y = population_obj.copy()
                                     
     nchildren=1
     if feasibility_model is not None:
@@ -94,19 +93,19 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         xs_gens = [ [] for _ in range(swarm_size) ]
                                     
         for p, sl in enumerate(pop_slices):
-            xs_updated = update_position(population_parm[sl], velocity[sl], lb, ub)
-            xs_gens[p].add(xs_updated)
+            xs_updated = update_position(population_parm[sl], velocity[sl], xlb, xub)
+            xs_gens[p].append(xs_updated)
             
         while (count < pop - 1):
             parentidx = local_random.integers(low=0, high=pop, size=(swarm_size, 1))
-            for p in enumerate(pop_slices):
+            for p, sl in enumerate(pop_slices):
                 parent = population_parm[sl][parentidx[p,0],:]
                 children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child = children[0]
                 else:
                     child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
-                xs_gens[p].add(child)
+                xs_gens[p].append(child)
                 count += 1
         x_gens = np.vstack([np.vstack(x) for x in xs_gens])
         y_gens = model.evaluate(x_gens)
@@ -114,7 +113,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y_new.append(y_gens)
         for sl in pop_slices:
             D = crowding_distance(y_gens[sl])
-            velocity[sl] = velocity_vector(local_random, velocity[sl], x_gens[sl], D, xlb, xub)
+            velocity[sl] = velocity_vector(local_random, population_parm[sl], velocity[sl], x_gens[sl], D, xlb, xub)
         for p, sl in enumerate(pop_slices):
             population_parm_p = np.vstack((population_parm[sl], x_gens[sl]))
             population_obj_p  = np.vstack((population_obj[sl], y_gens[sl]))
@@ -137,7 +136,7 @@ def update_position(parameters, velocity, xlb, xub):
 
 
 def velocity_vector(local_random, position, velocity, archive, crowding, xlb, xub):
-    
+
     r1  = local_random.uniform(low = 0.0, high = 1.0, size = 1)[0]
     r2  = local_random.uniform(low = 0.0, high = 1.0, size = 1)[0]
     w   = local_random.uniform(low = 0.1, high = 0.5, size = 1)[0]
@@ -160,7 +159,7 @@ def velocity_vector(local_random, position, velocity, archive, crowding, xlb, xu
         ind_2 = 0
     for i in range(0, velocity.shape[0]):
         for j in range(0, velocity.shape[1]):
-            output[i,j] = (w*velocity_[i,j] + c1*r1*(archive[ind_1, j] - position[i,j]) + c2*r2*(archive[ind_2, j] - position[i,j]))*chi
+            output[i,j] = (w*velocity[i,j] + c1*r1*(archive[ind_1, j] - position[i,j]) + c2*r2*(archive[ind_2, j] - position[i,j]))*chi
             output[i,j] = np.clip(velocity[i,j], -delta[j], delta[j]) 
     return output
 

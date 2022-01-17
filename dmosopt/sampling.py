@@ -7,7 +7,6 @@ import numpy as np
 from dmosopt import GLP
 from scipy.stats import qmc
 
-
 def MonteCarloDesign(n,s,local_random):
     ''' Generate Monte Carlo Design
         n: number of samples
@@ -23,6 +22,7 @@ def LatinHypercubeDesign(n,s,local_random):
     gen = qmc.LatinHypercube(d=s, seed=local_random)
     sample = gen.random(n=n)
     return sample
+
 
 def SymmetricLatinHypercubeDesign(n,s,local_random):
     ''' Generate Symmetric Latin Hypercube Design
@@ -133,7 +133,7 @@ def GoodLatticePointsDesignDecorrelation(n,s,local_random,maxiter = 5):
 
 def mc(n,s,local_random):
     ''' short name of MonteCarloDesign'''
-    return (n,s,local_random)
+    return MonteCarloDesign(n,s,local_random)
 
 def lh(n,s,local_random,maxiter = 0):
     ''' short name of LatinHypercubeDesign'''

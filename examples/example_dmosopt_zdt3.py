@@ -16,7 +16,7 @@ def zdt3(x):
     g = 1. + 9./float(num_variables-1)*np.sum(x[1:])
     h = 1. - np.sqrt(f[0]/g)
     j = (x[0]/g) * np.sin(10*np.pi*x[0])
-    f[1] = g*(h - j)
+    f[1] = g*h - j
     return f
 
 
@@ -65,7 +65,6 @@ if __name__ == '__main__':
                       'optimizer': 'nsga2',
                       'population_size': 200,
                       'num_generations': 200,
-                      'optimizer': 'nsga2',
                       'termination_conditions': True,
                       'space': space,
                       'objective_names': objective_names,

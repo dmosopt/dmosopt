@@ -77,7 +77,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 break
         if logger is not None:
             if termination is not None:
-                logger.info(f"NSGA2: generation {i+1} of {gen}...")
+                logger.info(f"NSGA2: generation {i}...")
+            else:
+                logger.info(f"NSGA2: generation {i} of {gen}...")
         pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank)
         pool = population_parm[pool_idxs,:]
         count = 0
