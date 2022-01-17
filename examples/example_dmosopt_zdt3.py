@@ -16,7 +16,7 @@ def zdt3(x):
     g = 1. + 9./float(num_variables-1)*np.sum(x[1:])
     h = 1. - np.sqrt(f[0]/g)
     j = (x[0]/g) * np.sin(10*np.pi*x[0])
-    f[1] = g*h - j
+    f[1] = g*(h - j)
     return f
 
 
@@ -70,7 +70,12 @@ if __name__ == '__main__':
                       'space': space,
                       'objective_names': objective_names,
                       'n_initial': 5,
-                      'n_epochs': 4}
+                      'n_epochs': 4,
+                      'save_surrogate_eval':True,
+                      'save': True,
+                      'file_path': 'results/zdt3.h5',
+                      'resample_fraction':1.00,
+                    }
 
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:

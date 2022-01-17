@@ -51,10 +51,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y[i,:] = model.evaluate(x[i,:])
     if y_initial is not None:
         y = np.vstack((y_initial, y))
-        
+
     x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
     population_parm = x[:pop]
     population_obj  = y[:pop]
+
+    gen_indexes = []
+    gen_indexes.append(np.zeros((x.shape[0],),dtype=np.uint32))
 
     nchildren=1
     if feasibility_model is not None:
@@ -64,9 +67,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     y_new = []
 
     n_eval = 0
-    it = range(gen)
+    it = range(1, gen+1)
     if termination is not None:
-        it = itertools.count()
+        it = itertools.count(1)
     for i in it:
         if termination is not None:
             opt = OptHistory(i, n_eval, population_parm, population_obj, None)
@@ -74,8 +77,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 break
         if logger is not None:
             if termination is not None:
-                logger.info(f"NSGA2: generation {i+1}...")
-            else:
                 logger.info(f"NSGA2: generation {i+1} of {gen}...")
         pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank)
         pool = population_parm[pool_idxs,:]
@@ -108,20 +109,32 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y_gen = model.evaluate(x_gen)
         x_new.append(x_gen)
         y_new.append(y_gen)
+<<<<<<< HEAD
         population_parm = np.vstack((population_parm, x_gen))
+=======
+        gen_indexes.append(np.ones((x_gen.shape[0],),dtype=np.uint32)*i)
+
+        population_para = np.vstack((population_para, x_gen))
+>>>>>>> master
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj, rank = \
             remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
         gc.collect()
         n_eval += count
+<<<<<<< HEAD
             
     bestx = population_parm.copy()
+=======
+        
+    bestx = population_para.copy()
+>>>>>>> master
     besty = population_obj.copy()
 
+    gen_index = np.concatenate(gen_indexes)
     x = np.vstack([x] + x_new)
     y = np.vstack([y] + y_new)
-        
-    return bestx, besty, x, y
+    
+    return bestx, besty, gen_index, x, y
 
 
 

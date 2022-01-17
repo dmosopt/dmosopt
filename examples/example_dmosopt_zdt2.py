@@ -52,7 +52,11 @@ if __name__ == '__main__':
                       'space': space,
                       'objective_names': objective_names,
                       'n_initial': 5,
-                      'n_epochs': 3}
+                      'n_epochs': 3,
+                      'save_surrogate_eval':True,
+                      'save': True,
+                      'file_path': 'results/zdt2.h5',
+                    }
 
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:

@@ -70,11 +70,11 @@ def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
     for i in range(niter):
         sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
         if optimizer == 'nsga2':
-            bestx_sm, besty_sm, x_sm, y_sm = \
+            bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
                 NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
                                    pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
         elif optimizer == 'age':
-            bestx_sm, besty_sm, x_sm, y_sm = \
+            bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
                 AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
                                      pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
         elif optimizer == 'smpso':
@@ -207,12 +207,12 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                 logger.warning(f"Unable to fit feasibility model: {e}")
     sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
     if optimizer == 'nsga2':
-        bestx_sm, besty_sm, x_sm, y_sm = \
+        bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                feasibility_model=fsbm, logger=logger, \
                                pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
     elif optimizer == 'age':
-        bestx_sm, besty_sm, x_sm, y_sm = \
+        bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                  feasibility_model=fsbm, logger=logger, \
                                  pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
@@ -227,10 +227,11 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     D = MOEA.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]
+    y_pred = besty_sm[idxr,:]
     if return_sm:
-        return x_resample, x_sm, y_sm
+        return x_resample, y_pred, gen_index, x_sm, y_sm
     else:
-        return x_resample
+        return x_resample, y_pred
 
 
 def train(nInput, nOutput, xlb, xub, \

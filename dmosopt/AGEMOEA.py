@@ -59,7 +59,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y[i,:] = model.evaluate(x[i,:])
     if y_initial is not None:
         y = np.vstack((y_initial, y))
-        
+    
+    gen_indexes = []
+    gen_indexes.append(np.zeros((x.shape[0],),dtype=np.int32))
+
     population_parm = x[:pop]
     population_obj  = y[:pop]
     population_parm, population_obj, rank, crowd_dist = \
@@ -73,9 +76,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     y_new = []
         
     n_eval = 0
-    it = range(gen)
+    it = range(1, gen+1)
     if termination is not None:
-        it = itertools.count()
+        it = itertools.count(1)
     for i in it:
         if termination is not None:
             opt = OptHistory(i, n_eval, population_parm, population_obj, None)
@@ -83,9 +86,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 break
         if logger is not None:
             if termination is not None:
-                logger.info(f"AGE-MOEA: generation {i+1}...")
+                logger.info(f"AGE-MOEA: generation {i}...")
             else:
-                logger.info(f"AGE-MOEA: generation {i+1} of {gen}...")
+                logger.info(f"AGE-MOEA: generation {i} of {gen}...")
 
         pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank, -crowd_dist)
         pool = population_parm[pool_idxs,:]
@@ -120,6 +123,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y_gen = model.evaluate(x_gen)
         x_new.append(x_gen)
         y_new.append(y_gen)
+        gen_indexes.append(np.ones((x_gen.shape[0],),dtype=np.uint32)*i)
+
         population_parm = np.vstack((population_parm, x_gen))
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj, rank, crowd_dist = \
@@ -131,10 +136,11 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     bestx = population_parm[sorted_population].copy()
     besty = population_obj[sorted_population].copy()
 
+    gen_index = np.concatenate(gen_indexes)
     x = np.vstack([x] + x_new)
     y = np.vstack([y] + y_new)
         
-    return bestx, besty, x, y
+    return bestx, besty, gen_index, x, y
 
 
 
