@@ -65,7 +65,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
 
     x = population_parm.copy()
     y = population_obj.copy()
-                                    
+
+    gen_indexes = []
+    gen_indexes.append(np.zeros((x.shape[0],),dtype=np.uint32))
+
     nchildren=1
     if feasibility_model is not None:
         nchildren = pop
@@ -96,7 +99,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             xs_updated = update_position(population_parm[sl], velocity[sl], xlb, xub)
             xs_gens[p].append(xs_updated)
             
-        while (count < pop - 1):
+        while count < pop:
             parentidx = local_random.integers(low=0, high=pop, size=(swarm_size, 1))
             for p, sl in enumerate(pop_slices):
                 parent = population_parm[sl][parentidx[p,0],:]
@@ -106,14 +109,19 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 else:
                     child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
                 xs_gens[p].append(child)
-                count += 1
+            count += 1
+
         x_gens = np.vstack([np.vstack(x) for x in xs_gens])
         y_gens = model.evaluate(x_gens)
         x_new.append(x_gens)
         y_new.append(y_gens)
+        gen_indexes.append(np.ones((x_gens.shape[0],),dtype=np.uint32)*i)
+        
         for sl in pop_slices:
             D = crowding_distance(y_gens[sl])
+            mean_velocity_before = np.mean(velocity[sl])
             velocity[sl] = velocity_vector(local_random, population_parm[sl], velocity[sl], x_gens[sl], D, xlb, xub)
+            
         for p, sl in enumerate(pop_slices):
             population_parm_p = np.vstack((population_parm[sl], x_gens[sl]))
             population_obj_p  = np.vstack((population_obj[sl], y_gens[sl]))
@@ -124,10 +132,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             
     bestx, besty, _ = remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
 
+    gen_index = np.concatenate(gen_indexes)
+
     x = np.vstack([x] + x_new)
     y = np.vstack([y] + y_new)
         
-    return bestx, besty, x, y
+    return bestx, besty, gen_index, x, y
 
                                     
 def update_position(parameters, velocity, xlb, xub):
@@ -148,6 +158,7 @@ def velocity_vector(local_random, position, velocity, archive, crowding, xlb, xu
     else:
         phi = 0
     chi      = 2 / (2 - phi - ( (phi**2) - 4*phi )**(1/2))
+    
     output = np.zeros((position.shape[0], velocity.shape[1]))
     delta    = [(xub[i] - xlb[i])/2 for i in range(0, len(xlb))]
     if (archive.shape[0] > 2):
@@ -157,9 +168,12 @@ def velocity_vector(local_random, position, velocity, archive, crowding, xlb, xu
     else:
         ind_1 = 0
         ind_2 = 0
+
+    
     for i in range(0, velocity.shape[0]):
         for j in range(0, velocity.shape[1]):
             output[i,j] = (w*velocity[i,j] + c1*r1*(archive[ind_1, j] - position[i,j]) + c2*r2*(archive[ind_2, j] - position[i,j]))*chi
-            output[i,j] = np.clip(velocity[i,j], -delta[j], delta[j]) 
+            output[i,j] = np.clip(output[i,j], -delta[j], delta[j])
+            
     return output
 

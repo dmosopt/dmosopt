@@ -217,7 +217,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                                  feasibility_model=fsbm, logger=logger, \
                                  pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
     elif optimizer == 'smpso':
-        bestx_sm, besty_sm, x_sm, y_sm = \
+        bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             SMPSO.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                feasibility_model=fsbm, logger=logger, \
                                pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
