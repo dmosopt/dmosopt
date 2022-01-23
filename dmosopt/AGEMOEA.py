@@ -11,15 +11,17 @@
 #
 
 import numpy as np
-import copy, gc, itertools
+import gc, itertools
 from functools import reduce
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
+from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection
 
 
-def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, logger=None, termination=None,
-                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.):
+def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
+                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.,
+                 local_random=None, logger=None):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
         nInput: number of model input
@@ -33,6 +35,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     '''
+        
+    if local_random is None:
+        local_random = default_rng()
+
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
 
@@ -43,7 +49,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if initial is not None:
         x_initial, y_initial = initial
 
-    x = sampling.lh(pop, nInput)
+    x = sampling.lh(pop, nInput, local_random)
     x = x * (xub - xlb) + xlb
     if x_initial is not None:
         x = np.vstack((x_initial, x))
@@ -53,11 +59,14 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y[i,:] = model.evaluate(x[i,:])
     if y_initial is not None:
         y = np.vstack((y_initial, y))
-        
+    
+    gen_indexes = []
+    gen_indexes.append(np.zeros((x.shape[0],),dtype=np.int32))
+
     population_parm = x[:pop]
     population_obj  = y[:pop]
     population_parm, population_obj, rank, crowd_dist = \
-        environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
+        environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=logger)
 
     nchildren=1
     if feasibility_model is not None:
@@ -67,9 +76,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     y_new = []
         
     n_eval = 0
-    it = range(gen)
+    it = range(1, gen+1)
     if termination is not None:
-        it = itertools.count()
+        it = itertools.count(1)
     for i in it:
         if termination is not None:
             opt = OptHistory(i, n_eval, population_parm, population_obj, None)
@@ -77,34 +86,36 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 break
         if logger is not None:
             if termination is not None:
-                logger.info(f"AGE-MOEA: generation {i+1}...")
+                logger.info(f"AGE-MOEA: generation {i}...")
             else:
-                logger.info(f"AGE-MOEA: generation {i+1} of {gen}...")
+                logger.info(f"AGE-MOEA: generation {i} of {gen}...")
 
-        pool = tournament_selection(population_parm, population_obj, pop, poolsize, toursize, rank, -crowd_dist)
+        pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank, -crowd_dist)
+        pool = population_parm[pool_idxs,:]
+
         count = 0
         xs_gen = []
         while (count < pop - 1):
-            if (np.random.rand() < crossover_rate):
-                parentidx = np.random.choice(poolsize, 2, replace = False)
+            if (local_random.random() < crossover_rate):
+                parentidx = local_random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
-                children1, children2 = crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
+                children1, children2 = crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child1 = children1[0]
                     child2 = children2[0]
                 else:
-                    child1, child2 = crossover_feasibility_selection(feasibility_model, [children1, children2], logger=logger)
+                    child1, child2 = crossover_sbx_feasibility_selection(local_random, feasibility_model, [children1, children2], logger=logger)
                 xs_gen.extend([child1, child2])
                 count += 2
             else:
-                parentidx = np.random.randint(poolsize)
+                parentidx = local_random.integers(low=0, high=poolsize)
                 parent    = pool[parentidx,:]
-                children  = mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
+                children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
                 if feasibility_model is None:
                     child = children[0]
                 else:
-                    child = feasibility_selection(feasibility_model, children, logger=logger)
+                    child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
                 y1 = model.evaluate(child)
                 xs_gen.append(child)
                 count += 1
@@ -112,10 +123,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         y_gen = model.evaluate(x_gen)
         x_new.append(x_gen)
         y_new.append(y_gen)
+        gen_indexes.append(np.ones((x_gen.shape[0],),dtype=np.uint32)*i)
+
         population_parm = np.vstack((population_parm, x_gen))
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj, rank, crowd_dist = \
-            environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=logger)
+            environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=logger)
         gc.collect()
         n_eval += count
 
@@ -123,45 +136,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     bestx = population_parm[sorted_population].copy()
     besty = population_obj[sorted_population].copy()
 
+    gen_index = np.concatenate(gen_indexes)
     x = np.vstack([x] + x_new)
     y = np.vstack([y] + y_new)
         
-    return bestx, besty, x, y
+    return bestx, besty, gen_index, x, y
 
-
-def crossover_feasibility_selection(feasibility_model, children_list, logger=None):
-    child_selection = []
-    for children in children_list:
-        fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
-        all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
-        if len(all_feasible) > 0:
-            fsb_pred = fsb_pred[all_feasible]
-            fsb_dist = fsb_dist[all_feasible]
-            children = children[all_feasible]
-            sum_dist = np.sum(fsb_dist, axis=1)
-            child = children[np.argmax(sum_dist)]
-        else:
-            childidx = np.random.choice(np.arange(children.shape[0]), size=1)
-            child = children[childidx[0]]
-        child_selection.append(child)
-    child1 = child_selection[0]
-    child2 = child_selection[1]
-    return child1, child2
-
-
-def feasibility_selection(feasibility_model, children, logger=None):
-    fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
-    all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
-    if len(all_feasible) > 0:
-        fsb_pred = fsb_pred[all_feasible]
-        fsb_dist = fsb_dist[all_feasible]
-        children = children[all_feasible]
-        sum_dist = np.sum(fsb_dist, axis=1)
-        child = children[np.argmax(sum_dist)]
-    else:
-        childidx = np.random.choice(np.arange(children.shape[0]), size=1)
-        child = children[childidx[0]]
-    return child
 
 
 def sortMO(x, y):
@@ -182,47 +162,6 @@ def sortMO(x, y):
 
 
 
-
-def mutation(parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
-    ''' Polynomial Mutation in Genetic Algorithm
-        For more information about PMut refer the NSGA-II paper.
-        muration_rate: mutation rate
-        di_mutation: distribution index for mutation, default = 20
-            This determine how well spread the child will be from its parent.
-        parent: sample point before mutation
-	'''
-    n = len(parent)
-    children = np.ndarray((nchildren,n))
-    delta = np.ndarray((n,))
-    for i in range(nchildren):
-        u = np.random.rand(n)
-        lo = np.argwhere(u < mutation_rate).ravel()
-        hi = np.argwhere(u >= mutation_rate).ravel()
-        delta[lo] = (2.0*u[lo])**(1.0/(di_mutation+1)) - 1.0
-        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(di_mutation+1))
-        children[i, :] = np.clip(parent + (xub - xlb) * delta, xlb, xub)
-    return children
-
-
-def crossover(parent1, parent2, di_crossover, xlb, xub, nchildren=1):
-    ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
-         For more information about SBX refer the NSGA-II paper.
-         di_crossover: distribution index for crossover, default = 20
-         This determine how well spread the children will be from their parents.
-    '''
-    n = len(parent1)
-    children1 = np.ndarray((nchildren, n))
-    children2 = np.ndarray((nchildren, n))
-    beta = np.ndarray((n,))
-    for i in range(nchildren):
-        u = np.random.rand(n)
-        lo = np.argwhere(u <= 0.5).ravel()
-        hi = np.argwhere(u > 0.5).ravel()
-        beta[lo] = (2.0*u[lo])**(1.0/(di_crossover+1))
-        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(di_crossover+1))
-        children1[i,:] = np.clip(0.5*((1-beta)*parent1 + (1+beta)*parent2), xlb, xub)
-        children2[i,:] = np.clip(0.5*((1+beta)*parent1 + (1-beta)*parent2), xlb, xub)
-    return children1, children2
 
 
 
@@ -329,22 +268,6 @@ def find_corner_solutions(front):
     return indexes
 
 
-def tournament_prob(ax, i):
-    p = ax[1]
-    p1 = p*(1. - p)**i
-    ax[0].append(p1)
-    return (ax[0], p)
-
-
-def tournament_selection(population_parm, population_obj, pop, poolsize, toursize, *metrics):
-    ''' tournament selecting the best individuals into the mating pool'''
-
-    candidates = np.arange(pop)
-    sorted_candidates = np.lexsort(tuple((metric[candidates] for metric in metrics)))
-    prob, _ = reduce(tournament_prob, candidates, ([], 0.5))
-    poolidx = np.random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
-    return population_parm[poolidx,:]
-
 
 def survival_score(y, front, ideal_point):
     ''' front: index of non-dominated solutions of rank d
@@ -401,7 +324,7 @@ def survival_score(y, front, ideal_point):
     return normalization, p, crowd_dist
 
 
-def environmental_selection(population_parm, population_obj, pop, nInput, nOutput, logger=None):
+def environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=None):
 
     # get max int value
     max_int = np.iinfo(np.int).max
@@ -441,7 +364,7 @@ def environmental_selection(population_parm, population_obj, pop, nInput, nOutpu
 
     else:
         selection_rank = np.argsort(crowd_dist[front_1])[::-1]
-        selected[front_1[np.random.choice(selection_rank, size=pop, replace=False)]] = True
+        selected[front_1[local_random.choice(selection_rank, size=pop, replace=False)]] = True
             
     assert(np.sum(selected) > 0)
     # return selected solutions, number of selected should be equal to population size

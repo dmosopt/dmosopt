@@ -51,10 +51,14 @@ if __name__ == '__main__':
                       'population_size': 200,
                       'num_generations': 100,
                       'initial_maxiter': 10,
-                      'optimizer': 'nsga2',
+                      'optimizer': 'age',
                       'termination_conditions': True,
                       'n_initial': 3,
-                      'n_epochs': 2}
+                      'n_epochs': 4,
+                      'save_surrogate_eval':True,
+                      'save': True,
+                      'file_path': 'results/zdt1.h5',
+                    }
     
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:

@@ -22,26 +22,26 @@ except ImportError as e:
             return func
         return decorator
 
-def sample(n, s):
+def sample(n, s, local_random):
     ''' main function of GLP design'''
     m = EulerFunction(n)
     if float(m)/n < 0.9:
         if m < 20 and s < 4:
             m = EulerFunction(n+1)
-            X = GLP_GV(n+1,s,m,plusone=True)
+            X = GLP_GV(n+1,s,m,local_random,plusone=True)
         else:
-            X = GLP_PGV(n+1,s,plusone=True)
+            X = GLP_PGV(n+1,s,local_random,plusone=True)
     else:
         if m < 20 and s < 4:
-            X = GLP_GV(n,s,m)
+            X = GLP_GV(n,s,m,local_random)
         else:
-            X = GLP_PGV(n,s)
+            X = GLP_PGV(n,s,local_random)
     return X
 
-def GLP_PGV(n,s,plusone=False):
+def GLP_PGV(n,s,local_random,plusone=False):
     ''' type 2 GLP design, if the combination of C(s,m) is large'''
     h = PowerGenVector(n,s)
-    X = np.random.uniform(0,1,size=[n,s])
+    X = local_random.uniform(0,1,size=[n,s])
     D = 1e32
     #for i in range(min(h.shape[0],20)):
     hs = h.shape[0]
@@ -58,12 +58,12 @@ def GLP_PGV(n,s,plusone=False):
             X = x
     return X
 
-def GLP_GV(n,s,m,plusone=False):
+def GLP_GV(n,s,m,local_random,plusone=False):
     ''' type 1 GLP design, if the combination of C(s,m) is small'''
     h = GenVector(n)
     u = glpmod(n,h)
     clist = itertools.combinations(range(m),s)
-    X = np.random.uniform(0,1,size=[n,s])
+    X = local_random.uniform(0,1,size=[n,s])
     D = 1e32
     for c in clist:
         if plusone:
