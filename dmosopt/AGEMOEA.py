@@ -54,9 +54,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if x_initial is not None:
         x = np.vstack((x_initial, x))
 
-    y = np.zeros((pop, nOutput))
-    for i in range(pop):
-        y[i,:] = model.evaluate(x[i,:])
+    y = model.evaluate(x)
     if y_initial is not None:
         y = np.vstack((y_initial, y))
     
@@ -116,7 +114,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                     child = children[0]
                 else:
                     child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
-                y1 = model.evaluate(child)
                 xs_gen.append(child)
                 count += 1
         x_gen = np.vstack(xs_gen)

@@ -3,7 +3,7 @@
 import sys, pprint
 import numpy as np
 from numpy.random import default_rng
-from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, pod, sampling
+from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
@@ -190,8 +190,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         di_mutation: distribution index for mutation
     """
     N_resample = int(pop*pct)
-    x = Xinit.copy()
-    y = Yinit.copy()
+    x = Xinit.copy().astype(np.float32)
+    y = Yinit.copy().astype(np.float32)
     fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
@@ -209,7 +209,10 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     if surrogate_method == 'gpr':
         gpr_anisotropic = surrogate_options.get('anisotropic', False)
         gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
-        sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
+        sm = gp.GPR_Matern(x, y, nInput, nOutput, xlb, xub, optimizer=gpr_optimizer,
+                           anisotropic=gpr_anisotropic, logger=logger)
+    elif surrogate_method == 'vgp':
+        sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:

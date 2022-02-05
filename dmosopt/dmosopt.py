@@ -25,7 +25,7 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
         
     
 class SOptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp",
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh",
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
                  surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
@@ -378,7 +378,7 @@ class DistOptimizer():
 
         self.constraint_names = constraint_names
 
-        if file_path is not None:
+        if self.save and file_path is not None:
             if not os.path.isfile(file_path):
                 init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                         self.param_spec, self.param_names, self.objective_names, 
