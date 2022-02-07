@@ -54,7 +54,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         return scale
 
 class VGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_likelihood_sigma=1.0e-3, n_iter=1000, min_elbo_pct_change=0.1, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_likelihood_sigma=1.0e-3, natgrad_gamma=1.0, adam_lr=0.01, n_iter=3000, min_elbo_pct_change=0.1, logger=None):
         if not _has_gpflow:
             raise RuntimeError('VGP_Matern requires the GPflow library to be installed.')
             
@@ -72,22 +72,22 @@ class VGP_Matern:
         if nOutput == 1:
             yin = yin.reshape((yin.shape[0],1))
 
-        y_mean = np.asarray([np.mean(yin[:,i]) for i in range(yin.shape[1])])
-        y_std = np.asarray([handle_zeros_in_scale(np.std(yin[:,i], axis=0), copy=False)
-                            for i in range(yin.shape[1])])
+        self.y_train_mean = np.asarray([np.mean(yin[:,i]) for i in range(yin.shape[1])], dtype=np.float32)
+        self.y_train_std = np.asarray([handle_zeros_in_scale(np.std(yin[:,i], axis=0), copy=False)
+                                       for i in range(yin.shape[1])], dtype=np.float32)
 
         # Remove mean and make unit variance
-        yn = np.column_stack(tuple((yin[:,i] - y_mean[i]) / y_std[i] for i in range(yin.shape[1])))
+        yn = np.column_stack(tuple((yin[:,i] - self.y_train_mean[i]) / self.y_train_std[i] for i in range(yin.shape[1])))
             
         gp_kernel=gpflow.kernels.Matern52(lengthscales=[1.0]*nInput)
-        adam_opt=tf.optimizers.Adam(0.01)
-        natgrad_opt=NaturalGradient(gamma=1.0)
+        adam_opt=tf.optimizers.Adam(adam_lr)
+        natgrad_opt=NaturalGradient(gamma=natgrad_gamma)
 
 
         smlist = []
         for i in range(nOutput):
             if logger is not None:
-                logger.info(f"VGP_Matern: creating regressor for output {i} of {nOutput}...")
+                logger.info(f"VGP_Matern: creating regressor for output {i+1} of {nOutput}...")
                 logger.info(f"VGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}...")
                 
             gp_likelihood=gpflow.likelihoods.Gaussian(variance=1.0e-4)
@@ -101,7 +101,7 @@ class VGP_Matern:
             gpflow.set_trainable(gp_model.q_sqrt, False)
 
             if logger is not None:
-                logger.info(f"VGP_Matern: optimizing regressor for output {i} of {nOutput}...")
+                logger.info(f"VGP_Matern: optimizing regressor for output {i+1} of {nOutput}...")
 
             variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
             iterations = ci_niter(n_iter)
@@ -111,7 +111,7 @@ class VGP_Matern:
                 natgrad_opt.minimize(gp_model.training_loss, var_list=variational_params)
                 adam_opt.minimize(gp_model.training_loss, var_list=gp_model.trainable_variables)
                 likelihood = gp_model.elbo()
-                if (i > 0) and (i % 100 == 0):
+                if (i % 100 == 0):
                     logger.info(f"VGP_Matern: iteration {i} likelihood: {likelihood:.04f}")
                 elbo_log.append(likelihood)
                 if i >= 100:
@@ -137,7 +137,9 @@ class VGP_Matern:
             x[i,:] = (xin[i,:] - self.xlb) / self.xrng
         for i in range(self.nOutput):
             mean, var = self.smlist[i].predict_y(x)
-            y[:,i] = tf.cast(tf.reshape(mean, [-1]), tf.float32)
+            # undo normalization
+            y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
+            y[:,i] = tf.cast(y_mean, tf.float32)
         return y
 
     def evaluate(self,x):
@@ -170,7 +172,7 @@ class GPR_Matern:
         smlist = []
         for i in range(nOutput):
             if logger is not None:
-                logger.info(f"GPR_Matern: creating regressor for output {i} of {nOutput}...")
+                logger.info(f"GPR_Matern: creating regressor for output {i+1} of {nOutput}...")
                 logger.info(f"GPR_Matern: y_{i} range is {(np.min(y[:,i]), np.max(y[:,i]))}...")
             if optimizer == "sceua":
                 optf=partial(sceua_optimizer, seed, logger)
@@ -225,7 +227,7 @@ class GPR_RBF:
         smlist = []
         for i in range(nOutput):
             if logger is not None:
-                logger.info(f"GPR_RBF: creating regressor for output {i} of {nOutput}...")
+                logger.info(f"GPR_RBF: creating regressor for output {i+1} of {nOutput}...")
                 logger.info(f"GPR_RBF: y_{i} range is {(np.min(y[:,i]), np.max(y[:,i]))}...")
             if optimizer == "sceua":
                 optf=partial(sceua_optimizer, seed, logger)
