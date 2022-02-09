@@ -79,10 +79,8 @@ class VGP_Matern:
         # Remove mean and make unit variance
         yn = np.column_stack(tuple((yin[:,i] - self.y_train_mean[i]) / self.y_train_std[i] for i in range(yin.shape[1])))
             
-        gp_kernel=gpflow.kernels.Matern52(lengthscales=[1.0]*nInput)
         adam_opt=tf.optimizers.Adam(adam_lr)
         natgrad_opt=NaturalGradient(gamma=natgrad_gamma)
-
 
         smlist = []
         for i in range(nOutput):
@@ -90,11 +88,12 @@ class VGP_Matern:
                 logger.info(f"VGP_Matern: creating regressor for output {i+1} of {nOutput}...")
                 logger.info(f"VGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}...")
                 
+            gp_kernel=gpflow.kernels.Matern52(lengthscales=np.ones(nInput))
             gp_likelihood=gpflow.likelihoods.Gaussian(variance=1.0e-4)
             gp_model = gpflow.models.VGP(
                 data=(np.asarray(xn, dtype=np.float64), yn[:, i].reshape((-1,1)).astype(np.float64)),
                 kernel=gp_kernel,
-                likelihood=gp_likelihood,
+                likelihood=gp_likelihood
             )
             
             gpflow.set_trainable(gp_model.q_mu, False)

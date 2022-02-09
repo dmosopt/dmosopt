@@ -247,7 +247,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
 
 def train(nInput, nOutput, xlb, xub, \
           Xinit, Yinit, C, 
-          gpr_anisotropic=False, gpr_optimizer="sceua", 
+          surrogate_method="gpr",
+          surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
           logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -274,9 +275,18 @@ def train(nInput, nOutput, xlb, xub, \
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-                
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer,
-                       anisotropic=gpr_anisotropic, logger=logger)
+
+    if surrogate_method == 'gpr':
+        gpr_anisotropic = surrogate_options.get('anisotropic', False)
+        gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
+        sm = gp.GPR_Matern(x, y, nInput, nOutput, xlb, xub, optimizer=gpr_optimizer,
+                           anisotropic=gpr_anisotropic, logger=logger)
+    elif surrogate_method == 'vgp':
+        sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'pod':
+        sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
+    else:
+        raise RuntimeError(f'Unknown surrogate method {surrogate_method}')
 
     return sm
 
