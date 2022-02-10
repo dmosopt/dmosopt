@@ -62,7 +62,8 @@ class VGP_Matern:
         self.nOutput = nOutput
         self.xlb = xlb
         self.xub = xub
-        self.xrng = xub - xlb
+        self.xrng = np.where(np.isclose(xub - xlb, 0., rtol=1e-6, atol=1e-6), 1., xub - xlb) 
+
         self.logger = logger
 
         N = xin.shape[0]
