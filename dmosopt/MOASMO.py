@@ -6,6 +6,14 @@ from numpy.random import default_rng
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
 
+try:
+    from SALib.sample import saltelli
+    from SALib.analyze import sobol
+except:
+    _has_sa = False
+else:
+    _has_sa = True
+
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
                  initial_maxiter=5, initial_method="glp",
@@ -326,4 +334,32 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
         return best_x, best_y, best_f, best_c, best_epoch, perm, feasible
     else:
         return best_x, best_y, best_f, best_c, best_epoch, perm
-        
+
+
+def get_sensitivity(sm, param_names, lo_bounds, hi_bounds, objective_names, verbose=False):
+
+    if not _has_sa:
+        raise RuntimeError('get_sensitivity requires the SALib library to be installed.')
+
+    bounds = list(zip(lo_bounds, hi_bounds))
+
+    problem = {
+        'num_vars': len(param_names),
+        'names': param_names,
+        'bounds': bounds
+    }
+
+    # Generate samples
+    param_values = saltelli.sample(problem, 8192, calc_second_order=True)
+    
+    # Evaluate surrogate model
+    Y = sm.evaluate(param_values)
+
+    # Perform analysis
+    Sis = { objective_name: sobol.analyze(problem, Y[:,i], print_to_console=verbose)
+            for i, objective_name in enum(objective_names) }
+    # Returns a dictionary with keys 'S1', 'S1_conf', 'ST', and 'ST_conf'
+    # (first and total-order indices with bootstrap confidence intervals)
+
+    return Sis
+
