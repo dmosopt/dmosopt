@@ -27,8 +27,9 @@ def list_find(f, lst):
 @click.option("--file-path", '-p', required=True, type=click.Path())
 @click.option("--output-file-path", '-o', required=False, type=click.Path())
 @click.option("--opt-id", required=True, type=str)
+@click.option("--surrogate-method", type=str, default='gpr')
 @click.option("--verbose", '-v', is_flag=True)
-def main(file_path, opt_id, output_file_path, verbose):
+def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
 
     _, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
@@ -65,7 +66,8 @@ def main(file_path, opt_id, output_file_path, verbose):
         
         sm = train(n_dim, n_objectives,
                    np.asarray(lo_bounds), np.asarray(hi_bounds), 
-                   x, y, C=c, logger=logger)
+                   x, y, C=c, surrogate_method=surrogate_method,
+                   logger=logger)
 
         if output_file_path is None:
             ts = time.strftime("%Y%m%d_%H%M%S")

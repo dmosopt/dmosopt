@@ -6,6 +6,14 @@ from numpy.random import default_rng
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
 
+try:
+    from SALib.sample import saltelli
+    from SALib.analyze import sobol
+except:
+    _has_sa = False
+else:
+    _has_sa = True
+
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
                  initial_maxiter=5, initial_method="glp",
@@ -160,12 +168,13 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
 def onestep(nInput, nOutput, xlb, xub, pct, \
             Xinit, Yinit, C, pop=100,
             feasibility_model=False,
-            gpr_anisotropic=False, gpr_optimizer="sceua",
             optimizer="nsga2",
             optimizer_kwargs= { 'gen': 100,
                                 'crossover_rate': 0.9,
                                 'mutation_rate': None,
                                 'di_crossover': 1., 'di_mutation': 20. },
+            surrogate_method="gpr",
+            surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
             termination=None,
             local_random=None,
             return_sm=False,
@@ -189,8 +198,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         di_mutation: distribution index for mutation
     """
     N_resample = int(pop*pct)
-    x = Xinit.copy()
-    y = Yinit.copy()
+    x = Xinit.copy().astype(np.float32)
+    y = Yinit.copy().astype(np.float32)
     fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
@@ -205,7 +214,17 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer, anisotropic=gpr_anisotropic, logger=logger)
+    if surrogate_method == 'gpr':
+        gpr_anisotropic = surrogate_options.get('anisotropic', False)
+        gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
+        sm = gp.GPR_Matern(x, y, nInput, nOutput, xlb, xub, optimizer=gpr_optimizer,
+                           anisotropic=gpr_anisotropic, logger=logger)
+    elif surrogate_method == 'vgp':
+        sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'pod':
+        sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
+    else:
+        raise RuntimeError(f'Unknown surrogate method {surrogate_method}')
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
@@ -236,7 +255,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
 
 def train(nInput, nOutput, xlb, xub, \
           Xinit, Yinit, C, 
-          gpr_anisotropic=False, gpr_optimizer="sceua", 
+          surrogate_method="gpr",
+          surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
           logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -263,9 +283,18 @@ def train(nInput, nOutput, xlb, xub, \
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-                
-    sm = gp.GPR_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, optimizer=gpr_optimizer,
-                       anisotropic=gpr_anisotropic, logger=logger)
+
+    if surrogate_method == 'gpr':
+        gpr_anisotropic = surrogate_options.get('anisotropic', False)
+        gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
+        sm = gp.GPR_Matern(x, y, nInput, nOutput, xlb, xub, optimizer=gpr_optimizer,
+                           anisotropic=gpr_anisotropic, logger=logger)
+    elif surrogate_method == 'vgp':
+        sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'pod':
+        sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
+    else:
+        raise RuntimeError(f'Unknown surrogate method {surrogate_method}')
 
     return sm
 
@@ -305,4 +334,32 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
         return best_x, best_y, best_f, best_c, best_epoch, perm, feasible
     else:
         return best_x, best_y, best_f, best_c, best_epoch, perm
-        
+
+
+def get_sensitivity(sm, param_names, lo_bounds, hi_bounds, objective_names, verbose=False):
+
+    if not _has_sa:
+        raise RuntimeError('get_sensitivity requires the SALib library to be installed.')
+
+    bounds = list(zip(lo_bounds, hi_bounds))
+
+    problem = {
+        'num_vars': len(param_names),
+        'names': param_names,
+        'bounds': bounds
+    }
+
+    # Generate samples
+    param_values = saltelli.sample(problem, 8192, calc_second_order=True)
+    
+    # Evaluate surrogate model
+    Y = sm.evaluate(param_values)
+
+    # Perform analysis
+    Sis = { objective_name: sobol.analyze(problem, Y[:,i], print_to_console=verbose)
+            for i, objective_name in enum(objective_names) }
+    # Returns a dictionary with keys 'S1', 'S1_conf', 'ST', and 'ST_conf'
+    # (first and total-order indices with bootstrap confidence intervals)
+
+    return Sis
+

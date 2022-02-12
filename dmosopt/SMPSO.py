@@ -30,6 +30,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
 
     if local_random is None:
         local_random = default_rng()
+
+    if np.isscalar(di_mutation):
+        di_mutation = np.asarray([di_mutation]*nInput)
     
     if mutation_rate is None:
         mutation_rate = 1. / float(nInput)

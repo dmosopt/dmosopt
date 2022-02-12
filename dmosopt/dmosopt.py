@@ -25,10 +25,11 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
         
     
 class SOptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="glp",
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh",
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
-                 distance_metric=None,  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
+                 surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
+                 distance_metric=None,  optimizer="nsga2",
                  feasibility_model=False, termination_conditions=None, local_random=None,
                  logger=None):
         if local_random is None:
@@ -36,8 +37,8 @@ class SOptStrategy():
         self.local_random = local_random
         self.logger = logger
         self.feasibility_model = feasibility_model
-        self.gpr_anisotropic = gpr_anisotropic
-        self.gpr_optimizer = gpr_optimizer
+        self.surrogate_options = surrogate_options
+        self.surrogate_method = surrogate_method
         self.optimizer = optimizer
         self.distance_metric = distance_metric
         self.prob = prob
@@ -144,8 +145,8 @@ class SOptStrategy():
                           self.x, self.y, self.c, pop=self.population_size,
                           optimizer=self.optimizer,
                           optimizer_kwargs=optimizer_kwargs,
-                          gpr_optimizer=self.gpr_optimizer,
-                          gpr_anisotropic=self.gpr_anisotropic,
+                          surrogate_method=self.surrogate_method,
+                          surrogate_options=self.surrogate_options,
                           feasibility_model=self.feasibility_model,
                           termination=self.termination,
                           local_random=self.local_random,
@@ -227,8 +228,9 @@ class DistOptimizer():
         save=False,
         save_surrogate_eval=False,
         metadata=None,
-        gpr_anisotropic=False,
-        gpr_optimizer="sceua",
+        surrogate_method="gpr",
+        surrogate_options={'anisotropic': False,
+                           'optimizer': "sceua" },
         optimizer="nsga2",
         local_random=None,
         feasibility_model=False,
@@ -275,8 +277,8 @@ class DistOptimizer():
         self.di_crossover = di_crossover
         self.di_mutation = di_mutation
         self.distance_metric = distance_metric
-        self.gpr_optimizer = gpr_optimizer
-        self.gpr_anisotropic = gpr_anisotropic
+        self.surrogate_method = surrogate_method
+        self.surrogate_options = surrogate_options
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
@@ -376,7 +378,7 @@ class DistOptimizer():
 
         self.constraint_names = constraint_names
 
-        if file_path is not None:
+        if self.save and file_path is not None:
             if not os.path.isfile(file_path):
                 init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                         self.param_spec, self.param_names, self.objective_names, 
@@ -421,8 +423,8 @@ class DistOptimizer():
                                         di_mutation=self.di_mutation,
                                         di_crossover=self.di_crossover,
                                         distance_metric=self.distance_metric,
-                                        gpr_optimizer=self.gpr_optimizer,
-                                        gpr_anisotropic=self.gpr_anisotropic,
+                                        surrogate_method=self.surrogate_method,
+                                        surrogate_options=self.surrogate_options,
                                         optimizer=self.optimizer,
                                         feasibility_model=self.feasibility_model,
                                         termination_conditions=self.termination_conditions,

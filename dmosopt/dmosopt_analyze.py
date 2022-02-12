@@ -79,6 +79,8 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
         best_x, best_y, best_f, best_c, best_epoch, _ = get_best(x, y, f, c, len(param_names), len(objective_names), 
                                                                  epochs=epochs, feasible=constraints)
 
+        print(f'Found {best_x.shape[0]} best results for id {problem_id}')
+        sys.stdout.flush()
         prms = list(zip(param_names, list(best_x.T)))
         res = list(zip(objective_names, list(best_y.T)))
         prms_dict = dict(prms)
