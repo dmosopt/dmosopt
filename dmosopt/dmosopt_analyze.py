@@ -103,17 +103,19 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
                 if np.max(points[:, m_i]) > 0.:
                     points[:, m_i] = points[:, m_i] / np.max(points[:, m_i])
 
-            if points.shape[0] < knn:
-                knn = points.shape[0]
+            nn = range(points.shape[0])
+            if knn > 0:
+                if points.shape[0] < knn:
+                    knn = points.shape[0]
 
-            tree = cKDTree(points)
-            qp = np.zeros((m, ))
-            dnn, nn = tree.query(qp, k=knn)
+                tree = cKDTree(points)
+                qp = np.zeros((m, ))
+                dnn, nn = tree.query(qp, k=knn)
 
-            if isinstance(nn, int):
-                nn = [nn]
-            else:
-                nn = nn[~np.isinf(dnn)]
+                if isinstance(nn, int):
+                    nn = [nn]
+                else:
+                    nn = nn[~np.isinf(dnn)]
                 
             for i in nn:
                 
