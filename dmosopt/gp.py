@@ -8,6 +8,7 @@ from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteK
 try:
     import gpflow
     import tensorflow as tf
+    import tensorflow_probability as tfp
     from gpflow.utilities import print_summary
     from gpflow.ci_utils import ci_niter, ci_range
     from gpflow.models import VGP, GPR, SVGP
@@ -16,6 +17,14 @@ try:
     gpflow.config.set_default_float(np.float64)
     gpflow.config.set_default_jitter(10e-3)
     tf.keras.backend.set_floatx('float64')
+
+    def bounded_parameter(low, high, value, **kwargs):
+        """Returns Parameter with optimization bounds."""
+        sigmoid = tfp.bijectors.Sigmoid(low, high)
+        parameter = gpflow.Parameter(value, transform=sigmoid, dtype=tf.float64, **kwargs)
+        return parameter
+
+
 except:
     _has_gpflow = False
 else:
@@ -54,7 +63,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         return scale
 
 class VGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_likelihood_sigma=1.0e-3, natgrad_gamma=1.0, adam_lr=0.01, n_iter=3000, min_elbo_pct_change=0.1, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=(1e-6, 10.0), gp_likelihood_sigma=1.0e-3, natgrad_gamma=1.0, adam_lr=0.01, n_iter=3000, min_elbo_pct_change=0.1, logger=None):
         if not _has_gpflow:
             raise RuntimeError('VGP_Matern requires the GPflow library to be installed.')
             
@@ -89,13 +98,17 @@ class VGP_Matern:
                 logger.info(f"VGP_Matern: creating regressor for output {i+1} of {nOutput}...")
                 logger.info(f"VGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}...")
                 
-            gp_kernel=gpflow.kernels.Matern52(lengthscales=np.ones(nInput))
+            gp_kernel=gpflow.kernels.Matern52()
             gp_likelihood=gpflow.likelihoods.Gaussian(variance=1.0e-4)
             gp_model = gpflow.models.VGP(
                 data=(np.asarray(xn, dtype=np.float64), yn[:, i].reshape((-1,1)).astype(np.float64)),
                 kernel=gp_kernel,
                 likelihood=gp_likelihood
             )
+            gp_model.kernel.lengthscales = bounded_parameter(np.asarray([gp_lengthscale_bounds[0]]*nInput, dtype=np.float64),
+                                                             np.asarray([gp_lengthscale_bounds[1]]*nInput, dtype=np.float64),
+                                                             np.ones(nInput, dtype=np.float64), trainable=True,
+                                                             name='lengthscales')
             
             gpflow.set_trainable(gp_model.q_mu, False)
             gpflow.set_trainable(gp_model.q_sqrt, False)
@@ -107,9 +120,15 @@ class VGP_Matern:
             iterations = ci_niter(n_iter)
             elbo_log = []
             diff_kernel = np.array([1,-1])
-            for i in range(iterations):
+
+
+            @tf.function
+            def optim_step():
                 natgrad_opt.minimize(gp_model.training_loss, var_list=variational_params)
                 adam_opt.minimize(gp_model.training_loss, var_list=gp_model.trainable_variables)
+
+            for i in range(iterations):
+                optim_step()
                 likelihood = gp_model.elbo()
                 if (i % 100 == 0):
                     logger.info(f"VGP_Matern: iteration {i} likelihood: {likelihood:.04f}")
