@@ -63,7 +63,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         return scale
 
 class VGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=(1e-6, 10.0), gp_likelihood_sigma=1.0e-3, natgrad_gamma=1.0, adam_lr=0.01, n_iter=3000, min_elbo_pct_change=0.1, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-3, natgrad_gamma=1.0, adam_lr=0.01, n_iter=3000, min_elbo_pct_change=0.1, logger=None):
         if not _has_gpflow:
             raise RuntimeError('VGP_Matern requires the GPflow library to be installed.')
             
