@@ -157,10 +157,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     if nPrevious is None:
         nPrevious = 0
 
-    for i in range(nPrevious, Ninit):
-        Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
-
-    Xinit = Xinit[nPrevious:, :]
+    Xinit = Xinit[nPrevious:,:] * (xub - xlb) + xlb
 
     return Xinit
 
