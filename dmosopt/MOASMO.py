@@ -213,6 +213,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                            anisotropic=gpr_anisotropic, logger=logger)
     elif surrogate_method == 'vgp':
         sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'svgp':
+        sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
@@ -283,6 +285,8 @@ def train(nInput, nOutput, xlb, xub, \
                            anisotropic=gpr_anisotropic, logger=logger)
     elif surrogate_method == 'vgp':
         sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'svgp':
+        sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
