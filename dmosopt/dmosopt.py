@@ -1,6 +1,7 @@
 import os, sys, importlib, logging, pprint, copy
 from functools import partial
 from collections import namedtuple
+from collections.abc import Iterable, Iterator
 import numpy as np
 from numpy.random import default_rng
 import distwq
@@ -80,13 +81,18 @@ class SOptStrategy():
             if initial is None:
                 self.reqs = [ EvalRequest(xinit[i,:], None) for i in range(xinit.shape[0]) ]
             else:
-                self.reqs = list(filter(lambda req: not anyclose(req.parameters, self.x), 
-                                        [ EvalRequest(xinit[i,:], None) for i in range(xinit.shape[0]) ]))
-            
+                self.reqs = filter(lambda req: not anyclose(req.parameters, self.x), 
+                                   [ EvalRequest(xinit[i,:], None) for i in range(xinit.shape[0]) ])
+
     def get_next_request(self):
         req = None
-        if len(self.reqs) > 0:
-            req = self.reqs.pop(0)
+        if isinstance(self.reqs, Iterator):
+            req = next(self.reqs)
+        else:
+            try:
+                req = self.reqs.pop(0)
+            except:
+                pass
         return req
 
     def complete_request(self, x, y, epoch=None, f=None, c=None, pred=None):
@@ -156,7 +162,8 @@ class SOptStrategy():
             x_resample, y_pred, gen_index, x_sm, y_sm = res
         else:
             x_resample, y_pred = res
-            
+
+        self.reqs = []
         for i in range(x_resample.shape[0]):
             self.reqs.append(EvalRequest(x_resample[i,:], y_pred[i,:]))
             

@@ -8,6 +8,7 @@ from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteK
 try:
     import gpflow
     import tensorflow as tf
+    import tensorflow_probability as tfp
     from gpflow.utilities import print_summary
     from gpflow.ci_utils import ci_niter, ci_range
     from gpflow.models import VGP, GPR, SVGP
@@ -16,6 +17,14 @@ try:
     gpflow.config.set_default_float(np.float64)
     gpflow.config.set_default_jitter(10e-3)
     tf.keras.backend.set_floatx('float64')
+
+    def bounded_parameter(low, high, value, **kwargs):
+        """Returns Parameter with optimization bounds."""
+        sigmoid = tfp.bijectors.Sigmoid(low, high)
+        parameter = gpflow.Parameter(value, transform=sigmoid, dtype=tf.float64, **kwargs)
+        return parameter
+
+
 except:
     _has_gpflow = False
 else:
@@ -223,6 +232,10 @@ class VGP_Matern:
                 likelihood=gp_likelihood,
 
             )
+            gp_model.kernel.lengthscales = bounded_parameter(np.asarray([gp_lengthscale_bounds[0]]*nInput, dtype=np.float64),
+                                                             np.asarray([gp_lengthscale_bounds[1]]*nInput, dtype=np.float64),
+                                                             np.ones(nInput, dtype=np.float64), trainable=True,
+                                                             name='lengthscales')
             
             gpflow.set_trainable(gp_model.q_mu, False)
             gpflow.set_trainable(gp_model.q_sqrt, False)
@@ -234,9 +247,15 @@ class VGP_Matern:
             iterations = ci_niter(n_iter)
             elbo_log = []
             diff_kernel = np.array([1,-1])
-            for i in range(iterations):
+
+
+            @tf.function
+            def optim_step():
                 natgrad_opt.minimize(gp_model.training_loss, var_list=variational_params)
                 adam_opt.minimize(gp_model.training_loss, var_list=gp_model.trainable_variables)
+
+            for i in range(iterations):
+                optim_step()
                 likelihood = gp_model.elbo()
                 if (i % 100 == 0):
                     logger.info(f"VGP_Matern: iteration {i} likelihood: {likelihood:.04f}")

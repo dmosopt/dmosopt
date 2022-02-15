@@ -39,6 +39,11 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if local_random is None:
         local_random = default_rng()
 
+    if np.isscalar(di_crossover):
+        di_crossover = np.asarray([di_crossover]*nInput)
+    if np.isscalar(di_mutation):
+        di_mutation = np.asarray([di_mutation]*nInput)
+
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
 

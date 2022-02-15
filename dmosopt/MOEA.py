@@ -56,19 +56,21 @@ def feasibility_selection(local_random, feasibility_model, children, logger=None
 def mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
     ''' Polynomial Mutation in Genetic Algorithm
         muration_rate: mutation rate
-        di_mutation: distribution index for mutation, default = 20
+        di_mutation: distribution index for mutation
             This determine how well spread the child will be from its parent.
         parent: sample point before mutation
 	'''
     n = len(parent)
+    if np.isscalar(di_mutation):
+        di_mutation = np.asarray([di_mutation]*n)
     children = np.ndarray((nchildren,n))
     delta = np.ndarray((n,))
     for i in range(nchildren):
         u = local_random.random(n)
         lo = np.argwhere(u < mutation_rate).ravel()
         hi = np.argwhere(u >= mutation_rate).ravel()
-        delta[lo] = (2.0*u[lo])**(1.0/(di_mutation+1)) - 1.0
-        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(di_mutation+1))
+        delta[lo] = (2.0*u[lo])**(1.0/(di_mutation[lo]+1)) - 1.0
+        delta[hi] = 1.0 - (2.0*(1.0 - u[hi]))**(1.0/(di_mutation[hi]+1))
         children[i, :] = np.clip(parent + (xub - xlb) * delta, xlb, xub)
     return children
 
@@ -76,10 +78,12 @@ def mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildr
 def crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=1):
     ''' SBX (Simulated Binary Crossover) in Genetic Algorithm
 
-         di_crossover: distribution index for crossover, default = 20
+         di_crossover: distribution index for crossover
          This determine how well spread the children will be from their parents.
     '''
     n = len(parent1)
+    if np.isscalar(di_crossover):
+        di_crossover = np.asarray([di_crossover]*n)
     children1 = np.ndarray((nchildren, n))
     children2 = np.ndarray((nchildren, n))
     beta = np.ndarray((n,))
@@ -87,8 +91,8 @@ def crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchild
         u = local_random.random(n)
         lo = np.argwhere(u <= 0.5).ravel()
         hi = np.argwhere(u > 0.5).ravel()
-        beta[lo] = (2.0*u[lo])**(1.0/(di_crossover+1))
-        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(di_crossover+1))
+        beta[lo] = (2.0*u[lo])**(1.0/(di_crossover[lo]+1))
+        beta[hi] = (1.0/(2.0*(1.0 - u[hi])))**(1.0/(di_crossover[hi]+1))
         children1[i,:] = np.clip(0.5*((1-beta)*parent1 + (1+beta)*parent2), xlb, xub)
         children2[i,:] = np.clip(0.5*((1+beta)*parent1 + (1-beta)*parent2), xlb, xub)
     return children1, children2
