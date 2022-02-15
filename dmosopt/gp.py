@@ -1,4 +1,4 @@
-
+import timeit
 import copy
 import numpy as np
 from functools import partial
@@ -64,7 +64,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
 
 class SVGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=50, inducing_fraction=0.1, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=0.1, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=100, inducing_fraction=0.1, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=1.0, logger=None):
         if not _has_gpflow:
             raise RuntimeError('SVGP_Matern requires the GPflow library to be installed.')
             
@@ -105,7 +105,7 @@ class SVGP_Matern:
 
             M = int(round(inducing_fraction * N))
             #Z = tf.random.uniform((M, D))  # Initialize inducing locations to M random inputs
-            Z = xn[np.random.choice(N, size=M, replace=False), :]  # Initialize inducing locations to M random inputs
+            Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
             gp_kernel=gpflow.kernels.Matern52()
             gp_likelihood=gpflow.likelihoods.Gaussian(variance=gp_likelihood_sigma)
             gp_model = gpflow.models.SVGP(
@@ -119,20 +119,14 @@ class SVGP_Matern:
                                                              np.ones(nInput, dtype=np.float64), trainable=True,
                                                              name='lengthscales')
 
-            elbo = tf.function(gp_model.elbo)
-            tensor_data = tuple(map(tf.convert_to_tensor, data))
-            elbo(tensor_data)  # run it once to trace & compile
-            
             gpflow.set_trainable(gp_model.q_mu, False)
             gpflow.set_trainable(gp_model.q_sqrt, False)
 
+            
             if logger is not None:
                 logger.info(f"SVGP_Matern: optimizing regressor for output {i+1} of {nOutput}...")
 
-            variational_params = [(gp_model.q_mu, gp_model.q_sqrt, XiSqrtMeanVar())]
-            iterations = ci_niter(n_iter)
-            elbo_log = []
-            diff_kernel = np.array([1,-1])
+            variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
 
             data_minibatch = (
                 tf.data.Dataset.from_tensor_slices(data)
@@ -142,26 +136,31 @@ class SVGP_Matern:
                 .batch(batch_size)
             )
             data_minibatch_it = iter(data_minibatch)
-
             svgp_natgrad_loss = gp_model.training_loss_closure(data_minibatch_it, compile=True)
             
             @tf.function
             def optim_step():
                 adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
                 natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
-
-            for i in range(iterations):
+                
+            iterations = ci_niter(n_iter)
+            elbo_log = []
+            diff_kernel = np.array([1,-1])
+            for it in range(iterations):
                 optim_step()
-                likelihood = np.average([elbo(next(data_minibatch_it)) for _ in ci_range(100)])
-                if (i % 100 == 0):
-                    logger.info(f"SVGP_Matern: iteration {i} likelihood: {likelihood:.04f}")
-                elbo_log.append(likelihood)
-                if i >= 100:
+                if (it % 10 == 0):
+                    likelihood = -svgp_natgrad_loss().numpy()
+                    elbo_log.append(likelihood)
+                if (it % 1000 == 0):
+                    logger.info(f"SVGP_Matern: iteration {it} likelihood: {likelihood:.04f}")
+                if it >= 2000:
                     elbo_change = np.convolve(elbo_log, diff_kernel, 'same')[1:]
                     elbo_pct_change = (elbo_change / np.abs(elbo_log[1:]))*100
                     mean_elbo_pct_change = np.mean(elbo_pct_change[-100:])
+                    if (it % 1000 == 0):
+                        logger.info(f"SVGP_Matern: iteration {it} mean elbo pct change: {mean_elbo_pct_change:.04f}")
                     if mean_elbo_pct_change < min_elbo_pct_change:
-                        logger.info(f"SVGP_Matern: likelihood change at iteration {i+1} is less than {min_elbo_pct_change} percent")
+                        logger.info(f"SVGP_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent")
                         break
             print_summary(gp_model)
             #assert(opt_log.success)
@@ -243,7 +242,7 @@ class VGP_Matern:
             if logger is not None:
                 logger.info(f"VGP_Matern: optimizing regressor for output {i+1} of {nOutput}...")
 
-            variational_params = [(gp_model.q_mu, gp_model.q_sqrt, XiSqrtMeanVar())]
+            variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
             iterations = ci_niter(n_iter)
             elbo_log = []
             diff_kernel = np.array([1,-1])
@@ -254,18 +253,18 @@ class VGP_Matern:
                 natgrad_opt.minimize(gp_model.training_loss, var_list=variational_params)
                 adam_opt.minimize(gp_model.training_loss, var_list=gp_model.trainable_variables)
 
-            for i in range(iterations):
+            for it in range(iterations):
                 optim_step()
                 likelihood = gp_model.elbo()
-                if (i % 100 == 0):
-                    logger.info(f"VGP_Matern: iteration {i} likelihood: {likelihood:.04f}")
+                if (it % 100 == 0):
+                    logger.info(f"VGP_Matern: iteration {it} likelihood: {likelihood:.04f}")
                 elbo_log.append(likelihood)
-                if i >= 100:
+                if it >= 200:
                     elbo_change = np.convolve(elbo_log, diff_kernel, 'same')[1:]
                     elbo_pct_change = (elbo_change / np.abs(elbo_log[1:]))*100
                     mean_elbo_pct_change = np.mean(elbo_pct_change[-100:])
                     if mean_elbo_pct_change < min_elbo_pct_change:
-                        logger.info(f"VGP_Matern: likelihood change at iteration {i+1} is less than {min_elbo_pct_change} percent")
+                        logger.info(f"VGP_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent")
                         break
             print_summary(gp_model)
             #assert(opt_log.success)
