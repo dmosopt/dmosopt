@@ -6,14 +6,6 @@ from numpy.random import default_rng
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
 
-try:
-    from SALib.sample import saltelli
-    from SALib.analyze import sobol
-except:
-    _has_sa = False
-else:
-    _has_sa = True
-
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
                  initial_maxiter=5, initial_method="glp",
@@ -157,10 +149,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     if nPrevious is None:
         nPrevious = 0
 
-    for i in range(nPrevious, Ninit):
-        Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
-
-    Xinit = Xinit[nPrevious:, :]
+    Xinit = Xinit[nPrevious:,:] * (xub - xlb) + xlb
 
     return Xinit
 
@@ -221,6 +210,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                            anisotropic=gpr_anisotropic, logger=logger)
     elif surrogate_method == 'vgp':
         sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'svgp':
+        sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
@@ -291,6 +282,8 @@ def train(nInput, nOutput, xlb, xub, \
                            anisotropic=gpr_anisotropic, logger=logger)
     elif surrogate_method == 'vgp':
         sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'svgp':
+        sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
@@ -335,31 +328,4 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
     else:
         return best_x, best_y, best_f, best_c, best_epoch, perm
 
-
-def get_sensitivity(sm, param_names, lo_bounds, hi_bounds, objective_names, verbose=False):
-
-    if not _has_sa:
-        raise RuntimeError('get_sensitivity requires the SALib library to be installed.')
-
-    bounds = list(zip(lo_bounds, hi_bounds))
-
-    problem = {
-        'num_vars': len(param_names),
-        'names': param_names,
-        'bounds': bounds
-    }
-
-    # Generate samples
-    param_values = saltelli.sample(problem, 8192, calc_second_order=True)
-    
-    # Evaluate surrogate model
-    Y = sm.evaluate(param_values)
-
-    # Perform analysis
-    Sis = { objective_name: sobol.analyze(problem, Y[:,i], print_to_console=verbose)
-            for i, objective_name in enum(objective_names) }
-    # Returns a dictionary with keys 'S1', 'S1_conf', 'ST', and 'ST_conf'
-    # (first and total-order indices with bootstrap confidence intervals)
-
-    return Sis
 

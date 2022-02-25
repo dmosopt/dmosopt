@@ -10,18 +10,6 @@ import fractions as fc
 import itertools
 from dmosopt.discrepancy import CD2
 
-use_numba = True
-try:
-    from numba import njit
-except ImportError as e:
-    use_numba = False
-    print("dmosopt.GLP: Warning: unable to import numba")
-    sys.stdout.flush()
-    def njit(cache=False, nogil=False):
-        def decorator(func):
-            return func
-        return decorator
-
 def sample(n, s, local_random):
     ''' main function of GLP design'''
     m = EulerFunction(n)
@@ -131,7 +119,6 @@ def PowerGenVector(n,s):
         hh[i,:] = np.mod([aa[i]**t for t in range(s)],n)
     return hh
 
-@njit()
 def glpmod(n,h):
     ''' generate GLP using generation vector h'''
     m = len(h)

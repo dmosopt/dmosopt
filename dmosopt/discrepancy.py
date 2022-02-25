@@ -1,19 +1,6 @@
 from __future__ import division, print_function, absolute_import
 import math, sys
 import numpy as np
-
-use_numba = True
-try:
-    from numba import njit, prange
-except ImportError as e:
-    use_numba = False
-    print("dmosopt.discrepancy: Warning: unable to import numba")
-    sys.stdout.flush()
-    prange = range
-    def njit(cache=False, nogil=False, parallel=False):
-        def decorator(func):
-            return func
-        return decorator
     
 # compute 4 kinds of L2-discrepancy, and other 2 uniform metrics
 # [Hickernell, 1998a,b], [Fang et.al., 2000]
@@ -70,7 +57,6 @@ def MD2(X):
     D = math.sqrt(D1 + D2*(-2**(1-dim)/float(num)) + D3/(num**2))
     return D
 
-@njit(parallel=True)
 def CD2(X):
     ''' Centered L2-discrepancy'''
     num, dim = X.shape
