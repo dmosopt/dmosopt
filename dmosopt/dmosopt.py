@@ -87,7 +87,10 @@ class SOptStrategy():
     def get_next_request(self):
         req = None
         if isinstance(self.reqs, Iterator):
-            req = next(self.reqs)
+            try:
+                req = next(self.reqs)
+            except StopIteration:
+                pass
         else:
             try:
                 req = self.reqs.pop(0)
