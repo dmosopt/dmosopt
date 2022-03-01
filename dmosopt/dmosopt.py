@@ -1211,7 +1211,9 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                         n_objectives = y_completed.shape[1]
                         mae = []
                         for i in range(n_objectives):
-                            mae.append(np.mean(np.abs(y_completed[:,i] - pred_completed[:,i])))
+                            y_i = y_completed[:,i]
+                            pred_i = pred_completed[:,i]
+                            mae.append(np.mean(np.abs(y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)])))
                         logger.info(f"surrogate accuracy at step {epoch_count} for problem {problem_id} was {mae}")
                 logger.info(f"performing optimization step {epoch_count+1} for problem {problem_id} ...")
                 x_sm, y_sm = None, None
