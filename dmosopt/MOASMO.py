@@ -8,7 +8,7 @@ from dmosopt.feasibility import FeasibilityModel
 
 def optimization(model, nInput, nOutput, xlb, xub, niter, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
-                 initial_maxiter=5, initial_method="glp",
+                 initial_maxiter=5, initial_method="slh",
                  feasibility_model=False,
                  gpr_anisotropic=False, gpr_optimizer="sceua", optimizer="nsga2",
                  optimizer_kwargs= { 'gen': 100,
@@ -209,9 +209,29 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         sm = gp.GPR_Matern(x, y, nInput, nOutput, xlb, xub, optimizer=gpr_optimizer,
                            anisotropic=gpr_anisotropic, logger=logger)
     elif surrogate_method == 'vgp':
-        sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+        vgp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
+        vgp_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
+        vgp_natgrad_gamma=surrogate_options.get('natgrad_gamma', 1.0)
+        vgp_adam_lr=surrogate_options.get('adam_lr', 0.01)
+        vgp_n_iter=surrogate_options.get('n_iter', 3000)
+        sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
+                           gp_lengthscale_bounds=vgp_lengthscale_bounds,
+                           gp_likelihood_sigma=vgp_likelihood_sigma,
+                           natgrad_gamma=vgp_natgrad_gamma,
+                           adam_lr=vgp_adam_lr, n_iter=vgp_n_iter,
+                           logger=logger)
     elif surrogate_method == 'svgp':
-        sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+        svgp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
+        svgp_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
+        svgp_natgrad_gamma=surrogate_options.get('natgrad_gamma', 0.1)
+        svgp_adam_lr=surrogate_options.get('adam_lr', 0.01)
+        svgp_n_iter=surrogate_options.get('n_iter', 30000)
+        sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
+                            gp_lengthscale_bounds=svgp_lengthscale_bounds,
+                            gp_likelihood_sigma=svgp_likelihood_sigma,
+                            natgrad_gamma=svgp_natgrad_gamma,
+                            adam_lr=svgp_adam_lr, n_iter=svgp_n_iter,
+                            logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:

@@ -217,7 +217,7 @@ class DistOptimizer():
         constraint_names=None,
         n_initial=10,
         initial_maxiter=5,
-        initial_method="glp",
+        initial_method="slh",
         verbose=False,
         reduce_fun=None,
         reduce_fun_args=None,
