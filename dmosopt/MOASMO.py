@@ -232,6 +232,20 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                             natgrad_gamma=svgp_natgrad_gamma,
                             adam_lr=svgp_adam_lr, n_iter=svgp_n_iter,
                             logger=logger)
+    elif surrogate_method == 'siv':
+        siv_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
+        siv_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
+        siv_natgrad_gamma=surrogate_options.get('natgrad_gamma', 0.1)
+        siv_adam_lr=surrogate_options.get('adam_lr', 0.01)
+        siv_n_iter=surrogate_options.get('n_iter', 30000)
+        siv_num_latent_gps=surrogate_options.get('num_latent_gps', None)
+        sm = gp.SIV_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
+                           gp_lengthscale_bounds=siv_lengthscale_bounds,
+                           gp_likelihood_sigma=siv_likelihood_sigma,
+                           natgrad_gamma=siv_natgrad_gamma,
+                           adam_lr=siv_adam_lr, n_iter=siv_n_iter,
+                           num_latent_gps=siv_num_latent_gps,
+                           logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
@@ -304,6 +318,8 @@ def train(nInput, nOutput, xlb, xub, \
         sm = gp.VGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     elif surrogate_method == 'svgp':
         sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
+    elif surrogate_method == 'siv':
+        sm = gp.SIV_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub, logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
