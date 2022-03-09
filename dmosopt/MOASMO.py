@@ -143,7 +143,10 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     if local_random is None:
         local_random = default_rng()
 
-    if Ninit <= 0:
+    if nPrevious is None:
+        nPrevious = 0
+
+    if (Ninit <= 0) or (Ninit <= nPrevious):
         return None
 
     if logger is not None:
@@ -159,9 +162,6 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
         Xinit = sampling.mc(Ninit, nInput, local_random=local_random)
     else:
         raise RuntimeError(f'Unknown method {method}')
-
-    if nPrevious is None:
-        nPrevious = 0
 
     Xinit = Xinit[nPrevious:,:] * (xub - xlb) + xlb
 
@@ -283,8 +283,11 @@ def train(nInput, nOutput, xlb, xub, \
     if surrogate_method == 'gpr':
         gpr_anisotropic = surrogate_options.get('anisotropic', False)
         gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
+        gpr_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-3, 100.0))
         sm = gp.GPR_Matern(x, y, nInput, nOutput, xlb, xub, optimizer=gpr_optimizer,
-                           anisotropic=gpr_anisotropic, logger=logger)
+                           anisotropic=gpr_anisotropic,
+                           length_scale_bounds=gpr_lengthscale_bounds,
+                           logger=logger)
     elif surrogate_method == 'vgp':
         vgp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
         vgp_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
