@@ -64,7 +64,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
     
 class SIV_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=100, inducing_fraction=0.1, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=1.0, num_latent_gps=None, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=100, inducing_fraction=0.1, min_inducing=50, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=1.0, num_latent_gps=None, logger=None):
         if not _has_gpflow:
             raise RuntimeError('SIV_Matern requires the GPflow library to be installed.')
             
@@ -105,8 +105,11 @@ class SIV_Matern:
         data=(np.asarray(xn, dtype=np.float64), yn.astype(np.float64))
 
         M = int(round(inducing_fraction * N))
-        #Z = tf.random.uniform((M, D))  # Initialize inducing locations to M random inputs
-        Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
+
+        if M < min_inducing:
+            Z = xn.copy()
+        else:
+            Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
         iv = gpflow.inducing_variables.SharedIndependentInducingVariables(
             gpflow.inducing_variables.InducingPoints(Z)
         )
@@ -193,7 +196,7 @@ class SIV_Matern:
 
     
 class SVGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=100, inducing_fraction=0.1, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=1.0, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=100, inducing_fraction=0.1, min_inducing=50, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=1.0, logger=None):
         if not _has_gpflow:
             raise RuntimeError('SVGP_Matern requires the GPflow library to be installed.')
             
@@ -234,7 +237,10 @@ class SVGP_Matern:
 
             M = int(round(inducing_fraction * N))
             #Z = tf.random.uniform((M, D))  # Initialize inducing locations to M random inputs
-            Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
+            if M < min_inducing:
+                Z = xn.copy()
+            else:
+                Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
             gp_kernel=gpflow.kernels.Matern52()
             gp_likelihood=gpflow.likelihoods.Gaussian(variance=gp_likelihood_sigma)
             gp_model = gpflow.models.SVGP(
