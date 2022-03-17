@@ -213,7 +213,6 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                     fsbm = FeasibilityModel(Xinit,  C)
                 x = x[feasible,:]
                 y = y[feasible,:]
-                logger.info(f"Found {len(feasible)} feasible solutions")
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
