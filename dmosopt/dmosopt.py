@@ -284,8 +284,6 @@ class DistOptimizer():
         self.resample_fraction = resample_fraction
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
-        self.di_crossover = di_crossover
-        self.di_mutation = di_mutation
         self.distance_metric = distance_metric
         self.surrogate_method = surrogate_method
         self.surrogate_options = surrogate_options
@@ -355,6 +353,17 @@ class DistOptimizer():
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
+        if isinstance(di_crossover, dict):
+            self.di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
+        else:
+            self.di_crossover = di_crossover
+            
+        if isinstance(di_mutation, dict):
+            self.di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
+        else:
+            self.di_mutation = di_mutation
+
+        
         self.start_epoch = max_epoch
         if self.start_epoch != 0:
             self.start_epoch += 1
