@@ -64,6 +64,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
     
 class SIV_Matern:
+
     def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=100, inducing_fraction=0.1, min_inducing=50, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=1.0, num_latent_gps=None, logger=None):
         if not _has_gpflow:
             raise RuntimeError('SIV_Matern requires the GPflow library to be installed.')
@@ -113,8 +114,8 @@ class SIV_Matern:
         iv = gpflow.inducing_variables.SharedIndependentInducingVariables(
             gpflow.inducing_variables.InducingPoints(Z)
         )
-        kernel_list = [gpflow.kernels.Matern52() for _ in range(num_latent_gps)]
-        gp_kernel = gpflow.kernels.SeparateIndependent(kernel_list)
+        kernel = gpflow.kernels.Matern52()
+        gp_kernel = gpflow.kernels.SharedIndependent(kernel, output_dim=nOutput)
         gp_likelihood=gpflow.likelihoods.Gaussian(variance=gp_likelihood_sigma)
         gp_model = gpflow.models.SVGP(
             inducing_variable=iv,
@@ -123,11 +124,10 @@ class SIV_Matern:
             num_data=N,
             num_latent_gps=num_latent_gps)
 
-        for k in gp_model.kernel.kernels:
-            k.lengthscales = bounded_parameter(np.asarray([gp_lengthscale_bounds[0]]*nInput, dtype=np.float64),
-                                               np.asarray([gp_lengthscale_bounds[1]]*nInput, dtype=np.float64),
-                                               np.ones(nInput, dtype=np.float64), trainable=True,
-                                               name='lengthscales')
+        gp_model.kernel.kernel.lengthscales = bounded_parameter(np.asarray([gp_lengthscale_bounds[0]]*nInput, dtype=np.float64),
+                                                                np.asarray([gp_lengthscale_bounds[1]]*nInput, dtype=np.float64),
+                                                                np.ones(nInput, dtype=np.float64), trainable=True,
+                                                                name='lengthscales')
 
         gpflow.set_trainable(gp_model.q_mu, False)
         gpflow.set_trainable(gp_model.q_sqrt, False)
@@ -149,8 +149,8 @@ class SIV_Matern:
             
         @tf.function
         def optim_step():
-            adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
             natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
+            adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
                 
         iterations = ci_niter(n_iter)
         elbo_log = []
