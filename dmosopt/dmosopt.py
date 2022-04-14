@@ -25,7 +25,7 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
     return False
         
     
-class SOptStrategy():
+class DistOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh",
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
@@ -105,7 +105,7 @@ class SOptStrategy():
         self.completed.append(entry)
         return entry
     
-    def step(self, return_sm=False):
+    def epoch(self, return_sm=False):
         if len(self.completed) > 0:
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
@@ -149,17 +149,17 @@ class SOptStrategy():
         x_sm = None
         y_sm = None
         x_resample = None
-        res = opt.onestep(self.prob.dim, self.prob.n_objectives,
-                          self.prob.lb, self.prob.ub, self.resample_fraction,
-                          self.x, self.y, self.c, pop=self.population_size,
-                          optimizer=self.optimizer,
-                          optimizer_kwargs=optimizer_kwargs,
-                          surrogate_method=self.surrogate_method,
-                          surrogate_options=self.surrogate_options,
-                          feasibility_model=self.feasibility_model,
-                          termination=self.termination,
-                          local_random=self.local_random,
-                          logger=self.logger, return_sm=return_sm)
+        res = opt.epoch(self.prob.dim, self.prob.n_objectives,
+                        self.prob.lb, self.prob.ub, self.resample_fraction,
+                        self.x, self.y, self.c, pop=self.population_size,
+                        optimizer=self.optimizer,
+                        optimizer_kwargs=optimizer_kwargs,
+                        surrogate_method=self.surrogate_method,
+                        surrogate_options=self.surrogate_options,
+                        feasibility_model=self.feasibility_model,
+                        termination=self.termination,
+                        local_random=self.local_random,
+                        logger=self.logger, return_sm=return_sm)
         
         if return_sm:
             x_resample, y_pred, gen_index, x_sm, y_sm = res
@@ -431,24 +431,24 @@ class DistOptimizer():
                     c = np.vstack(old_eval_cs)
                 initial = (epochs, x, y, f, c)
 
-            opt_strategy = SOptStrategy(opt_prob, self.n_initial, initial=initial, 
-                                        population_size=self.population_size, 
-                                        resample_fraction=self.resample_fraction,
-                                        num_generations=self.num_generations,
-                                        initial_maxiter=self.initial_maxiter,
-                                        initial_method=self.initial_method,
-                                        mutation_rate=self.mutation_rate,
-                                        crossover_rate=self.crossover_rate,
-                                        di_mutation=self.di_mutation,
-                                        di_crossover=self.di_crossover,
-                                        distance_metric=self.distance_metric,
-                                        surrogate_method=self.surrogate_method,
-                                        surrogate_options=self.surrogate_options,
-                                        optimizer=self.optimizer,
-                                        feasibility_model=self.feasibility_model,
-                                        termination_conditions=self.termination_conditions,
-                                        local_random=self.local_random,
-                                        logger=self.logger)
+            opt_strategy = DistOptStrategy(opt_prob, self.n_initial, initial=initial, 
+                                           population_size=self.population_size, 
+                                           resample_fraction=self.resample_fraction,
+                                           num_generations=self.num_generations,
+                                           initial_maxiter=self.initial_maxiter,
+                                           initial_method=self.initial_method,
+                                           mutation_rate=self.mutation_rate,
+                                           crossover_rate=self.crossover_rate,
+                                           di_mutation=self.di_mutation,
+                                           di_crossover=self.di_crossover,
+                                           distance_metric=self.distance_metric,
+                                           surrogate_method=self.surrogate_method,
+                                           surrogate_options=self.surrogate_options,
+                                           optimizer=self.optimizer,
+                                           feasibility_model=self.feasibility_model,
+                                           termination_conditions=self.termination_conditions,
+                                           local_random=self.local_random,
+                                           logger=self.logger)
             self.optimizer_dict[problem_id] = opt_strategy
             self.storage_dict[problem_id] = []
         if initial is not None:
@@ -1223,15 +1223,15 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                             y_i = y_completed[:,i]
                             pred_i = pred_completed[:,i]
                             mae.append(np.mean(np.abs(y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)])))
-                        logger.info(f"surrogate accuracy at step {epoch_count} for problem {problem_id} was {mae}")
-                logger.info(f"performing optimization step {epoch_count+1} for problem {problem_id} ...")
+                        logger.info(f"surrogate accuracy at epoch {epoch_count} for problem {problem_id} was {mae}")
+                logger.info(f"performing optimization epoch {epoch_count+1} for problem {problem_id} ...")
                 x_sm, y_sm = None, None
                 if sopt.save and sopt.save_surrogate_eval:
-                    _, _, gen_index, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(return_sm=True)
+                    _, _, gen_index, x_sm, y_sm = sopt.optimizer_dict[problem_id].epoch(return_sm=True)
                     sopt.save_surrogate_evals(problem_id, epoch+1, gen_index, x_sm, y_sm)
                 else:
-                    sopt.optimizer_dict[problem_id].step()
-                logger.info(f"completed optimization step {epoch_count+1} for problem {problem_id} ...")
+                    sopt.optimizer_dict[problem_id].epoch()
+                logger.info(f"completed optimization epoch {epoch_count+1} for problem {problem_id} ...")
             controller.info()
             sys.stdout.flush()
             next_epoch = False
