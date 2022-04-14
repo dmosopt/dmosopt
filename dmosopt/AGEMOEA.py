@@ -21,7 +21,7 @@ from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mut
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
                  pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.,
-                 local_random=None, logger=None):
+                 sampling_method=None, local_random=None, logger=None):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
         nInput: number of model input
@@ -54,8 +54,14 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if initial is not None:
         x_initial, y_initial = initial
 
-    x = sampling.lh(pop, nInput, local_random)
-    x = x * (xub - xlb) + xlb
+    if sampling_method is None:
+        x = sampling.lh(pop, nInput, local_random)
+        x = x * (xub - xlb) + xlb
+    elif callable(sampling_method):
+        x = sampling_method(pop, nInput, local_random, xlb, xub)
+    else:
+        raise RuntimeError(f'Unknown sampling method {sampling_method}')
+
     if x_initial is not None:
         x = np.vstack((x_initial, x))
 
