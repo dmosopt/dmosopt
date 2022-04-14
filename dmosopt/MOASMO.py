@@ -160,6 +160,8 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
         Xinit = sampling.lh(Ninit, nInput, local_random=local_random, maxiter=maxiter)
     elif method == "mc":
         Xinit = sampling.mc(Ninit, nInput, local_random=local_random)
+    elif callable(method):
+        Xinit = method(Ninit, nInput, local_random)
     else:
         raise RuntimeError(f'Unknown method {method}')
 
