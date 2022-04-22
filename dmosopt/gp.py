@@ -187,7 +187,8 @@ class SIV_Matern:
         mean, var = self.sm.predict_y(x)
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
-        y = tf.cast(y_mean, tf.float32)
+        y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y[:] = y_mean
         
         return y
 
