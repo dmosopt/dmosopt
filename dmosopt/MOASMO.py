@@ -374,3 +374,35 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
         return best_x, best_y, best_f, best_c, best_epoch, perm
 
 
+def get_feasible_solns(x, y, f, c, nInput, nOutput, epochs=None):
+    xtmp = x.copy()
+    ytmp = y.copy()
+    if c is not None:
+        feasible = np.argwhere(np.all(c > 0., axis=1))
+        if len(feasible) > 0:
+            feasible = feasible.ravel()
+            xtmp = xtmp[feasible,:]
+            ytmp = ytmp[feasible,:]
+            if f is not None:
+                f = f[feasible]
+            c = c[feasible,:]
+            if epochs is not None:
+                epochs = epochs[feasible]
+
+    perm_x, perm_y, rank, crowd, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
+    # x, y are already permutated upon return
+    perm_f = f[perm] 
+    perm_epoch = epochs[perm]
+    perm_c = c[perm]
+
+    uniq_rank, uniq_inv, rnk_cnt = np.unique(rank, return_inverse=True, return_counts=True)
+
+    collect_idx = [[] for i in uniq_rank] 
+    for idx, rnk in enumerate(uniq_inv):
+        collect_idx[rnk].append(idx)    
+
+    rank_idx = np.array(collect_idx,dtype=np.ndarray)
+    for idx, i in enumerate(rank_idx):
+        rank_idx[idx] = np.array(i)
+    
+    return perm_x, perm_y, perm_f, perm_c, perm_epoch, perm, uniq_rank, rank_idx, rnk_cnt 
