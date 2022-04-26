@@ -374,7 +374,7 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
         return best_x, best_y, best_f, best_c, best_epoch, perm
 
 
-def get_feasible_solns(x, y, f, c, nInput, nOutput, epochs=None):
+def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     xtmp = x.copy()
     ytmp = y.copy()
     if c is not None:
@@ -395,14 +395,33 @@ def get_feasible_solns(x, y, f, c, nInput, nOutput, epochs=None):
     perm_epoch = epochs[perm]
     perm_c = c[perm]
 
-    uniq_rank, uniq_inv, rnk_cnt = np.unique(rank, return_inverse=True, return_counts=True)
+    uniq_rank, rnk_inv, rnk_cnt = np.unique(rank, return_inverse=True, return_counts=True)
 
     collect_idx = [[] for i in uniq_rank] 
-    for idx, rnk in enumerate(uniq_inv):
+    for idx, rnk in enumerate(rnk_inv):
         collect_idx[rnk].append(idx)    
 
     rank_idx = np.array(collect_idx,dtype=np.ndarray)
     for idx, i in enumerate(rank_idx):
         rank_idx[idx] = np.array(i)
+
+    uniq_epc, epc_inv, epc_cnt = np.unique(perm_epoch, return_inverse=True, return_counts=True)
+
+    collect_epoch = [[] for i in uniq_epc]  
+    for idx, epc in enumerate(epc_inv):
+        collect_epoch[epc].append(idx)    
+    epc_idx = np.array(collect_epoch,dtype=np.ndarray)
+    for idx, i in enumerate(epc_idx):
+        epc_idx[idx] = np.array(i)
+
+    rnk_epc_idx = np.empty(shape=(uniq_rank.shape[0], uniq_epc.shape[0]), dtype=np.ndarray)
+
+    for idx, i in enumerate(rank_idx):
+        for jidx, j in enumerate(epc_idx):
+            rnk_epc_idx[idx, jidx] = np.intersect1d(i,j, assume_unique=True)
+
+    perm_arrs = (perm_x, perm_y, perm_f, perm_epoch, perm)
+    rnk_arrs = (uniq_rank, rank_idx, rnk_cnt)
+    epc_arrs = (uniq_epc, epc_idx, epc_cnt)
     
-    return perm_x, perm_y, perm_f, perm_c, perm_epoch, perm, uniq_rank, rank_idx, rnk_cnt 
+    return perm_arrs, rnk_arrs, epc_arrs, rnk_epc_idx 
