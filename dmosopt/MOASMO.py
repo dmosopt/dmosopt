@@ -3,7 +3,7 @@
 import sys, pprint
 import numpy as np
 from numpy.random import default_rng
-from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sampling
+from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, gp, sampling
 from dmosopt.feasibility import FeasibilityModel
 
 def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
@@ -93,6 +93,11 @@ def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
             bestx_sm, besty_sm, x_sm, y_sm = \
                 SMPSO.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
                                    pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+        elif optimizer == 'cmaes':
+            bestx_sm, besty_sm, x_sm, y_sm = \
+                CMAES.optimization(sm, nInput, nOutput, xlb, xub, logger=logger, \
+                                   pop=pop, local_random=local_random,
+                                   termination=termination, **optimizer_kwargs)
         else:
             raise RuntimeError(f"Unknown optimizer {optimizer}")
         
@@ -239,6 +244,11 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             SMPSO.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                feasibility_model=fsbm, logger=logger, \
                                pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+    elif optimizer == 'cmaes':
+        bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
+            CMAES.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
+                               logger=logger, pop=pop, local_random=local_random, termination=termination,
+                               **optimizer_kwargs)
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
         
