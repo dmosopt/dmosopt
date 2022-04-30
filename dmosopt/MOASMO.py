@@ -388,6 +388,8 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
             c = c[feasible,:]
             if epochs is not None:
                 epochs = epochs[feasible]
+    else:
+        feasible = None
 
     perm_x, perm_y, rank, crowd, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     # x, y are already permutated upon return
@@ -420,7 +422,7 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
         for jidx, j in enumerate(epc_idx):
             rnk_epc_idx[idx, jidx] = np.intersect1d(i,j, assume_unique=True)
 
-    perm_arrs = (perm_x, perm_y, perm_f, perm_epoch, perm)
+    perm_arrs = (perm_x, perm_y, perm_f, perm_epoch, perm, feasible)
     rnk_arrs = (uniq_rank, rank_idx, rnk_cnt)
     epc_arrs = (uniq_epc, epc_idx, epc_cnt)
     
