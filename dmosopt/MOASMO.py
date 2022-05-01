@@ -121,21 +121,21 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     return Xinit
 
 
-def epoch(nInput, nOutput, xlb, xub, pct, \
-          Xinit, Yinit, C, pop=100,
-          feasibility_model=False,
-          optimizer="nsga2",
-          optimizer_kwargs= { 'gen': 100,
-                              'crossover_rate': 0.9,
-                              'mutation_rate': None,
-                              'sampling_method': None,
-                              'di_crossover': 1., 'di_mutation': 20. },
-          surrogate_method="gpr",
-          surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
-          termination=None,
-          local_random=None,
-          return_sm=False,
-          logger=None):
+def step(nInput, nOutput, xlb, xub, pct, \
+         Xinit, Yinit, C, pop=100,
+         feasibility_model=False,
+         optimizer="nsga2",
+         optimizer_kwargs= { 'gen': 100,
+                             'crossover_rate': 0.9,
+                             'mutation_rate': None,
+                             'sampling_method': None,
+                             'di_crossover': 1., 'di_mutation': 20. },
+         surrogate_method="gpr",
+         surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
+         termination=None,
+         local_random=None,
+         return_sm=False,
+         logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     Perform one epoch of optimization.
