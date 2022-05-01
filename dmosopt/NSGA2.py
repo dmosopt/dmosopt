@@ -12,7 +12,7 @@ from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mut
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
                  distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05,
-                 di_crossover=1., di_mutation=20., local_random=None, logger=None):
+                 di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None):
     ''' Nondominated Sorting Genetic Algorithm II
 
         model: the evaluated model function
@@ -26,6 +26,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         mutation_rate: ratio of muration in each generation
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
+        sampling_method: optional callable for initial sampling of parameters
     '''
     
     if local_random is None:
@@ -45,9 +46,14 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     x_initial, y_initial = None, None
     if initial is not None:
         x_initial, y_initial = initial
-        
-    x = sampling.lh(pop, nInput, local_random)
-    x = x * (xub - xlb) + xlb
+
+    if sampling_method is None:
+        x = sampling.lh(pop, nInput, local_random)
+        x = x * (xub - xlb) + xlb
+    elif callable(sampling_method):
+        x = sampling_method(pop, nInput, local_random, xlb, xub)
+    else:
+        raise RuntimeError(f'Unknown sampling method {sampling_method}')
     if x_initial is not None:
         x = np.vstack((x_initial, x))
     

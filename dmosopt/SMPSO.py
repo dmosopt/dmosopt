@@ -13,7 +13,8 @@ from dmosopt.MOEA import mutation, feasibility_selection, sortMO, crowding_dista
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
                  distance_metric=None, pop=100, gen=100, mutation_rate = 0.05,
-                 di_mutation=20., swarm_size=5, local_random=None, logger=None, **kwargs):
+                 di_mutation=20., swarm_size=5, sampling_method=None, local_random=None, logger=None,
+                 **kwargs):
     ''' 
         Speed-constrained multiobjective particle swarm optimization.
 
@@ -46,8 +47,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     xs = []
     ys = []
     for sl in pop_slices:
-        x_s = sampling.lh(pop, nInput, local_random)
-        x_s = x_s * (xub - xlb) + xlb
+        if sampling_method is None:
+            x = sampling.lh(pop, nInput, local_random)
+            x_s = x * (xub - xlb) + xlb
+        elif callable(sampling_method):
+            x_s = sampling_method(pop, nInput, local_random, xlb, xub)
+        else:
+            raise RuntimeError(f'Unknown sampling method {sampling_method}')
         if x_initial is not None:
             x_s = np.vstack((x_initial, x_s))
         y_s = model.evaluate(x_s)

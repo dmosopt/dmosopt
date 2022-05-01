@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
-    version="0.13.3",
+    version="0.15.0",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",
@@ -28,7 +28,7 @@ setup(
     ],
     python_requires='>=3.0',
     install_requires=[
-        'mpi4py', 'numpy', 'h5py', 'scipy', 'scikit-learn', 'distwq>=0.0.8', 
+        'mpi4py', 'numpy', 'h5py', 'scipy', 'scikit-learn', 'distwq', 
     ],
     extras_require = {
         "gpflow": ["gpflow"],

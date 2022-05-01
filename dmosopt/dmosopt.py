@@ -1120,7 +1120,7 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
     while epoch_count < sopt.n_epochs:
 
         epoch = epoch_count + start_epoch
-        controller.recv()
+        controller.process()
 
         if len(task_ids) > 0:
             rets = controller.probe_all_next_results()
@@ -1183,25 +1183,29 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
             sopt.save_evals()
             saved_eval_count = eval_count
 
-        if not next_epoch:
-            n_workers = 1
-            if controller.workers_available:
-                n_workers = len(controller.ready_workers)
-            for w in range(n_workers):
-                eval_req_dict = {}
-                eval_x_dict = {}
-                for problem_id in sopt.problem_ids:
-                    eval_req = sopt.optimizer_dict[problem_id].get_next_request()
-                    if eval_req is None:
-                        next_epoch = True
-                    else:
-                        eval_req_dict[problem_id] = eval_req
-                        eval_x_dict[problem_id] = eval_req.parameters
-                if next_epoch:
+        task_args = []
+        task_reqs = []
+        while not next_epoch:
+            eval_req_dict = {}
+            eval_x_dict = {}
+            for problem_id in sopt.problem_ids:
+                eval_req = sopt.optimizer_dict[problem_id].get_next_request()
+                if eval_req is None:
+                    next_epoch = True
                     break
+                else:
+                    eval_req_dict[problem_id] = eval_req
+                    eval_x_dict[problem_id] = eval_req.parameters
+            
+            if next_epoch:
+                break
+            else:
+                task_args.append((sopt.opt_id, eval_x_dict,))
+                task_reqs.append(eval_req_dict)
 
-                task_id = controller.submit_call("eval_fun", module_name="dmosopt.dmosopt",
-                                                 args=(sopt.opt_id, eval_x_dict,))
+        if len(task_args) > 0:
+            new_task_ids = controller.submit_multiple("eval_fun", module_name="dmosopt.dmosopt", args=task_args)
+            for task_id, eval_req_dict in zip(new_task_ids, task_reqs):
                 task_ids.append(task_id)
                 for problem_id in sopt.problem_ids:
                     sopt.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
@@ -1251,13 +1255,15 @@ def sopt_work(worker, sopt_params, verbose=False, debug=False):
 def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
 
-def run(sopt_params, feasible=True, return_features=False, return_constraints=False, spawn_workers=False, sequential_spawn=False, spawn_startup_wait=None, nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
+def run(sopt_params, feasible=True, return_features=False, return_constraints=False, spawn_workers=False, sequential_spawn=False, spawn_startup_wait=None, spawn_executable=None, spawn_args=[], nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
     if distwq.is_controller:
         distwq.run(fun_name="sopt_ctrl", module_name="dmosopt.dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),
                    spawn_workers=spawn_workers,
                    sequential_spawn=sequential_spawn,
                    spawn_startup_wait=spawn_startup_wait,
+                   spawn_executable=spawn_executable,
+                   spawn_args=spawn_args,
                    nprocs_per_worker=nprocs_per_worker,
                    collective_mode=collective_mode)
         opt_id = sopt_params['opt_id']
@@ -1276,6 +1282,8 @@ def run(sopt_params, feasible=True, return_features=False, return_constraints=Fa
                    spawn_workers=spawn_workers,
                    sequential_spawn=sequential_spawn,
                    spawn_startup_wait=spawn_startup_wait,
+                   spawn_executable=spawn_executable,
+                   spawn_args=spawn_args,
                    nprocs_per_worker=nprocs_per_worker,
                    collective_mode=collective_mode)
         return None
