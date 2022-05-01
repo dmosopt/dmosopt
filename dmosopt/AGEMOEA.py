@@ -3,6 +3,7 @@
 # many-objective optimization. A. Panichella, Proceedings of the
 # Genetic and Evolutionary Computation Conference, 2019.  
 #
+#
 # Based on implementations in platEMO and PyMOO (by Ben Crulis):
 #
 # 
@@ -215,8 +216,7 @@ def normalize(front, extreme):
 
     return normalization
 
-
-def minkowski_matrix(A, B, p):
+def minkowski_distances(A, B, p):
     """workaround for scipy's cdist refusing p<1"""
     i_ind, j_ind = np.meshgrid(np.arange(A.shape[0]), np.arange(B.shape[0]))
     return np.power(np.power(np.abs(A[i_ind] - B[j_ind]), p).sum(axis=2), 1.0/p)
@@ -304,7 +304,7 @@ def survival_score(y, front, ideal_point):
     selected[extreme] = True
     
     nn = np.linalg.norm(ynfront, p, axis=1)
-    distances = minkowski_matrix(ynfront, ynfront, p=p)
+    distances = minkowski_distances(ynfront, ynfront, p=p)
     distances = distances / nn[:, None]
 
     neighbors = 2
@@ -360,7 +360,7 @@ def environmental_selection(local_random, population_parm, population_obj, pop, 
         for r in range(1, rmax+1):
             front_r = np.argwhere(rank == r).ravel()
             yn[front_r] = ys[front_r] / normalization
-            crowd_dist[front_r] = 1. / minkowski_matrix(yn[front_r, :], ideal_point[None, :], p=p)
+            crowd_dist[front_r] = 1. / minkowski_distances(yn[front_r, :], ideal_point[None, :], p=p)
             if (count + len(front_r)) < pop:
                 selected[front_r] = True
                 count += len(front_r)
