@@ -107,21 +107,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         for p, sl in enumerate(pop_slices):
             xs_updated = update_position(population_parm[sl], velocity[sl], xlb, xub)
             xs_gens[p].append(xs_updated)
-            
-        while count < pop:
-            parentidx = local_random.integers(low=0, high=pop, size=(swarm_size, 1))
-            for p, sl in enumerate(pop_slices):
-                parent = population_parm[sl][parentidx[p,0],:]
-                children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
-                if feasibility_model is None:
-                    child = children[0]
-                else:
-                    child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
-                xs_gens[p].append(child)
-            count += 1
 
-        x_gens = np.vstack([np.vstack(x) for x in xs_gens])
-        y_gens = model.evaluate(x_gens)
+        x_gens = apply_selection(pop, xlb, xub, population_parm, pop_slices, swarm_size, mutation_rate, di_mutation,
+                                 local_random, feasibility_model=None, logger=None)
+        y_gens = yield x_gens
+        n_eval += x_gens.shape[0]
+        
         x_new.append(x_gens)
         y_new.append(y_gens)
         gen_indexes.append(np.ones((x_gens.shape[0],),dtype=np.uint32)*i)
@@ -137,7 +128,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             population_parm[sl], population_obj[sl], ranks[p] = \
                 remove_worst(population_parm_p, population_obj_p, pop, nInput, nOutput, distance_metric=distance_metric)
         gc.collect()
-        n_eval += count
             
     bestx, besty, _ = remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
 
@@ -186,3 +176,23 @@ def velocity_vector(local_random, position, velocity, archive, crowding, xlb, xu
             
     return output
 
+
+def apply_selection(pop, xlb, xub, population_parm, pop_slices, swarm_size, mutation_rate, di_mutation,
+                    local_random, feasibility_model=None, logger=None):
+
+    count = 0
+    xs_gens = []
+    while count < pop:
+        parentidx = local_random.integers(low=0, high=pop, size=(swarm_size, 1))
+        for p, sl in enumerate(pop_slices):
+            parent = population_parm[sl][parentidx[p,0],:]
+            children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
+            if feasibility_model is None:
+                child = children[0]
+            else:
+                child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
+            xs_gens[p].append(child)
+        count += 1
+
+    x_gens = np.vstack([np.vstack(x) for x in xs_gens])
+    return x_gens

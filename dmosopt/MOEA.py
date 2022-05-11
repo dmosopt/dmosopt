@@ -209,7 +209,7 @@ def tournament_prob(ax, i):
     return (ax[0], p)
 
 def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
-    ''' tournament selecting the best individuals into the mating pool'''
+    '''Tournament selecting the best individuals into the mating pool.'''
 
     candidates = np.arange(pop)
     sorted_candidates = np.lexsort(tuple((metric[candidates] for metric in metrics)))
@@ -219,7 +219,7 @@ def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
 
 
 def remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=None):
-    ''' remove the worst individuals in the population '''
+    '''Removes the worst individuals in the population.'''
     population_parm, population_obj, rank, crowd = \
         sortMO(population_parm, population_obj, nInput, nOutput, distance_metric=distance_metric)
     return population_parm[0:pop,:], population_obj[0:pop,:], rank[0:pop]

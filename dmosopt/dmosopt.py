@@ -1,4 +1,4 @@
-import os, sys, importlib, logging, pprint, copy
+import os, sys, importlib, logging, pprint, copy, types
 from functools import partial
 from collections import namedtuple
 from collections.abc import Iterable, Iterator
@@ -160,15 +160,33 @@ class DistOptStrategy():
                        termination=self.termination,
                        local_random=self.local_random,
                        logger=self.logger, return_sm=return_sm)
-        
-        if return_sm:
-            x_resample, y_pred, gen_index, x_sm, y_sm = res
-        else:
-            x_resample, y_pred = res
 
-        self.reqs = []
-        for i in range(x_resample.shape[0]):
-            self.reqs.append(EvalRequest(x_resample[i,:], y_pred[i,:]))
+        if isinstance(res, types.GeneratorType):
+            while True:
+                try:
+                    assert (len(self.reqs) == 0)
+                    item = res.next()
+                except StopIteration:
+                    break
+                else:
+                    x_gen = item
+                    for i in range(x_gen.shape[0]):
+                        self.reqs.append(EvalRequest(x_gen[i,:], None))
+                    yield None
+                    
+            if return_sm:
+                x_resample, y_pred, gen_index, x_sm, y_sm = item
+            else:
+                x_resample, y_pred = item
+        else:
+            if return_sm:
+                x_resample, y_pred, gen_index, x_sm, y_sm = res
+            else:
+                x_resample, y_pred = res
+
+            self.reqs = []
+            for i in range(x_resample.shape[0]):
+                self.reqs.append(EvalRequest(x_resample[i,:], y_pred[i,:]))
             
         if return_sm:
             return x_resample, y_pred, gen_index, x_sm, y_sm
@@ -697,7 +715,7 @@ class DistOptimizer():
                         self.logger.info(f"performing optimization epoch {epoch_count+1} for problem {problem_id} ...")
                         x_sm, y_sm = None, None
                         if self.save and self.save_surrogate_eval:
-                            _, _, gen_index, x_sm, y_sm = self.optimizer_dict[problem_id].epoch(return_sm=True)
+                            _, _, gen_index, x_sm, y_sm = self.optimizer_dict[problem_id].step(return_sm=True)
                             self.save_surrogate_evals(problem_id, epoch+1, gen_index, x_sm, y_sm)
                         else:
                             self.optimizer_dict[problem_id].step()
@@ -1253,11 +1271,13 @@ def dopt_ctrl(controller, dopt_params, verbose=True):
     dopt_params['controller'] = controller
     dopt = dopt_init(dopt_params, verbose=verbose, init_strategy=True)
     logger.info(f"Optimizing for {dopt.n_epochs} epochs...")
+    
     while dopt.epoch_count < dopt.n_epochs:
         dopt.epoch()
 
     if dopt.save:
         dopt.save_evals()
+        
     controller.info()
 
 def dopt_work(worker, dopt_params, verbose=False, debug=False):

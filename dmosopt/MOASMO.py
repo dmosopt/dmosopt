@@ -170,28 +170,47 @@ def step(nInput, nOutput, xlb, xub, pct, \
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-    sm = train(nInput, nOutput, xlb, xub, Xinit, Yinit, C, 
-               surrogate_method=surrogate_method,
-               surrogate_options=surrogate_options,
-               logger=logger)
+    sm = None
+    if surrogate_method is not None:
+        sm = train(nInput, nOutput, xlb, xub, Xinit, Yinit, C, 
+                   surrogate_method=surrogate_method,
+                   surrogate_options=surrogate_options,
+                   logger=logger)
     if optimizer == 'nsga2':
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
-            NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
-                               feasibility_model=fsbm, logger=logger, \
-                               pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+        gen = NSGA2.optimization(nInput, nOutput, xlb, xub, initial=(x, y), \
+                                feasibility_model=fsbm, logger=logger, \
+                                pop=pop, local_random=local_random, termination=termination,
+                                **optimizer_kwargs)
     elif optimizer == 'age':
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
-            AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
+        gen = AGEMOEA.optimization(nInput, nOutput, xlb, xub, initial=(x, y), \
+                                   feasibility_model=fsbm, logger=logger, \
+                                   pop=pop, local_random=local_random, termination=termination,
+                                   **optimizer_kwargs)
+    elif optimizer == 'smpso':
+        gen = SMPSO.optimization(nInput, nOutput, xlb, xub, initial=(x, y), \
                                  feasibility_model=fsbm, logger=logger, \
                                  pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
-    elif optimizer == 'smpso':
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
-            SMPSO.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
-                               feasibility_model=fsbm, logger=logger, \
-                               pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
         
+    while True:
+        try:
+            res = gen.next()
+        except StopIteration:
+            bestx_sm = res.bestx
+            besty_sm = res.besty
+            gen_index = res.gen_index
+            x_sm = res.x
+            y_sm = res.y
+            break
+        else:
+            x_gen = res
+            if sm is not None:
+                y_gen = sm.evaluate(x_gen)
+            else:
+                y_gen = yield x_gen
+            gen.send(y_gen)
+                
     D = MOEA.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]

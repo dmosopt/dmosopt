@@ -20,10 +20,11 @@ from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection
 
 
-def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
+def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
                  pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.,
                  sampling_method=None, local_random=None, logger=None):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
+
         model: the evaluated model function
         nInput: number of model input
         nOutput: number of output objectives
@@ -103,33 +104,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank, -crowd_dist)
         pool = population_parm[pool_idxs,:]
 
-        count = 0
-        xs_gen = []
-        while (count < pop - 1):
-            if (local_random.random() < crossover_rate):
-                parentidx = local_random.choice(poolsize, 2, replace = False)
-                parent1   = pool[parentidx[0],:]
-                parent2   = pool[parentidx[1],:]
-                children1, children2 = crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
-                if feasibility_model is None:
-                    child1 = children1[0]
-                    child2 = children2[0]
-                else:
-                    child1, child2 = crossover_sbx_feasibility_selection(local_random, feasibility_model, [children1, children2], logger=logger)
-                xs_gen.extend([child1, child2])
-                count += 2
-            else:
-                parentidx = local_random.integers(low=0, high=poolsize)
-                parent    = pool[parentidx,:]
-                children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
-                if feasibility_model is None:
-                    child = children[0]
-                else:
-                    child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
-                xs_gen.append(child)
-                count += 1
-        x_gen = np.vstack(xs_gen)
-        y_gen = model.evaluate(x_gen)
+        x_gen = apply_variation(pool, xlb, xub, local_random, crossover_rate, mutation_rate,
+                                di_crossover, di_mutation, feasiblity_model=feasibility_model,
+                                logger=logger)
+        y_gen = yield x_gen
+        n_eval += x_gen.shape[0]
+
         x_new.append(x_gen)
         y_new.append(y_gen)
         gen_indexes.append(np.ones((x_gen.shape[0],),dtype=np.uint32)*i)
@@ -139,7 +119,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         population_parm, population_obj, rank, crowd_dist = \
             environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=logger)
         gc.collect()
-        n_eval += count
 
     sorted_population = np.lexsort(tuple((metric for metric in [rank, -crowd_dist])), axis=0)
     bestx = population_parm[sorted_population].copy()
@@ -378,3 +357,36 @@ def environmental_selection(local_random, population_parm, population_obj, pop, 
     # return selected solutions, number of selected should be equal to population size
     return xs[selected].copy(), ys[selected].copy(), rank[selected].copy(), crowd_dist[selected].copy()
 
+
+
+def apply_variation(pool, xlb, xub, local_random, crossover_rate, mutation_rate, di_crossover, di_mutation, feasiblity_model=None, logger=None):
+
+    poolsize = pool.shape[0]
+    count = 0
+    xs_gen = []
+    while (count < pop - 1):
+        if (local_random.random() < crossover_rate):
+            parentidx = local_random.choice(poolsize, 2, replace = False)
+            parent1   = pool[parentidx[0],:]
+            parent2   = pool[parentidx[1],:]
+            children1, children2 = crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
+            if feasibility_model is None:
+                child1 = children1[0]
+                child2 = children2[0]
+            else:
+                child1, child2 = crossover_sbx_feasibility_selection(local_random, feasibility_model, [children1, children2], logger=logger)
+            xs_gen.extend([child1, child2])
+            count += 2
+        else:
+            parentidx = local_random.integers(low=0, high=poolsize)
+            parent    = pool[parentidx,:]
+            children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
+            if feasibility_model is None:
+                child = children[0]
+            else:
+                child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
+            xs_gen.append(child)
+            count += 1
+            
+    x_gen = np.vstack(xs_gen)
+    return x_gen
