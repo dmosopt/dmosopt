@@ -6,12 +6,12 @@ import gc, itertools
 import numpy  as np
 from numpy.random import default_rng
 from dmosopt import sampling
-from dmosopt.datatypes import OptHistory
+from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import mutation, feasibility_selection, sortMO, crowding_distance, remove_worst
 
 
-def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
+def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibility_model=None, termination=None,
                  distance_metric=None, pop=100, gen=100, mutation_rate = 0.05,
                  di_mutation=20., swarm_size=5, sampling_method=None, local_random=None, logger=None,
                  **kwargs):
@@ -56,7 +56,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             raise RuntimeError(f'Unknown sampling method {sampling_method}')
         if x_initial is not None:
             x_s = np.vstack((x_initial, x_s))
-        y_s = model.evaluate(x_s)
+        if model is None:
+            y_s = yield x_s
+        else:
+            y_s = model.evaluate(x_s)
         xs.append(x_s)
         ys.append(y_s)
 
@@ -108,9 +111,17 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             xs_updated = update_position(population_parm[sl], velocity[sl], xlb, xub)
             xs_gens[p].append(xs_updated)
 
-        x_gens = apply_selection(pop, xlb, xub, population_parm, pop_slices, swarm_size, mutation_rate, di_mutation,
-                                 local_random, feasibility_model=None, logger=None)
-        y_gens = yield x_gens
+        apply_selection(xs_gens, pop, nchildren, xlb, xub, population_parm, pop_slices,
+                        swarm_size, mutation_rate, di_mutation,
+                        local_random, feasibility_model=None, logger=None)
+    
+        x_gens = np.vstack([np.vstack(x) for x in xs_gens])
+
+        if model is None:
+            y_gens = yield x_gens
+        else:
+            y_gens = model.evaluate(x_gens)
+            
         n_eval += x_gens.shape[0]
         
         x_new.append(x_gens)
@@ -136,7 +147,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     x = np.vstack([x] + x_new)
     y = np.vstack([y] + y_new)
         
-    return bestx, besty, gen_index, x, y
+    return EpochResults(bestx, besty, gen_index, x, y)
 
                                     
 def update_position(parameters, velocity, xlb, xub):
@@ -177,11 +188,10 @@ def velocity_vector(local_random, position, velocity, archive, crowding, xlb, xu
     return output
 
 
-def apply_selection(pop, xlb, xub, population_parm, pop_slices, swarm_size, mutation_rate, di_mutation,
+def apply_selection(xs_gens, pop, nchildren, xlb, xub, population_parm, pop_slices, swarm_size, mutation_rate, di_mutation,
                     local_random, feasibility_model=None, logger=None):
 
     count = 0
-    xs_gens = []
     while count < pop:
         parentidx = local_random.integers(low=0, high=pop, size=(swarm_size, 1))
         for p, sl in enumerate(pop_slices):
@@ -194,5 +204,3 @@ def apply_selection(pop, xlb, xub, population_parm, pop_slices, swarm_size, muta
             xs_gens[p].append(child)
         count += 1
 
-    x_gens = np.vstack([np.vstack(x) for x in xs_gens])
-    return x_gens

@@ -15,12 +15,12 @@ import numpy as np
 import gc, itertools
 from functools import reduce
 from dmosopt import sampling
-from dmosopt.datatypes import OptHistory
+from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection
 
 
-def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
+def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibility_model=None, termination=None,
                  pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.,
                  sampling_method=None, local_random=None, logger=None):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
@@ -67,7 +67,11 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
     if x_initial is not None:
         x = np.vstack((x_initial, x))
 
-    y = model.evaluate(x)
+    if model is None:
+        y = yield x
+    else:
+        y = model.evaluate(x)
+        
     if y_initial is not None:
         y = np.vstack((y_initial, y))
     
@@ -104,10 +108,17 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
         pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank, -crowd_dist)
         pool = population_parm[pool_idxs,:]
 
-        x_gen = apply_variation(pool, xlb, xub, local_random, crossover_rate, mutation_rate,
-                                di_crossover, di_mutation, feasiblity_model=feasibility_model,
+        x_gen = apply_variation(pool, pop, nchildren,
+                                xlb, xub, crossover_rate, mutation_rate,
+                                di_crossover, di_mutation, local_random,
+                                feasibility_model=feasibility_model,
                                 logger=logger)
-        y_gen = yield x_gen
+
+        if model is None:
+            y_gen = yield x_gen
+        else:
+            y_gen = model.evaluate(x_gen)
+            
         n_eval += x_gen.shape[0]
 
         x_new.append(x_gen)
@@ -128,7 +139,8 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
     x = np.vstack([x] + x_new)
     y = np.vstack([y] + y_new)
         
-    return bestx, besty, gen_index, x, y
+    return EpochResults(bestx, besty, gen_index, x, y)
+
 
 
 
@@ -359,7 +371,7 @@ def environmental_selection(local_random, population_parm, population_obj, pop, 
 
 
 
-def apply_variation(pool, xlb, xub, local_random, crossover_rate, mutation_rate, di_crossover, di_mutation, feasiblity_model=None, logger=None):
+def apply_variation(pool, pop, nchildren, xlb, xub, crossover_rate, mutation_rate, di_crossover, di_mutation, local_random, feasibility_model=None, logger=None):
 
     poolsize = pool.shape[0]
     count = 0

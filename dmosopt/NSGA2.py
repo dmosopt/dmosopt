@@ -10,7 +10,7 @@ from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection, sortMO, remove_worst
 
 
-def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
+def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibility_model=None, termination=None,
                  distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05,
                  di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None):
     
@@ -63,7 +63,10 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
     else:
         raise RuntimeError(f'Unknown sampling method {sampling_method}')
 
-    y = yield x
+    if model is None:
+        y = yield x
+    else:
+        y = model.evaluate(x)
 
     if x_initial is not None:
         x = np.vstack((x_initial, x))
@@ -106,7 +109,10 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
                                 feasibility_model=feasibility_model,
                                 logger=logger)
 
-        y_gen = yield x_gen
+        if model is None:
+            y_gen = yield x_gen
+        else:
+            y_gen = model.evaluate(x_gen)
         n_eval += x_gen.shape[0]
         x_new.append(x_gen)
         y_new.append(y_gen)
