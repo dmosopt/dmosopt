@@ -5,19 +5,17 @@ import gc, itertools
 import numpy as np
 from numpy.random import default_rng
 from dmosopt import sampling
-from dmosopt.datatypes import OptHistory, GenerationCont, EpochResult
+from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection, sortMO, remove_worst
 
 
 def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 return_partial=False, partial_state=None, distance_metric=None, pop=100, gen=100,
-                 crossover_rate = 0.5, mutation_rate = 0.05, di_crossover=1., di_mutation=20.,
-                 sampling_method=None, local_random=None, logger=None):
+                 distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05,
+                 di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None):
     
     ''' Nondominated Sorting Genetic Algorithm II
 
-        model: the evaluated model function
         nInput: number of model input
         nOutput: number of output objectives
         xlb: lower bound of input
@@ -38,18 +36,6 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
     population_parm, population_gen = None, None
     gen_i = 1
     gen_indexes = None
-    if partial_state is not None:
-        x = partial_state.x
-        y = partial_state.y
-        x_gen = partial_state.x_gen
-        y_gen = partial_state.y_gen
-        x_new = partial_state.x_new
-        y_new = partial_state.y_new
-        population_parm = partial_state.population_parm
-        population_gen = partial_state.population_gen
-        gen_i = partial_state.gen_i
-        local_random = partial_state.local_random
-        n_eval = partial_state.n_eval
         
     if local_random is None:
         local_random = default_rng()
@@ -65,36 +51,35 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
     if mutation_rate is None:
         mutation_rate = 1. / float(nInput)
 
-    if partial_state is None:
-        x_initial, y_initial = None, None
-        if initial is not None:
-            x_initial, y_initial = initial
+    x_initial, y_initial = None, None
+    if initial is not None:
+        x_initial, y_initial = initial
 
-        if sampling_method is None:
-            x = sampling.lh(pop, nInput, local_random)
-            x = x * (xub - xlb) + xlb
-        elif callable(sampling_method):
-            x = sampling_method(pop, nInput, local_random, xlb, xub)
-        else:
-            raise RuntimeError(f'Unknown sampling method {sampling_method}')
-        if x_initial is not None:
-            x = np.vstack((x_initial, x))
+    if sampling_method is None:
+        x = sampling.lh(pop, nInput, local_random)
+        x = x * (xub - xlb) + xlb
+    elif callable(sampling_method):
+        x = sampling_method(pop, nInput, local_random, xlb, xub)
+    else:
+        raise RuntimeError(f'Unknown sampling method {sampling_method}')
 
-        y = np.zeros((pop, nOutput))
-        for i in range(pop):
-            y[i,:] = model.evaluate(x[i,:])
-        if y_initial is not None:
-            y = np.vstack((y_initial, y))
+    y = yield x
 
-        x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
-        population_parm = x[:pop]
-        population_obj  = y[:pop]
+    if x_initial is not None:
+        x = np.vstack((x_initial, x))
 
-        gen_indexes = []
-        gen_indexes.append(np.zeros((x.shape[0],),dtype=np.uint32))
+    if y_initial is not None:
+        y = np.vstack((y_initial, y))
 
-        x_new = []
-        y_new = []
+    x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
+    population_parm = x[:pop]
+    population_obj  = y[:pop]
+    
+    gen_indexes = []
+    gen_indexes.append(np.zeros((x.shape[0],),dtype=np.uint32))
+    
+    x_new = []
+    y_new = []
 
     nchildren=1
     if feasibility_model is not None:
@@ -115,12 +100,13 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
                 logger.info(f"NSGA2: generation {i} of {gen}...")
         pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank)
         pool = population_parm[pool_idxs,:]
-        x_gen = apply_variation(pool, xlb, xub, local_random, crossover_rate, mutation_rate,
-                                di_crossover, di_mutation, feasiblity_model=feasibility_model,
+        x_gen = apply_variation(pool, pop, nchildren,
+                                xlb, xub, crossover_rate, mutation_rate,
+                                di_crossover, di_mutation, local_random,
+                                feasibility_model=feasibility_model,
                                 logger=logger)
 
         y_gen = yield x_gen
-        
         n_eval += x_gen.shape[0]
         x_new.append(x_gen)
         y_new.append(y_gen)
@@ -145,7 +131,7 @@ def optimization(nInput, nOutput, xlb, xub, initial=None, feasibility_model=None
 
 
 
-def apply_variation(pool, xlb, xub, local_random, crossover_rate, mutation_rate, di_crossover, di_mutation, feasiblity_model=None, logger=None):
+def apply_variation(pool, pop, nchildren, xlb, xub, crossover_rate, mutation_rate, di_crossover, di_mutation, local_random, feasibility_model=None, logger=None):
 
     poolsize = pool.shape[0]
     count = 0

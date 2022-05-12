@@ -36,6 +36,7 @@ def list_find(f, lst):
 @click.option("--verbose", '-v', is_flag=True)
 def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, output_file, verbose):
 
+
     max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
 
@@ -131,7 +132,7 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
                 ftrs_label = ""
                 if best_f is not None:
                     ftrs_i = best_f[i]
-                    ftrs_label = f'[{ftrs_i}]'
+                    ftrs_label = f"[{np.array2string(ftrs_i, precision=12, floatmode='maxprec')}]"
                 epoch_label = ""
                 if best_epoch is not None:
                     epoch_i = best_epoch[i]
@@ -151,7 +152,7 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
                 ftrs_label = ""
                 if best_f is not None:
                     ftrs_n = best_f[n]
-                    ftrs_label = f'[{ftrs_n}]'
+                    ftrs_label = f"[{np.array2string(ftrs_n, precision=12, floatmode='maxprec')}]"
                 epoch_label = ""
                 if best_epoch is not None:
                     epoch_n = best_epoch[n]

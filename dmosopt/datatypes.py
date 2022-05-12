@@ -52,7 +52,7 @@ OptHistory = namedtuple('OptHistory',
                          'c',
                         ])
 
-EpochResults = namedtuple('EpochResult'
+EpochResults = namedtuple('EpochResults',
                           ['best_x',
                            'best_y',
                            'gen_index',

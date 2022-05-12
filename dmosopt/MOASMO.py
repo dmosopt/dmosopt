@@ -122,7 +122,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
 
 
 def step(nInput, nOutput, xlb, xub, pct, \
-         Xinit, Yinit, C, pop=100,
+         Xinit, Yinit, C, pop=100, 
          feasibility_model=False,
          optimizer="nsga2",
          optimizer_kwargs= { 'gen': 100,
@@ -169,7 +169,10 @@ def step(nInput, nOutput, xlb, xub, pct, \
                 y = y[feasible,:]
             except:
                 e = sys.exc_info()[0]
-                logger.warning(f"Unable to fit feasibility model: {e}")
+                if logger is not None:
+                    logger.warning(f"Unable to fit feasibility model: {e}")
+
+                
     sm = None
     if surrogate_method is not None:
         sm = train(nInput, nOutput, xlb, xub, Xinit, Yinit, C, 
@@ -193,28 +196,31 @@ def step(nInput, nOutput, xlb, xub, pct, \
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
         
+    res = next(gen)
     while True:
+        x_gen = res
+        if sm is not None:
+            y_gen = sm.evaluate(x_gen)
+        else:
+            y_gen = yield x_gen
+            
         try:
-            res = gen.next()
-        except StopIteration:
-            bestx_sm = res.bestx
-            besty_sm = res.besty
+            res = gen.send(y_gen)
+        except StopIteration as ex:
+            res = ex.args[0]
+            bestx_sm = res.best_x
+            besty_sm = res.best_y
             gen_index = res.gen_index
             x_sm = res.x
             y_sm = res.y
             break
-        else:
-            x_gen = res
-            if sm is not None:
-                y_gen = sm.evaluate(x_gen)
-            else:
-                y_gen = yield x_gen
-            gen.send(y_gen)
+            
                 
     D = MOEA.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr,:]
     y_pred = besty_sm[idxr,:]
+    
     if return_sm:
         return x_resample, y_pred, gen_index, x_sm, y_sm
     else:
@@ -251,6 +257,8 @@ def train(nInput, nOutput, xlb, xub, \
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
+    else:
+        logger.info(f"Found {x.shape[0]} solutions")
 
     if surrogate_method == 'gpr':
         gpr_anisotropic = surrogate_options.get('anisotropic', False)
