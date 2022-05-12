@@ -180,6 +180,7 @@ class DistOptStrategy():
                     self.reqs.append(EvalRequest(x_gen[i,:], None))
                 y_gen = yield None
                 try:
+                    self.logger.info(f'dmosopt.step: gen = {gen} x_gen = {x_gen.shape} y_gen = {y_gen.shape if y_gen is not None else y_gen}')
                     item = gen.send(y_gen)
                 except StopIteration as ex:
                     if return_sm:
@@ -678,7 +679,6 @@ class DistOptimizer():
                         for problem_id in self.problem_ids:
                             eval_req = self.optimizer_dict[problem_id].get_next_request()
                             if eval_req is None:
-                                assert(len(task_reqs) > 0)
                                 wait_evals = True
                                 wait_evals_count = len(task_reqs)
                                 break
@@ -693,27 +693,31 @@ class DistOptimizer():
                             task_reqs.append(eval_req_dict)
 
                             
-                    if len(task_reqs) > 0:
+                    if wait_evals and len(task_reqs) > 0:
                         new_task_ids = self.controller.submit_multiple("eval_fun", module_name="dmosopt.dmosopt", args=task_args)
                         for task_id, eval_req_dict in zip(new_task_ids, task_reqs):
                             task_ids.append(task_id)
                             for problem_id in self.problem_ids:
                                 self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
-                if wait_evals and (len(task_ids) == 0):
+                if len(task_ids) == 0:
                     if self.save and (self.eval_count > 0) and (self.saved_eval_count < self.eval_count):
                         self.save_evals()
                         self.saved_eval_count = self.eval_count
 
                     for problem_id in self.problem_ids:
 
+                        x_sm, y_sm = None, None
+                        self.logger.info(f'dmosopt.epoch gen = {gen}')
                         if gen is not None:
+                            assert wait_evals_count > 0
                             completed_evals = self.optimizer_dict[problem_id].completed[-wait_evals_count:]
                             y_completed = np.vstack([x.objectives for x in completed_evals])
                             try:
                                 res = gen.send(y_completed)
                             except StopIteration as ex:
                                 self.logger.info(f"completed optimization epoch {self.epoch_count+1} for problem {problem_id} ...")
+                                gen.close()
                                 gen = None
                                 next_epoch = True
                                 _, _, gen_index, x_sm, y_sm = ex.args[0]
@@ -721,14 +725,14 @@ class DistOptimizer():
                             self.logger.info(f"performing optimization epoch {self.epoch_count+1} for problem {problem_id} ...")
                             gen = self.optimizer_dict[problem_id].step(return_sm=True)
                             
-                        x_sm, y_sm = None, None
-                        try:
-                            next(gen)
-                        except StopIteration as ex:
-                            self.logger.info(f"completed optimization epoch {self.epoch_count+1} for problem {problem_id} ...")
-                            gen = None
-                            next_epoch = True
-                            _, _, gen_index, x_sm, y_sm = ex.args[0]
+                            try:
+                                next(gen)
+                            except StopIteration as ex:
+                                self.logger.info(f"completed optimization epoch {self.epoch_count+1} for problem {problem_id} ...")
+                                gen.close()
+                                gen = None
+                                next_epoch = True
+                                _, _, gen_index, x_sm, y_sm = ex.args[0]
                             
                         if self.epoch_count > 0:
                             
