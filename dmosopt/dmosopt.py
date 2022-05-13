@@ -163,9 +163,12 @@ class DistOptStrategy():
                        logger=self.logger, return_sm=return_sm)
 
         x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
+        self.logger.info(f'dmosopt.step start: gen = {gen}')
         try:
             item = next(gen)
         except StopIteration as ex:
+            gen.close()
+            gen = None
             if return_sm:
                 x_resample, y_pred, gen_index, x_sm, y_sm = ex.args[0]
             else:
@@ -173,6 +176,7 @@ class DistOptStrategy():
             for i in range(x_resample.shape[0]):
                 self.reqs.append(EvalRequest(x_resample[i,:], y_pred[i]))
         else:
+            self.logger.info(f'dmosopt.step beginning of loop: gen = {gen}')
             while True:
                 assert (len(self.reqs) == 0)
                 x_gen = item
@@ -183,10 +187,13 @@ class DistOptStrategy():
                     self.logger.info(f'dmosopt.step: gen = {gen} x_gen = {x_gen.shape} y_gen = {y_gen.shape if y_gen is not None else y_gen}')
                     item = gen.send(y_gen)
                 except StopIteration as ex:
+                    gen.close()
+                    gen = None
                     if return_sm:
                         x_resample, y_pred, gen_index, x_sm, y_sm = ex.args[0]
                     else:
                         x_resample, y_pred = ex.args[0]
+                    
                     break
             
         if return_sm:
@@ -708,7 +715,7 @@ class DistOptimizer():
                     for problem_id in self.problem_ids:
 
                         x_sm, y_sm = None, None
-                        self.logger.info(f'dmosopt.epoch gen = {gen}')
+                        self.logger.info(f'dmosopt.epoch gen = {gen} wait_evals_count = {wait_evals_count} len(completed) = {len(self.optimizer_dict[problem_id].completed)}')
                         if gen is not None:
                             assert wait_evals_count > 0
                             completed_evals = self.optimizer_dict[problem_id].completed[-wait_evals_count:]

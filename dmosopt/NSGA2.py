@@ -74,6 +74,7 @@ def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibilit
     if y_initial is not None:
         y = np.vstack((y_initial, y))
 
+    logger.info(f"NSGA2: x.shape = {x.shape}")
     x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
     population_parm = x[:pop]
     population_obj  = y[:pop]
@@ -109,10 +110,12 @@ def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibilit
                                 feasibility_model=feasibility_model,
                                 logger=logger)
 
+        logger.info(f"NSGA2: generation {i}: x_gen = {x_gen.shape}")
         if model is None:
             y_gen = yield x_gen
         else:
             y_gen = model.evaluate(x_gen)
+        logger.info(f"NSGA2: generation {i}: y_gen = {y_gen.shape}")
         n_eval += x_gen.shape[0]
         x_new.append(x_gen)
         y_new.append(y_gen)

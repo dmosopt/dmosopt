@@ -199,14 +199,19 @@ def step(nInput, nOutput, xlb, xub, pct, \
     res = next(gen)
     while True:
         x_gen = res
+        logger.info(f'MOASMO.step: x_gen = {x_gen.shape} sm = {sm}')
         if sm is not None:
             y_gen = sm.evaluate(x_gen)
         else:
             y_gen = yield x_gen
             
+        logger.info(f'MOASMO.step: gen = {gen} y_gen = {y_gen.shape}')
         try:
             res = gen.send(y_gen)
+            logger.info(f'MOASMO.step: res = {res}')
         except StopIteration as ex:
+            gen.close()
+            gen = None
             res = ex.args[0]
             bestx_sm = res.best_x
             besty_sm = res.best_y
