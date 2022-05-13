@@ -150,9 +150,11 @@ class DistOptStrategy():
         x_sm = None
         y_sm = None
         x_resample = None
+        initial_x = None if self.surrogate_method is None else self.x
+        initial_y = None if self.surrogate_method is None else self.y
         gen = opt.step(self.prob.dim, self.prob.n_objectives,
                        self.prob.lb, self.prob.ub, self.resample_fraction,
-                       self.x, self.y, self.c, pop=self.population_size,
+                       initial_x, initial_y, self.c, pop=self.population_size,
                        optimizer=self.optimizer,
                        optimizer_kwargs=optimizer_kwargs,
                        surrogate_method=self.surrogate_method,

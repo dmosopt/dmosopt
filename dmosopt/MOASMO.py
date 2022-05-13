@@ -155,8 +155,8 @@ def step(nInput, nOutput, xlb, xub, pct, \
         di_mutation: distribution index for mutation
     """
     N_resample = int(pop*pct)
-    x = Xinit.copy().astype(np.float32)
-    y = Yinit.copy().astype(np.float32)
+    x = Xinit.copy().astype(np.float32) if Xinit is not None else None
+    y = Yinit.copy().astype(np.float32) if Yinit is not None else None
     fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
@@ -172,7 +172,9 @@ def step(nInput, nOutput, xlb, xub, pct, \
                 if logger is not None:
                     logger.warning(f"Unable to fit feasibility model: {e}")
 
-                
+    initial = None
+    if (x is not None) and (y is not None):
+        initial = (x, y)
     sm = None
     if surrogate_method is not None:
         sm = train(nInput, nOutput, xlb, xub, Xinit, Yinit, C, 
@@ -180,17 +182,17 @@ def step(nInput, nOutput, xlb, xub, pct, \
                    surrogate_options=surrogate_options,
                    logger=logger)
     if optimizer == 'nsga2':
-        gen = NSGA2.optimization(nInput, nOutput, xlb, xub, initial=(x, y), \
+        gen = NSGA2.optimization(nInput, nOutput, xlb, xub, initial=initial, \
                                 feasibility_model=fsbm, logger=logger, \
                                 pop=pop, local_random=local_random, termination=termination,
                                 **optimizer_kwargs)
     elif optimizer == 'age':
-        gen = AGEMOEA.optimization(nInput, nOutput, xlb, xub, initial=(x, y), \
+        gen = AGEMOEA.optimization(nInput, nOutput, xlb, xub, initial=initial, \
                                    feasibility_model=fsbm, logger=logger, \
                                    pop=pop, local_random=local_random, termination=termination,
                                    **optimizer_kwargs)
     elif optimizer == 'smpso':
-        gen = SMPSO.optimization(nInput, nOutput, xlb, xub, initial=(x, y), \
+        gen = SMPSO.optimization(nInput, nOutput, xlb, xub, initial=initial, \
                                  feasibility_model=fsbm, logger=logger, \
                                  pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
     else:
@@ -198,14 +200,17 @@ def step(nInput, nOutput, xlb, xub, pct, \
         
     res = next(gen)
     while True:
+        logger.info(f'MOASMO.step: res = {res}')
         x_gen = res
         if sm is not None:
             y_gen = sm.evaluate(x_gen)
         else:
             y_gen = yield x_gen
-            
+
+        logger.info(f'MOASMO.step: gen = {gen} x_gen = {x_gen.shape} y_gen = {y_gen.shape}')
         try:
             res = gen.send(y_gen)
+            logger.info(f'MOASMO.step: after send: res = {res}')
         except StopIteration as ex:
             res = ex.args[0]
             bestx_sm = res.best_x

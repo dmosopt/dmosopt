@@ -109,10 +109,12 @@ def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibilit
                                 feasibility_model=feasibility_model,
                                 logger=logger)
 
+        logger.info(f'NSGA: x_gen = {x_gen.shape}')
         if model is None:
             y_gen = yield x_gen
         else:
             y_gen = model.evaluate(x_gen)
+        logger.info(f'NSGA: y_gen = {y_gen.shape}')
         n_eval += x_gen.shape[0]
         x_new.append(x_gen)
         y_new.append(y_gen)
