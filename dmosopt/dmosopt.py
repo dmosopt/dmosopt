@@ -105,8 +105,8 @@ class DistOptStrategy():
         entry = EvalEntry(epoch,x,y,f,c,pred)
         self.completed.append(entry)
         return entry
-    
-    def step(self, return_sm=False):
+
+    def update_evals(self):
         if len(self.completed) > 0:
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
@@ -137,6 +137,10 @@ class DistOptStrategy():
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
             self.completed = []
+        
+    
+    def step(self, return_sm=False):
+
         optimizer_kwargs={'gen': self.num_generations,
                           'crossover_rate': self.crossover_rate,
                           'mutation_rate': self.mutation_rate,
@@ -190,7 +194,9 @@ class DistOptStrategy():
                     else:
                         x_resample, y_pred = ex.args[0]
                     break
-            
+
+        self.update_evals()
+                
         if return_sm:
             return x_resample, y_pred, gen_index, x_sm, y_sm
         else:
