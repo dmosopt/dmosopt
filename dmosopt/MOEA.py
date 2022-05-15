@@ -5,6 +5,7 @@
 import numpy as np
 from functools import reduce
 from dmosopt.dda import dda_non_dominated_sort
+from scipy.spatial.distance import cdist
 
 # function sharedmoea(selfunc,μ,λ)
 #  \selfunc, selection function to be used.
@@ -223,4 +224,20 @@ def remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance
     population_parm, population_obj, rank, crowd = \
         sortMO(population_parm, population_obj, nInput, nOutput, distance_metric=distance_metric)
     return population_parm[0:pop,:], population_obj[0:pop,:], rank[0:pop]
+
+def get_duplicates(X, eps=1e-16):
+    
+    D = cdist(X, X)
+    D[np.triu_indices(len(X))] = np.inf
+    D[np.isnan(D)] = np.inf
+
+    is_duplicate = np.zeros((len(X),), dtype=bool)
+    is_duplicate[np.any(D <= eps, axis=1)] = True
+    
+    return is_duplicate
+
+def remove_duplicates(population_parm, population_obj, eps=1e-16):
+    ''' remove duplicate individuals in the population '''
+    is_duplicate = get_duplicates(population_parm, eps=eps)
+    return population_parm[~is_duplicate,:], population_obj[~is_duplicate,:]
 

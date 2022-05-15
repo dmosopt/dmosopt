@@ -7,7 +7,7 @@ from numpy.random import default_rng
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
-from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection, sortMO, remove_worst
+from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection, sortMO, remove_worst, remove_duplicates
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
@@ -126,6 +126,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
 
         population_parm = np.vstack((population_parm, x_gen))
         population_obj  = np.vstack((population_obj, y_gen))
+        population_parm, population_obj = remove_duplicates(population_parm, population_obj)
         population_parm, population_obj, rank = \
             remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
         gc.collect()
