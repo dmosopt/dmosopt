@@ -686,10 +686,10 @@ def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, const
                    ("value", np.float32)])
     opt_grp['problem_parameters_type'] = dt
 
-    dset = h5_get_dataset(opt_grp, 'problem_parameters', maxshape=(len(param_mapping),),
+    dset = h5_get_dataset(opt_grp, 'problem_parameters', maxshape=(len(problem_parameters),),
                           dtype=opt_grp['problem_parameters_type'].dtype)
-    dset.resize((len(param_mapping),))
-    a = np.zeros(len(param_mapping), dtype=opt_grp['problem_parameters_type'].dtype)
+    dset.resize((len(problem_parameters),))
+    a = np.zeros(len(problem_parameters), dtype=opt_grp['problem_parameters_type'].dtype)
     idx = 0
     for idx, (parm, val) in enumerate(problem_parameters.items()):
         a[idx]["parameter"] = param_mapping[parm]
