@@ -1,4 +1,3 @@
-
 import os, sys, logging, time, gc, pprint
 import click
 import numpy as np
@@ -7,6 +6,7 @@ from dmosopt.MOASMO import train
 from joblib import dump, load
 
 script_name = os.path.basename(__file__)
+
 
 def list_find(f, lst):
     """
@@ -23,17 +23,28 @@ def list_find(f, lst):
             i = i + 1
     return None
 
+
 @click.command()
-@click.option("--file-path", '-p', required=True, type=click.Path())
-@click.option("--output-file-path", '-o', required=False, type=click.Path())
+@click.option("--file-path", "-p", required=True, type=click.Path())
+@click.option("--output-file-path", "-o", required=False, type=click.Path())
 @click.option("--opt-id", required=True, type=str)
-@click.option("--surrogate-method", type=str, default='gpr')
-@click.option("--verbose", '-v', is_flag=True)
+@click.option("--surrogate-method", type=str, default="gpr")
+@click.option("--verbose", "-v", is_flag=True)
 def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
 
-    _, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
-                  init_from_h5(file_path, None, opt_id, None)
-
+    (
+        _,
+        old_evals,
+        param_names,
+        is_int,
+        lo_bounds,
+        hi_bounds,
+        objective_names,
+        feature_names,
+        constraint_names,
+        problem_parameters,
+        problem_ids,
+    ) = init_from_h5(file_path, None, opt_id, None)
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(opt_id)
@@ -63,21 +74,29 @@ def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
 
         n_dim = len(lo_bounds)
         n_objectives = len(objective_names)
-        
-        sm = train(n_dim, n_objectives,
-                   np.asarray(lo_bounds), np.asarray(hi_bounds), 
-                   x, y, C=c, surrogate_method=surrogate_method,
-                   logger=logger)
+
+        sm = train(
+            n_dim,
+            n_objectives,
+            np.asarray(lo_bounds),
+            np.asarray(hi_bounds),
+            x,
+            y,
+            C=c,
+            surrogate_method=surrogate_method,
+            logger=logger,
+        )
 
         if output_file_path is None:
             ts = time.strftime("%Y%m%d_%H%M%S")
-            output_file_path = f'./{opt_id}_{ts}.joblib'
-            
+            output_file_path = f"./{opt_id}_{ts}.joblib"
+
         dump(sm, output_file_path)
 
-            
 
-
-if __name__ == '__main__':
-    main(args=sys.argv[(list_find(lambda x: os.path.basename(x) == script_name, sys.argv)+1):])
-
+if __name__ == "__main__":
+    main(
+        args=sys.argv[
+            (list_find(lambda x: os.path.basename(x) == script_name, sys.argv) + 1) :
+        ]
+    )
