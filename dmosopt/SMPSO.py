@@ -8,7 +8,7 @@ from numpy.random import default_rng
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.dda import dda_non_dominated_sort
-from dmosopt.MOEA import mutation, feasibility_selection, sortMO, crowding_distance, remove_worst
+from dmosopt.MOEA import mutation, feasibility_selection, sortMO, crowding_distance, remove_worst, remove_duplicates
 
 
 def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibility_model=None, termination=None,
@@ -136,10 +136,12 @@ def optimization(nInput, nOutput, xlb, xub, model=None, initial=None, feasibilit
         for p, sl in enumerate(pop_slices):
             population_parm_p = np.vstack((population_parm[sl], x_gens[sl]))
             population_obj_p  = np.vstack((population_obj[sl], y_gens[sl]))
+            population_parm_p, population_obj_p = remove_duplicates(population_parm_p, population_obj_p)
             population_parm[sl], population_obj[sl], ranks[p] = \
                 remove_worst(population_parm_p, population_obj_p, pop, nInput, nOutput, distance_metric=distance_metric)
         gc.collect()
             
+    population_parm, population_obj = remove_duplicates(population_parm, population_obj)
     bestx, besty, _ = remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
 
     gen_index = np.concatenate(gen_indexes)
