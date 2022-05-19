@@ -10,68 +10,72 @@ import fractions as fc
 import itertools
 from dmosopt.discrepancy import CD2
 
+
 def sample(n, s, local_random):
-    ''' main function of GLP design'''
+    """main function of GLP design"""
     m = EulerFunction(n)
-    if float(m)/n < 0.9:
+    if float(m) / n < 0.9:
         if m < 20 and s < 4:
-            m = EulerFunction(n+1)
-            X = GLP_GV(n+1,s,m,local_random,plusone=True)
+            m = EulerFunction(n + 1)
+            X = GLP_GV(n + 1, s, m, local_random, plusone=True)
         else:
-            X = GLP_PGV(n+1,s,local_random,plusone=True)
+            X = GLP_PGV(n + 1, s, local_random, plusone=True)
     else:
         if m < 20 and s < 4:
-            X = GLP_GV(n,s,m,local_random)
+            X = GLP_GV(n, s, m, local_random)
         else:
-            X = GLP_PGV(n,s,local_random)
+            X = GLP_PGV(n, s, local_random)
     return X
 
-def GLP_PGV(n,s,local_random,plusone=False):
-    ''' type 2 GLP design, if the combination of C(s,m) is large'''
-    h = PowerGenVector(n,s)
-    X = local_random.uniform(0,1,size=[n,s])
+
+def GLP_PGV(n, s, local_random, plusone=False):
+    """type 2 GLP design, if the combination of C(s,m) is large"""
+    h = PowerGenVector(n, s)
+    X = local_random.uniform(0, 1, size=[n, s])
     D = 1e32
-    #for i in range(min(h.shape[0],20)):
+    # for i in range(min(h.shape[0],20)):
     hs = h.shape[0]
     for i in range(hs):
-        x = glpmod(n,h[i,:])
+        x = glpmod(n, h[i, :])
         if plusone:
-            x = x[0:n-1,:]
-            x = (x - 0.5)/(n-1)
+            x = x[0 : n - 1, :]
+            x = (x - 0.5) / (n - 1)
         else:
-            x = (x - 0.5)/n
+            x = (x - 0.5) / n
         d = CD2(x)
         if d < D:
             D = d
             X = x
     return X
 
-def GLP_GV(n,s,m,local_random,plusone=False):
-    ''' type 1 GLP design, if the combination of C(s,m) is small'''
+
+def GLP_GV(n, s, m, local_random, plusone=False):
+    """type 1 GLP design, if the combination of C(s,m) is small"""
     h = GenVector(n)
-    u = glpmod(n,h)
-    clist = itertools.combinations(range(m),s)
-    X = local_random.uniform(0,1,size=[n,s])
+    u = glpmod(n, h)
+    clist = itertools.combinations(range(m), s)
+    X = local_random.uniform(0, 1, size=[n, s])
     D = 1e32
     for c in clist:
         if plusone:
-            x = u[0:n-1,c]
-            x = (x - 0.5)/(n-1)
+            x = u[0 : n - 1, c]
+            x = (x - 0.5) / (n - 1)
         else:
-            x = u[:,c]
-            x = (x - 0.5)/n
+            x = u[:, c]
+            x = (x - 0.5) / n
         d = CD2(x)
         if d < D:
             D = d
             X = x
     return X
 
+
 def PrimeFactors(n):
-    '''generate all prime factors of n'''
+    """generate all prime factors of n"""
     p = []
     f = 2
     while f < n:
-        while not n%f:
+        while not n % f:
             p.append(f)
             n //= f
         f += 1
@@ -80,52 +84,56 @@ def PrimeFactors(n):
 
     return p
 
+
 def EulerFunction(n):
     p = PrimeFactors(n)
-    fai = n*(1-1.0/p[0])
-    for i in range(1,len(p)):
-        if p[i] != p[i-1]:
-            fai *= 1-1.0/p[i]
+    fai = n * (1 - 1.0 / p[0])
+    for i in range(1, len(p)):
+        if p[i] != p[i - 1]:
+            fai *= 1 - 1.0 / p[i]
     return int(fai)
+
 
 def GenVector(n):
     h = []
     for i in range(n):
-        if fc.gcd(i,n) == 1:
+        if fc.gcd(i, n) == 1:
             h.append(i)
     return np.asarray(h)
 
-def PowerGenVector(n,s):
+
+def PowerGenVector(n, s):
     a = []
-    for i in range(2,n):
-        if fc.gcd(i,n) == 1:
+    for i in range(2, n):
+        if fc.gcd(i, n) == 1:
             a.append(i)
     aa = []
-    #for i in range(min(len(a),20)):
+    # for i in range(min(len(a),20)):
     for i in range(len(a)):
-        ha = np.mod([a[i]**t for t in range(1,s)],n)
+        ha = np.mod([a[i] ** t for t in range(1, s)], n)
         ha = np.sort(ha)
         rep = False
         if ha[0] == 1:
             rep = True
-        for j in range(1,len(ha)):
-            if ha[j] == ha[j-1]:
+        for j in range(1, len(ha)):
+            if ha[j] == ha[j - 1]:
                 rep = True
         if rep == False:
             aa.append(a[i])
 
-    hh = np.zeros([len(aa),s])
+    hh = np.zeros([len(aa), s])
     for i in range(len(aa)):
-        hh[i,:] = np.mod([aa[i]**t for t in range(s)],n)
+        hh[i, :] = np.mod([aa[i] ** t for t in range(s)], n)
     return hh
 
-def glpmod(n,h):
-    ''' generate GLP using generation vector h'''
+
+def glpmod(n, h):
+    """generate GLP using generation vector h"""
     m = len(h)
-    u = np.zeros((n,m))
+    u = np.zeros((n, m))
     for i in range(n):
         for j in range(m):
-            u[i,j] = np.mod((i+1)*h[j],n)
-            if u[i,j] == 0:
-                u[i,j] = n
+            u[i, j] = np.mod((i + 1) * h[j], n)
+            if u[i, j] == 0:
+                u[i, j] = n
     return u
