@@ -283,6 +283,8 @@ def train(nInput, nOutput, xlb, xub, \
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
 
+    x, y = MOEA.remove_duplicates(x, y)
+                
     if surrogate_method == 'gpr':
         gpr_anisotropic = surrogate_options.get('anisotropic', False)
         gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
