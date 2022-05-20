@@ -377,6 +377,7 @@ def train(
     else:
         logger.info(f"Found {x.shape[0]} solutions")
 
+    x, y = MOEA.remove_duplicates(x, y)
     if surrogate_method == "gpr":
         gpr_anisotropic = surrogate_options.get("anisotropic", False)
         gpr_optimizer = surrogate_options.get("optimizer", "sceua")

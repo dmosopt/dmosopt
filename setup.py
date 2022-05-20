@@ -4,8 +4,8 @@ from setuptools import setup, find_packages
 #    long_description = fh.read()
 
 setup(
-    name="dmosopt",
-    version="0.15.4",
+    name="dmosopt", 
+    version="0.15.6",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",
