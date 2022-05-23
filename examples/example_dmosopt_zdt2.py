@@ -40,11 +40,15 @@ if __name__ == "__main__":
     di_crossover = {}
     di_mutation = {}
     for i in range(30):
+<<<<<<< HEAD
         name = "x%d" % (i + 1)
         space[name] = [0.0, 1.0]
         di_crossover[name] = float(i + 1)
         di_mutation[name] = float(i + 1)
 
+=======
+        space["x%d" % (i + 1)] = [0.0, 1.0]
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
     problem_parameters = {}
     objective_names = ["y1", "y2"]
 
@@ -54,18 +58,33 @@ if __name__ == "__main__":
         "obj_fun_name": "obj_fun",
         "obj_fun_module": "example_dmosopt_zdt2",
         "problem_parameters": problem_parameters,
+<<<<<<< HEAD
         "population_size": 200,
         "num_generations": 200,
+=======
+        "optimizer": "nsga2",
+        "population_size": 200,
+        "num_generations": 200,
+        "optimizer": "age",
+        "di_crossover": 1,
+        "di_mutation": 30,
+        "termination_conditions": True,
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
         "space": space,
         "objective_names": objective_names,
         "n_initial": 5,
         "n_epochs": 3,
+<<<<<<< HEAD
         "optimizer": "smpso",
         "surrogate_method": "vgp",
         "termination_conditions": True,
         "resample_fraction": 1.00,
         "save_surrogate_eval": False,
         "save": False,
+=======
+        "save_surrogate_eval": True,
+        "save": True,
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
         "file_path": "results/zdt2.h5",
     }
 

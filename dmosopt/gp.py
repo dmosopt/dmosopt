@@ -5,6 +5,7 @@ from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteKernel
 
+<<<<<<< HEAD
 # try:
 #     import gpflow
 #     import tensorflow as tf
@@ -30,6 +31,34 @@ from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteK
 # else:
 #    _has_gpflow = True
 _has_gpflow = False
+=======
+try:
+    import gpflow
+    import tensorflow as tf
+    import tensorflow_probability as tfp
+    from gpflow.utilities import print_summary
+    from gpflow.ci_utils import ci_niter, ci_range
+    from gpflow.models import VGP, GPR, SVGP
+    from gpflow.optimizers import NaturalGradient
+    from gpflow.optimizers.natgrad import XiSqrtMeanVar
+
+    gpflow.config.set_default_float(np.float64)
+    gpflow.config.set_default_jitter(10e-3)
+    tf.keras.backend.set_floatx("float64")
+
+    def bounded_parameter(low, high, value, **kwargs):
+        """Returns Parameter with optimization bounds."""
+        sigmoid = tfp.bijectors.Sigmoid(low, high)
+        parameter = gpflow.Parameter(
+            value, transform=sigmoid, dtype=tf.float64, **kwargs
+        )
+        return parameter
+
+except:
+    _has_gpflow = False
+else:
+    _has_gpflow = True
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
 
 
 def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
@@ -73,9 +102,15 @@ class SIV_Matern:
         xlb,
         xub,
         seed=None,
+<<<<<<< HEAD
         batch_size=50,
         inducing_fraction=0.2,
         min_inducing=100,
+=======
+        batch_size=100,
+        inducing_fraction=0.1,
+        min_inducing=50,
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
         gp_lengthscale_bounds=(1e-6, 100.0),
         gp_likelihood_sigma=1.0e-4,
         natgrad_gamma=0.1,

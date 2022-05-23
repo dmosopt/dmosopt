@@ -68,7 +68,11 @@ if __name__ == "__main__":
         "obj_fun_name": "obj_fun",
         "obj_fun_module": "example_dmosopt_zdt3",
         "problem_parameters": problem_parameters,
+<<<<<<< HEAD
         "optimizer": "age",
+=======
+        "optimizer": "nsga2",
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
         "population_size": 200,
         "num_generations": 200,
         "termination_conditions": True,
@@ -76,10 +80,16 @@ if __name__ == "__main__":
         "objective_names": objective_names,
         "n_initial": 5,
         "n_epochs": 4,
+<<<<<<< HEAD
         "surrogate_method": "siv",
         "save_surrogate_eval": False,
         "save": False,
         #'file_path': 'results/zdt3.h5',
+=======
+        "save_surrogate_eval": True,
+        "save": True,
+        "file_path": "results/zdt3.h5",
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
         "resample_fraction": 1.00,
     }
 

@@ -102,6 +102,7 @@ def optimization(
     if y_initial is not None:
         y = np.vstack((y_initial, y))
 
+    logger.info(f"NSGA2: x.shape = {x.shape}")
     x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
     population_parm = x[:pop]
     population_obj = y[:pop]
@@ -146,12 +147,15 @@ def optimization(
             logger=logger,
         )
 
+<<<<<<< HEAD
         logger.info(f"NSGA: x_gen = {x_gen.shape}")
+=======
+        logger.info(f"NSGA2: generation {i}: x_gen = {x_gen.shape}")
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
         if model is None:
             y_gen = yield x_gen
         else:
             y_gen = model.evaluate(x_gen)
-        logger.info(f"NSGA: y_gen = {y_gen.shape}")
         n_eval += x_gen.shape[0]
         x_new.append(x_gen)
         y_new.append(y_gen)

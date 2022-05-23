@@ -205,6 +205,7 @@ class DistOptStrategy:
         x_resample = None
         initial_x = None if self.surrogate_method is None else self.x
         initial_y = None if self.surrogate_method is None else self.y
+
         gen = opt.step(
             self.prob.dim,
             self.prob.n_objectives,
@@ -227,9 +228,12 @@ class DistOptStrategy:
         )
 
         x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
+        self.logger.info(f"dmosopt.step start: gen = {gen}")
         try:
             item = next(gen)
         except StopIteration as ex:
+            gen.close()
+            gen = None
             if return_sm:
                 x_resample, y_pred, gen_index, x_sm, y_sm = ex.args[0]
             else:
@@ -237,6 +241,7 @@ class DistOptStrategy:
             for i in range(x_resample.shape[0]):
                 self.reqs.append(EvalRequest(x_resample[i, :], y_pred[i]))
         else:
+            self.logger.info(f"dmosopt.step beginning of loop: gen = {gen}")
             while True:
                 assert len(self.reqs) == 0
                 x_gen = item
@@ -249,10 +254,13 @@ class DistOptStrategy:
                     )
                     item = gen.send(y_gen)
                 except StopIteration as ex:
+                    gen.close()
+                    gen = None
                     if return_sm:
                         x_resample, y_pred, gen_index, x_sm, y_sm = ex.args[0]
                     else:
                         x_resample, y_pred = ex.args[0]
+
                     break
 
         self.update_evals()
@@ -944,7 +952,6 @@ class DistOptimizer:
                 for problem_id in self.problem_ids:
 
                     x_sm, y_sm = None, None
-                    self.logger.info(f"dmosopt.epoch gen = {gen}")
                     if gen is not None:
                         assert wait_evals_count > 0
                         completed_evals = self.optimizer_dict[problem_id].completed[
@@ -1185,7 +1192,6 @@ def h5_init_types(
         a[idx]["parameter"] = param_mapping[parm]
         a[idx]["value"] = val
     dset[:] = a
-
     dt = np.dtype(
         [
             ("parameter", opt_grp["parameter_enum"]),

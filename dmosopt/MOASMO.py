@@ -240,9 +240,11 @@ def step(
                 if logger is not None:
                     logger.warning(f"Unable to fit feasibility model: {e}")
 
+
     initial = None
     if (x is not None) and (y is not None):
         initial = (x, y)
+
     sm = None
     if surrogate_method is not None:
         sm = train(
@@ -306,6 +308,7 @@ def step(
     while True:
         logger.info(f"MOASMO.step: res = {res}")
         x_gen = res
+        logger.info(f"MOASMO.step: x_gen = {x_gen.shape} sm = {sm}")
         if sm is not None:
             y_gen = sm.evaluate(x_gen)
         else:
@@ -318,6 +321,8 @@ def step(
             res = gen.send(y_gen)
             logger.info(f"MOASMO.step: after send: res = {res}")
         except StopIteration as ex:
+            gen.close()
+            gen = None
             res = ex.args[0]
             bestx_sm = res.best_x
             besty_sm = res.best_y

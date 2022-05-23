@@ -52,6 +52,7 @@ if __name__ == "__main__":
         "space": space,
         "objective_names": objective_names,
         "population_size": 200,
+<<<<<<< HEAD
         "num_generations": 10,
         "initial_maxiter": 10,
         "optimizer": "nsga2",
@@ -59,6 +60,15 @@ if __name__ == "__main__":
         "termination_conditions": True,
         "n_initial": 3,
         "n_epochs": 1,
+=======
+        "num_generations": 100,
+        "initial_maxiter": 10,
+        "optimizer": "nsga2",
+        "surrogate_method": None,
+        "termination_conditions": True,
+        "n_initial": 3,
+        "n_epochs": 4,
+>>>>>>> 0cda5e41e071e51a804401a6012e6e8b04e6d9bf
         "save_surrogate_eval": False,
         "save": False,
         "file_path": "results/zdt1.h5",
