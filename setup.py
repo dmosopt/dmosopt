@@ -6,10 +6,10 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
-    version="0.15.5",
+    version="0.16.0",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
-    description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",
+    description="Distributed multi-objective surrogate optimization algorithm.",
 #    long_description=long_description,
 #    long_description_content_type="text/markdown",
     url="https://github.com/iraikov/dmosopt",
@@ -32,6 +32,7 @@ setup(
     ],
     extras_require = {
         "gpflow": ["gpflow"],
+        "sensitivity": ["SALib"],
     }
 
 )
