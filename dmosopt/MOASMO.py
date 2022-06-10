@@ -364,7 +364,7 @@ def train(nInput, nOutput, xlb, xub, \
     return sm
 
 
-def analyze_sensitivity(sm, xlb, xub, param_names, objective_names, sensitivity_method=None, sensitivity_options={}, di_min=1., di_max=20., logger=None):
+def analyze_sensitivity(sm, xlb, xub, param_names, objective_names, sensitivity_method=None, sensitivity_options={}, di_min=1.0, di_max=20., logger=None):
     
     di_mutation = None
     di_crossover = None
