@@ -30,6 +30,7 @@ class SOptStrategy():
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
                  surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
+                 sensitivity_method=None, sensitivity_options={},
                  distance_metric=None,  optimizer="nsga2",
                  feasibility_model=False, termination_conditions=None, local_random=None,
                  logger=None):
@@ -40,6 +41,8 @@ class SOptStrategy():
         self.feasibility_model = feasibility_model
         self.surrogate_options = surrogate_options
         self.surrogate_method = surrogate_method
+        self.sensitivity_options = sensitivity_options
+        self.sensitivity_method = sensitivity_method
         self.optimizer = optimizer
         self.distance_metric = distance_metric
         self.prob = prob
@@ -149,13 +152,15 @@ class SOptStrategy():
         x_sm = None
         y_sm = None
         x_resample = None
-        res = opt.onestep(self.prob.dim, self.prob.n_objectives,
+        res = opt.onestep(self.prob.param_names, self.prob.objective_names,
                           self.prob.lb, self.prob.ub, self.resample_fraction,
                           self.x, self.y, self.c, pop=self.population_size,
                           optimizer=self.optimizer,
                           optimizer_kwargs=optimizer_kwargs,
                           surrogate_method=self.surrogate_method,
                           surrogate_options=self.surrogate_options,
+                          sensitivity_method=self.sensitivity_method,
+                          sensitivity_options=self.sensitivity_options,
                           feasibility_model=self.feasibility_model,
                           termination=self.termination,
                           local_random=self.local_random,
@@ -242,6 +247,8 @@ class DistOptimizer():
         surrogate_options={'anisotropic': False,
                            'optimizer': "sceua" },
         optimizer="nsga2",
+        sensitivity_method=None,
+        sensitivity_options={},
         local_random=None,
         feasibility_model=False,
         termination_conditions=None,
@@ -287,6 +294,8 @@ class DistOptimizer():
         self.distance_metric = distance_metric
         self.surrogate_method = surrogate_method
         self.surrogate_options = surrogate_options
+        self.sensitivity_method = sensitivity_method
+        self.sensitivity_options = sensitivity_options
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
@@ -444,6 +453,8 @@ class DistOptimizer():
                                         distance_metric=self.distance_metric,
                                         surrogate_method=self.surrogate_method,
                                         surrogate_options=self.surrogate_options,
+                                        sensitivity_method=self.sensitivity_method,
+                                        sensitivity_options=self.sensitivity_options,
                                         optimizer=self.optimizer,
                                         feasibility_model=self.feasibility_model,
                                         termination_conditions=self.termination_conditions,

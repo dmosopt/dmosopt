@@ -1,16 +1,3 @@
-# dmosopt
-
-Distributed surrogate based multi-objective optimization algorithm.
-
-Based on MO-ASMO as described in the following paper:
-
-Gong, W., Q. Duan, J. Li, C. Wang, Z. Di, A. Ye, C. Miao, and Y. Dai (2016), Multiobjective adaptive surrogate modeling-based optimization for parameter estimation of large, complex geophysical models, Water Resour. Res., 52(3), 1984-2008. doi:10.1002/2015WR018230.
-
-
-## EXAMPLE
-
-```python
-
 import sys, logging
 import numpy as np
 from dmosopt import dmosopt
@@ -62,12 +49,17 @@ if __name__ == '__main__':
                       'space': space,
                       'objective_names': objective_names,
                       'population_size': 200,
-                      'num_generations': 200,
+                      'num_generations': 100,
                       'initial_maxiter': 10,
-                      'optimizer': 'nsga2',
+                      'optimizer': 'age',
                       'termination_conditions': True,
+                      'sensitivity_method': 'dgsm',
                       'n_initial': 3,
-                      'n_epochs': 2}
+                      'n_epochs': 4,
+                      'save_surrogate_eval':True,
+                      'save': True,
+                      'file_path': 'results/zdt1.h5',
+                    }
     
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:
@@ -86,5 +78,5 @@ if __name__ == '__main__':
         
         plt.savefig("example_dmosopt_zdt1.svg")
 
+        
 
-```
