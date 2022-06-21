@@ -3,14 +3,11 @@
 import sys, pprint
 import numpy as np
 from numpy.random import default_rng
-from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sampling
+from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sa, sampling
 from dmosopt.feasibility import FeasibilityModel
-
 
 def optimization(
     model,
-    nInput,
-    nOutput,
     xlb,
     xub,
     pct,
@@ -30,6 +27,8 @@ def optimization(
         "di_crossover": 1.0,
         "di_mutation": 20.0,
     },
+    sensitivity_method=None,
+    sensitivity_options={},
     termination=None,
     local_random=None,
     logger=None,
@@ -38,8 +37,8 @@ def optimization(
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
 
     model: the evaluated model function
-    nInput: number of model input
-    nOutput: number of output objectives
+    param_names: names of model inputs
+    objective_names: names of output objectives
     xlb: lower bound of input
     xub: upper bound of input
     n_epochs: number of epochs
@@ -52,7 +51,25 @@ def optimization(
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
-    Ninit = Xinit.shape[0]
+    nInput = len(param_names)
+    nOutput = len(objective_names)
+    N_resample = int(pop*pct)
+    if (surrogate_method is not None) and (Xinit is None and Yinit is None):
+        Ninit = nInput * 10
+        Xinit = xinit(Ninit, nInput, method=initial_method, maxiter=initial_maxiter, logger=logger)
+        for i in range(Ninit):
+            Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
+        Yinit = np.zeros((Ninit, nOutput))
+        C = None
+        if nConstraints is not None:
+            C = np.zeros((Ninit, nConstraints))
+            for i in range(Ninit):
+                Yinit[i,:], C[i,:] = model.evaluate(Xinit[i,:])
+        else:
+            for i in range(Ninit):
+                Yinit[i,:] = model.evaluate(Xinit[i,:])
+    else:
+        Ninit = Xinit.shape[0]
 
     c = None
     fsbm = None
@@ -70,51 +87,61 @@ def optimization(
         x = Xinit.copy()
         y = Yinit.copy()
 
-    if optimizer == "nsga2":
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = NSGA2.optimization(
-            model,
-            nInput,
-            nOutput,
-            xlb,
-            xub,
-            feasibility_model=fsbm,
-            logger=logger,
-            pop=pop,
-            local_random=local_random,
-            termination=termination,
-            **optimizer_kwargs,
-        )
-    elif optimizer == "age":
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = AGEMOEA.optimization(
-            model,
-            nInput,
-            nOutput,
-            xlb,
-            xub,
-            feasibility_model=fsbm,
-            logger=logger,
-            pop=pop,
-            local_random=local_random,
-            termination=termination,
-            **optimizer_kwargs,
-        )
-    elif optimizer == "smpso":
-        bestx_sm, besty_sm, x_sm, y_sm = SMPSO.optimization(
-            model,
-            nInput,
-            nOutput,
-            xlb,
-            xub,
-            feasibility_model=fsbm,
-            logger=logger,
-            pop=pop,
-            local_random=local_random,
-            termination=termination,
-            **optimizer_kwargs,
-        )
-    else:
-        raise RuntimeError(f"Unknown optimizer {optimizer}")
-
+    for i in range(n_epochs):
+        
+        sm = model
+        if surrogate_method is not None:
+            sm = train(nInput, nOutput, xlb, xub, x, y, c, 
+                       surrogate_method=surrogate_method,
+                       surrogate_options=surrogate_options,
+                       logger=logger)
+            if sensitivity_method is not None:
+                di_dict = analyze_sensitivity(sm, xlb, xub, param_names, objective_names,
+                                              sensitivity_method=sensitivity_method,
+                                              sensitivity_options=sensitivity_options,
+                                              logger=logger)
+                optimizer_kwargs['di_mutation'] = di_dict['di_mutation']
+                optimizer_kwargs['di_crossover'] = di_dict['di_crossover']
+                
+        if optimizer == 'nsga2':
+            bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
+                NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
+                                   pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+        elif optimizer == 'age':
+            bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
+                AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
+                                     pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+        elif optimizer == 'smpso':
+            bestx_sm, besty_sm, x_sm, y_sm = \
+                SMPSO.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
+                                   pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+        else:
+            raise RuntimeError(f"Unknown optimizer {optimizer}")
+        
+        if surrogate_method is not None:
+            D = MOEA.crowding_distance(besty_sm)
+            idxr = D.argsort()[::-1][:N_resample]
+            x_resample = bestx_sm[idxr,:]
+            y_resample = np.zeros((N_resample,nOutput))
+            c_resample = None
+            if C is not None:
+                fsbm = FeasibilityModel(x_sm,  C)
+                c_resample = np.zeros((N_resample,nConstraints))
+                for j in range(N_resample):
+                    y_resample[j,:], c_resample[j,:] = model.evaluate(x_resample[j,:])
+                feasible = np.argwhere(np.all(c_resample > 0., axis=1))
+                if len(feasible) > 0:
+                    feasible = feasible.ravel()
+                    x_resample = x_resample[feasible,:]
+                    y_resample = y_resample[feasible,:]
+            else:
+                for j in range(N_resample):
+                    y_resample[j,:] = model.evaluate(x_resample[j,:])
+            x = np.vstack((x, x_resample))
+            y = np.vstack((y, y_resample))
+            if c_resample is not None:
+                c = np.vstack((c, c_resample))
+            
     xtmp = x.copy()
     ytmp = y.copy()
     xtmp, ytmp, rank, crowd = MOEA.sortMO(xtmp, ytmp, nInput, nOutput)
@@ -178,8 +205,6 @@ def xinit(
 
 
 def step(
-    nInput,
-    nOutput,
     xlb,
     xub,
     pct,
@@ -199,6 +224,8 @@ def step(
     },
     surrogate_method="gpr",
     surrogate_options={"anisotropic": False, "optimizer": "sceua"},
+    sensitivity_method=None,
+    sensitivity_options={},
     termination=None,
     local_random=None,
     return_sm=False,
@@ -208,8 +235,7 @@ def step(
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     Perform one epoch of optimization.
 
-    nInput: number of model input
-    nOutput: number of output objectives
+
     xlb: lower bound of input
     xub: upper bound of input
     pct: percentage of resampled points in each iteration
@@ -222,9 +248,14 @@ def step(
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
+
+    nInput = len(param_names)
+    nOutput = len(objective_names)
+
     N_resample = int(pop * pct)
     x = Xinit.copy().astype(np.float32) if Xinit is not None else None
     y = Yinit.copy().astype(np.float32) if Yinit is not None else None
+    
     fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0.0, axis=1))
@@ -259,6 +290,14 @@ def step(
             surrogate_options=surrogate_options,
             logger=logger,
         )
+        if sensitivity_method is not None:
+            di_dict = analyze_sensitivity(sm, xlb, xub, param_names, objective_names,
+                                          sensitivity_method=sensitivity_method,
+                                          sensitivity_options=sensitivity_options,
+                                          logger=logger)
+            optimizer_kwargs['di_mutation'] = di_dict['di_mutation']
+            optimizer_kwargs['di_crossover'] = di_dict['di_crossover']
+
     if optimizer == "nsga2":
         gen = NSGA2.optimization(
             nInput,
@@ -478,6 +517,42 @@ def train(
         raise RuntimeError(f"Unknown surrogate method {surrogate_method}")
 
     return sm
+
+
+def analyze_sensitivity(sm, xlb, xub, param_names, objective_names, sensitivity_method=None, sensitivity_options={}, di_min=1.0, di_max=20., logger=None):
+    
+    di_mutation = None
+    di_crossover = None
+    if sensitivity_method is not None:
+        if sensitivity_method == 'dgsm':
+            sens = sa.SA_DGSM(xlb, xub, param_names, objective_names)
+            sens_results = sens.analyze(sm)
+            S1s = np.vstack(list([sens_results['S1'][objective_name]
+                                  for objective_name in objective_names]))
+            S1max = np.max(S1s, axis=0)
+            S1nmax = S1max / np.max(S1max)
+            di_mutation = np.clip(S1nmax * di_max, di_min, None)
+            di_crossover = np.clip(S1nmax * di_max, di_min, None)
+        elif sensitivity_method == 'fast':
+            sens = sa.SA_FAST(xlb, xub, param_names, objective_names)
+            sens_results = sens.analyze(sm)
+            S1s = np.vstack(list([sens_results['S1'][objective_name]
+                                  for objective_name in objective_names]))
+            S1max = np.max(S1s, axis=0)
+            S1nmax = S1max / np.max(S1max)
+            di_mutation = np.clip(S1nmax * di_max, di_min, None)
+            di_crossover = np.clip(S1nmax * di_max, di_min, None)
+        else:
+            RuntimeError(f"Unknown sensitivity method {sensitivity_method}")
+
+    if logger is not None:
+        logger.info(f'analyze_sensitivity: di_mutation = {di_mutation}')
+        logger.info(f'analyze_sensitivity: di_crossover = {di_crossover}')
+    di_dict = {}
+    di_dict['di_mutation'] = di_mutation
+    di_dict['di_crossover'] = di_crossover
+
+    return di_dict
 
 
 def get_best(

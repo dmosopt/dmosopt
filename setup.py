@@ -5,12 +5,21 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
+<<<<<<< HEAD
     version="0.15.6",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed controller for MO-ASMO multi-objective surrogate optimization algorithm.",
     #    long_description=long_description,
     #    long_description_content_type="text/markdown",
+=======
+    version="0.16.0",
+    author="Ivan Raikov",
+    author_email="ivan.g.raikov@gmail.com",
+    description="Distributed multi-objective surrogate optimization algorithm.",
+#    long_description=long_description,
+#    long_description_content_type="text/markdown",
+>>>>>>> master
     url="https://github.com/iraikov/dmosopt",
     packages=["dmosopt"],
     entry_points={
@@ -37,5 +46,7 @@ setup(
     ],
     extras_require={
         "gpflow": ["gpflow"],
-    },
+        "sensitivity": ["SALib"],
+    }
+
 )

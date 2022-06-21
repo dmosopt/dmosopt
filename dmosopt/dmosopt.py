@@ -49,6 +49,8 @@ class DistOptStrategy:
             "anisotropic": False,
             "optimizer": "sceua",
         },
+        sensitivity_method=None,
+        sensitivity_options={},
         distance_metric: None = None,
         optimizer: str = "nsga2",
         feasibility_model: bool = False,
@@ -64,6 +66,8 @@ class DistOptStrategy:
         self.feasibility_model = feasibility_model
         self.surrogate_options = surrogate_options
         self.surrogate_method = surrogate_method
+        self.sensitivity_options = sensitivity_options
+        self.sensitivity_method = sensitivity_method
         self.optimizer = optimizer
         self.distance_metric = distance_metric
         self.prob = prob
@@ -220,6 +224,8 @@ class DistOptStrategy:
             optimizer_kwargs=optimizer_kwargs,
             surrogate_method=self.surrogate_method,
             surrogate_options=self.surrogate_options,
+            sensitivity_method=self.sensitivity_method,
+            sensitivity_options=self.sensitivity_options,
             feasibility_model=self.feasibility_model,
             termination=self.termination,
             local_random=self.local_random,
@@ -347,6 +353,8 @@ class DistOptimizer:
             "optimizer": "sceua",
         },
         optimizer: str = "nsga2",
+        sensitivity_method=None,
+        sensitivity_options={},
         local_random: None = None,
         feasibility_model: bool = False,
         termination_conditions: Optional[bool] = None,
@@ -395,6 +403,8 @@ class DistOptimizer:
         self.distance_metric = distance_metric
         self.surrogate_method = surrogate_method
         self.surrogate_options = surrogate_options
+        self.sensitivity_method = sensitivity_method
+        self.sensitivity_options = sensitivity_options
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
@@ -602,6 +612,8 @@ class DistOptimizer:
                 distance_metric=self.distance_metric,
                 surrogate_method=self.surrogate_method,
                 surrogate_options=self.surrogate_options,
+                sensitivity_method=self.sensitivity_method,
+                sensitivity_options=self.sensitivity_options,
                 optimizer=self.optimizer,
                 feasibility_model=self.feasibility_model,
                 termination_conditions=self.termination_conditions,
