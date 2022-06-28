@@ -18,41 +18,6 @@ from scipy.spatial.distance import cdist
 # return nondomset(Pt+1), final non-dominated set
 
 
-def crossover_sbx_feasibility_selection(local_random, feasibility_model, children_list, logger=None):
-    child_selection = []
-    for children in children_list:
-        fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
-        all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
-        if len(all_feasible) > 0:
-            fsb_pred = fsb_pred[all_feasible]
-            fsb_dist = fsb_dist[all_feasible]
-            children = children[all_feasible]
-            sum_dist = np.sum(fsb_dist, axis=1)
-            child = children[np.argmax(sum_dist)]
-        else:
-            childidx = local_random.choice(np.arange(children.shape[0]), size=1)
-            child = children[childidx[0]]
-        child_selection.append(child)
-            
-    child1 = child_selection[0]
-    child2 = child_selection[1]
-    return child1, child2
-
-
-def feasibility_selection(local_random, feasibility_model, children, logger=None):
-    fsb_pred, fsb_dist, _ = feasibility_model.predict(children)
-    all_feasible = np.argwhere(np.all(fsb_pred > 0, axis=1)).ravel()
-    if len(all_feasible) > 0:
-        fsb_pred = fsb_pred[all_feasible]
-        fsb_dist = fsb_dist[all_feasible]
-        children = children[all_feasible]
-        sum_dist = np.sum(fsb_dist, axis=1)
-        child = children[np.argmax(sum_dist)]
-    else:
-        childidx = local_random.choice(np.arange(children.shape[0]), size=1)
-        child = children[childidx[0]]
-    return child
-
 
 def mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
     ''' Polynomial Mutation in Genetic Algorithm
@@ -101,51 +66,50 @@ def crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchild
 
 
 
-def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metric='crowding'):
-    ''' Non domination sorting for multi-objective optimization
+def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metrics=['crowding']):
+    ''' Non-dominated sort for multi-objective optimization
         x: input parameter matrix
         y: output objectives matrix
         nInput: number of input
         nOutput: number of output
         return_perm: if True, return permutation indices of original input
     '''
-    distance_function = crowding_distance
-    if distance_metric is not None:
-        if distance_metric == 'crowding':
-            distance_function = crowding_distance
-        elif distance_metric == 'euclidean':
-            distance_function = euclidean_distance
-        else:
-            raise RuntimeError(f'sortMO: unknown distance metric {distance_metric}')
-
+    distance_functions = [crowding_distance]
+    if distance_metrics is not None:
+        distance_functions = []
+        for distance_metric in distance_metrics:
+            if distance_metric == None:
+                distance_functions.append(crowding_distance)
+            elif distance_metric == 'crowding':
+                distance_functions.append(crowding_distance)
+            elif distance_metric == 'euclidean':
+                distance_functions.append(euclidean_distance)
+            elif callable(distance_metric):
+                distance_functions.append(distance_metric)
+            else:
+                raise RuntimeError(f'sortMO: unknown distance metric {distance_metric}')
+        
     rank = dda_non_dominated_sort(y)
-    idxr = rank.argsort()
-    rank = rank[idxr]
-    x = x[idxr,:]
-    y = y[idxr,:]
-    T = x.shape[0]
-    
-    crowd = np.zeros(T)
-    rmax = int(rank.max())
-    idxt = np.zeros(T, dtype = np.int)
-    count = 0
-    for k in range(rmax+1):
-        rankidx = (rank == k)
-        D = distance_function(y[rankidx,:])
-        idxd = D.argsort()[::-1]
-        crowd[rankidx] = D[idxd]
-        idxtt = np.array(range(len(rank)))[rankidx]
-        idxt[count:(count+len(idxtt))] = idxtt[idxd]
-        count += len(idxtt)
-    x = x[idxt,:]
-    y = y[idxt,:]
-    perm = idxr[idxt] if return_perm else None
-    rank = rank[idxt]
 
+    dists = list([np.zeros_like(rank) for _ in distance_functions])
+    rmax = int(rank.max())
+    for front in range(rmax+1):
+        rankidx = (rank == front)
+        for i, distance_function in enumerate(distance_functions):
+            D = distance_function(y[rankidx,:])
+            dists[i][rankidx] = D
+        
+    perm = np.lexsort((list([-dist for dist in dists])+[rank]))
+     
+    x = x[perm]
+    y = y[perm]
+    rank = rank[perm]
+    dists = tuple([dist[perm] for dist in dists])
+    
     if return_perm:
-        return x, y, rank, crowd, perm
+        return x, y, rank, dists, perm
     else:
-        return x, y, rank, crowd
+        return x, y, rank, dists
                 
         
 
@@ -219,10 +183,10 @@ def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
     return poolidx
 
 
-def remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=None):
+def remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metrics=None):
     ''' remove the worst individuals in the population '''
-    population_parm, population_obj, rank, crowd = \
-        sortMO(population_parm, population_obj, nInput, nOutput, distance_metric=distance_metric)
+    population_parm, population_obj, rank, _ = \
+        sortMO(population_parm, population_obj, nInput, nOutput, distance_metrics=distance_metrics)
     return population_parm[0:pop,:], population_obj[0:pop,:], rank[0:pop]
 
 def get_duplicates(X, eps=1e-16):

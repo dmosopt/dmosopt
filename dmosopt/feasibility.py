@@ -5,63 +5,67 @@ Definitions of feasibility models.
 
 import sys
 import numpy as np
-from scipy.spatial import cKDTree
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import SGDClassifier, LogisticRegression
+from sklearn.decomposition import PCA
+from sklearn.model_selection import GridSearchCV
 
-class FeasibilityModel(object):
+
+
+class LogisticFeasibilityModel(object):
 
     def __init__(self, X, C):
 
         N = C.shape[1]
         self.clfs = []
-        self.kdt = cKDTree(X)
         self.X = X
         for i in range(N):
-            clf = make_pipeline(StandardScaler(), SGDClassifier())
+            c_i = (C[:,i] > 0.).astype(int)
+            clf = None
+            if len(np.unique(cf)) > 1:
+                pca = PCA()
+                scaler = StandardScaler()
+                ppl = make_pipeline(pca, scaler, LogisticRegression(tol=0.01, penalty='l1', solver='saga'))
+                param_grid = {
+                    "pca__n_components": range(1, X.shape[1]),
+                    "logisticregression__C": np.logspace(-4, 4, 4)
+                }
+                clf = GridSearchCV(ppl, param_grid, n_jobs=-1)
+                clf.fit(X, c_i)
             self.clfs.append(clf)
-            y = (C[:,i] > 0.).astype(int)
-            clf.fit(X, y)
 
-    def sample(self, size):
-        
-        K = np.cov(self.X.T)
-        n = self.X.shape[0]
-        sample_size = 1
-        if size > n:
-            sample_size = int(size / n)
-        zlst = []
-        count = 0
-        for i in range(n):
-            z = np.random.multivariate_normal(mean=self.X[i,:], cov=K, size=sample_size)
-            if count + sample_size < size:
-                zlst.append(z)
-                count += sample_size
-            else:
-                zlst.append(z[:size - count, :])
-                count = size
-
-        return np.vstack(zlst)
-        
-        
         
     def predict(self, x):
 
-        nn_distances, nn = self.kdt.query(x, k=1)
-        ED = np.exp(nn_distances)
-
         ps = []
-        ds = []
         for clf in self.clfs:
-            pred = clf.predict(x)
-            cls_distances = np.abs(clf.decision_function(x))
-            ps.append(pred)
-            ds.append(cls_distances)
+            if clf is not None:
+                pred = clf.predict(x)
+                ps.append(pred)
+            else:
+                ps.append(np.ones((x.shape[1],)))
 
         P = np.column_stack(ps)
-        CD = np.column_stack(ds)
         
-        return P, CD, ED
+        return P
 
+    def predict_proba(self, x):
+
+        probs = []
+        for clf in self.clfs:
+            if clf is not None:
+                prob = clf.predict_proba(x)
+                probs.append(prob)
+            else:
+                probs.append(np.asarray([[0., 1.]]*x.shape[0]))
+
+        Pr = np.stack(probs)
+        
+        return Pr
+
+    def rank(self, x):
+        pr = self.predict_proba(x)
+        mean_pr_feasible = np.mean(pr[:,:,1], axis=0)
+        return mean_pr_feasible
         
