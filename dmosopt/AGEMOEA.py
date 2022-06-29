@@ -354,18 +354,18 @@ def environmental_selection(local_random, population_parm, population_obj, pop, 
             else:
                 # Select the solutions in the last front based on their crowding distances
                 sort_keys = []
-                sort_keys.append(-crowd_dist[front_r])
                 if feasibility_model is not None:
                     sort_keys.append(-feasibility_model.rank(xs[front_r]))
+                sort_keys.append(-crowd_dist[front_r])
                 perm = np.lexsort(sort_keys)
                 selected[front_r[perm[:pop - count]]] = True
                 break
 
     else:
         sort_keys = []
-        sort_keys.append(-crowd_dist[front_1])
         if feasibility_model is not None:
             sort_keys.append(-feasibility_model.rank(xs[front_1]))
+        sort_keys.append(-crowd_dist[front_1])
         perm = np.lexsort(sort_keys)
         selected[front_1[perm[:pop]]] = True
             

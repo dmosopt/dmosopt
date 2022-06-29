@@ -23,7 +23,7 @@ class LogisticFeasibilityModel(object):
         for i in range(N):
             c_i = (C[:,i] > 0.).astype(int)
             clf = None
-            if len(np.unique(cf)) > 1:
+            if len(np.unique(c_i)) > 1:
                 pca = PCA()
                 scaler = StandardScaler()
                 ppl = make_pipeline(pca, scaler, LogisticRegression(tol=0.01, penalty='l1', solver='saga'))

@@ -32,10 +32,11 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if local_random is None:
         local_random = default_rng()
 
-    distance_metrics = []
-    distance_metrics.append(distance_metric)
+    y_distance_metrics = []
+    y_distance_metrics.append(distance_metric)
+    x_distance_metrics = None
     if feasibility_model is not None:
-        distance_metrics.append(feasibility_model.rank)
+        x_distance_metrics = [feasibility_model.rank]
 
     if np.isscalar(di_mutation):
         di_mutation = np.asarray([di_mutation]*nInput)
@@ -73,7 +74,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     
     ranks = []
     for p, sl in enumerate(pop_slices):
-        xs[p], ys[p], rank_p, _ = sortMO(xs[p], ys[p], nInput, nOutput, distance_metrics=distance_metrics)
+        xs[p], ys[p], rank_p, _ = sortMO(xs[p], ys[p], nInput, nOutput,
+                                         x_distance_metrics=x_distance_metrics,
+                                         y_distance_metrics=y_distance_metrics)
         population_parm[sl] = xs[p][:pop]
         population_obj[sl]  = ys[p][:pop]
         ranks.append(rank_p)
@@ -135,12 +138,16 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             population_obj_p  = np.vstack((population_obj[sl], y_gens[sl]))
             population_parm_p, population_obj_p = remove_duplicates(population_parm_p, population_obj_p)
             population_parm[sl], population_obj[sl], ranks[p] = \
-                remove_worst(population_parm_p, population_obj_p, pop, nInput, nOutput, distance_metrics=distance_metrics)
+                remove_worst(population_parm_p, population_obj_p, pop, nInput, nOutput,
+                             x_distance_metrics=x_distance_metrics,
+                             y_distance_metrics=y_distance_metrics)
         gc.collect()
         n_eval += count
             
     population_parm, population_obj = remove_duplicates(population_parm, population_obj)
-    bestx, besty, _ = remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metrics=distance_metrics)
+    bestx, besty, _ = remove_worst(population_parm, population_obj, pop, nInput, nOutput,
+                                   x_distance_metrics=x_distance_metrics,
+                                   y_distance_metrics=y_distance_metrics)
 
     gen_index = np.concatenate(gen_indexes)
 

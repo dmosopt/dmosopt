@@ -66,7 +66,7 @@ def crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchild
 
 
 
-def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metrics=['crowding']):
+def sortMO(x, y, nInput, nOutput, return_perm=False, x_distance_metrics=None, y_distance_metrics=['crowding']):
     ''' Non-dominated sort for multi-objective optimization
         x: input parameter matrix
         y: output objectives matrix
@@ -74,42 +74,54 @@ def sortMO(x, y, nInput, nOutput, return_perm=False, distance_metrics=['crowding
         nOutput: number of output
         return_perm: if True, return permutation indices of original input
     '''
-    distance_functions = [crowding_distance]
-    if distance_metrics is not None:
-        distance_functions = []
-        for distance_metric in distance_metrics:
+    y_distance_functions = [crowding_distance]
+    if y_distance_metrics is not None:
+        y_distance_functions = []
+        for distance_metric in y_distance_metrics:
             if distance_metric == None:
-                distance_functions.append(crowding_distance)
+                y_distance_functions.append(crowding_distance)
             elif distance_metric == 'crowding':
-                distance_functions.append(crowding_distance)
+                y_distance_functions.append(crowding_distance)
             elif distance_metric == 'euclidean':
-                distance_functions.append(euclidean_distance)
+                y_distance_functions.append(euclidean_distance)
             elif callable(distance_metric):
-                distance_functions.append(distance_metric)
+                y_distance_functions.append(distance_metric)
+            else:
+                raise RuntimeError(f'sortMO: unknown distance metric {distance_metric}')
+
+    x_distance_functions = []
+    if x_distance_metrics is not None:
+        for distance_metric in x_distance_metrics:
+            if callable(distance_metric):
+                x_distance_functions.append(distance_metric)
             else:
                 raise RuntimeError(f'sortMO: unknown distance metric {distance_metric}')
         
     rank = dda_non_dominated_sort(y)
 
-    dists = list([np.zeros_like(rank) for _ in distance_functions])
+    y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
+    x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
     rmax = int(rank.max())
     for front in range(rmax+1):
         rankidx = (rank == front)
-        for i, distance_function in enumerate(distance_functions):
-            D = distance_function(y[rankidx,:])
-            dists[i][rankidx] = D
+        for i, y_distance_function in enumerate(y_distance_functions):
+            D = y_distance_function(y[rankidx,:])
+            y_dists[i][rankidx] = D
+        for i, x_distance_function in enumerate(x_distance_functions):
+            D = x_distance_function(x[rankidx,:])
+            x_dists[i][rankidx] = D
         
-    perm = np.lexsort((list([-dist for dist in dists])+[rank]))
+    perm = np.lexsort((list([-dist for dist in x_dists])+list([-dist for dist in y_dists])+[rank]))
      
     x = x[perm]
     y = y[perm]
     rank = rank[perm]
-    dists = tuple([dist[perm] for dist in dists])
+    y_dists = tuple([dist[perm] for dist in y_dists])
     
     if return_perm:
-        return x, y, rank, dists, perm
+        return x, y, rank, y_dists, perm
     else:
-        return x, y, rank, dists
+        return x, y, rank, y_dists
                 
         
 
@@ -183,10 +195,12 @@ def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
     return poolidx
 
 
-def remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metrics=None):
+def remove_worst(population_parm, population_obj, pop, nInput, nOutput, x_distance_metrics=None, y_distance_metrics=None):
     ''' remove the worst individuals in the population '''
     population_parm, population_obj, rank, _ = \
-        sortMO(population_parm, population_obj, nInput, nOutput, distance_metrics=distance_metrics)
+        sortMO(population_parm, population_obj, nInput, nOutput,
+               x_distance_metrics=x_distance_metrics,
+               y_distance_metrics=y_distance_metrics)
     return population_parm[0:pop,:], population_obj[0:pop,:], rank[0:pop]
 
 def get_duplicates(X, eps=1e-16):

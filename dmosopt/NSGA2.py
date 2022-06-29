@@ -32,10 +32,11 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if local_random is None:
         local_random = default_rng()
 
-    distance_metrics = []
-    distance_metrics.append(distance_metric)
+    y_distance_metrics = []
+    y_distance_metrics.append(distance_metric)
+    x_distance_metrics = None
     if feasibility_model is not None:
-        distance_metrics.append(feasibility_model.rank)
+        x_distance_metrics = [feasibility_model.rank]
 
     if np.isscalar(di_crossover):
         di_crossover = np.asarray([di_crossover]*nInput)
@@ -68,7 +69,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if y_initial is not None:
         y = np.vstack((y_initial, y))
 
-    x, y, rank, _ = sortMO(x, y, nInput, nOutput, distance_metrics=distance_metrics)
+    x, y, rank, _ = sortMO(x, y, nInput, nOutput,
+                           x_distance_metrics=x_distance_metrics,
+                           y_distance_metrics=y_distance_metrics)
     population_parm = x[:pop]
     population_obj  = y[:pop]
 
@@ -123,7 +126,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj = remove_duplicates(population_parm, population_obj)
         population_parm, population_obj, rank = \
-            remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metrics=distance_metrics)
+            remove_worst(population_parm, population_obj, pop, nInput, nOutput,
+                         x_distance_metrics=x_distance_metrics,
+                         y_distance_metrics=y_distance_metrics)
         gc.collect()
         n_eval += count
             
