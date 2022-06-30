@@ -430,7 +430,7 @@ class VGP_Matern:
     
 
 class GPR_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-2, 100.0), anisotropic=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, optimizer="sceua", seed=None, length_scale_bounds=(1e-3, 100.0), anisotropic=False, logger=None):
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -449,8 +449,8 @@ class GPR_Matern:
         length_scale=0.5
         if anisotropic:
             length_scale=np.asarray([0.5]*nInput)
-        kernel = ConstantKernel(1, (0.01, 100)) * Matern(length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=2.5) + \
-            WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 1e-4))
+        kernel = ConstantKernel(1, (0.01, 100.0)) * Matern(length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=2.5) + \
+            WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 0.1))
         smlist = []
         for i in range(nOutput):
             if logger is not None:

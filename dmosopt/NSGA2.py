@@ -7,11 +7,11 @@ from numpy.random import default_rng
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
-from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection, sortMO, remove_worst, remove_duplicates
+from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, sortMO, remove_worst, remove_duplicates
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05,
+                 distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05, nchildren=1,
                  di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None):
     ''' Nondominated Sorting Genetic Algorithm II
 
@@ -31,6 +31,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     
     if local_random is None:
         local_random = default_rng()
+
+    y_distance_metrics = []
+    y_distance_metrics.append(distance_metric)
+    x_distance_metrics = None
+    if feasibility_model is not None:
+        x_distance_metrics = [feasibility_model.rank]
 
     if np.isscalar(di_crossover):
         di_crossover = np.asarray([di_crossover]*nInput)
@@ -63,16 +69,14 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if y_initial is not None:
         y = np.vstack((y_initial, y))
 
-    x, y, rank, crowd = sortMO(x, y, nInput, nOutput, distance_metric=distance_metric)
+    x, y, rank, _ = sortMO(x, y, nInput, nOutput,
+                           x_distance_metrics=x_distance_metrics,
+                           y_distance_metrics=y_distance_metrics)
     population_parm = x[:pop]
     population_obj  = y[:pop]
 
     gen_indexes = []
     gen_indexes.append(np.zeros((x.shape[0],),dtype=np.uint32))
-
-    nchildren=1
-    if feasibility_model is not None:
-        nchildren = poolsize
 
     x_new = []
     y_new = []
@@ -101,21 +105,15 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
                 children1, children2 = crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
-                if feasibility_model is None:
-                    child1 = children1[0]
-                    child2 = children2[0]
-                else:
-                    child1, child2 = crossover_sbx_feasibility_selection(local_random, feasibility_model, [children1, children2], logger=logger)
+                child1 = children1[0]
+                child2 = children2[0]
                 xs_gen.extend([child1, child2])
                 count += 2
             else:
                 parentidx = local_random.integers(low=0, high=poolsize)
                 parent    = pool[parentidx,:]
                 children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
-                if feasibility_model is None:
-                    child = children[0]
-                else:
-                    child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
+                child     = children[0]
                 xs_gen.append(child)
                 count += 1
         x_gen = np.vstack(xs_gen)
@@ -128,7 +126,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         population_obj  = np.vstack((population_obj, y_gen))
         population_parm, population_obj = remove_duplicates(population_parm, population_obj)
         population_parm, population_obj, rank = \
-            remove_worst(population_parm, population_obj, pop, nInput, nOutput, distance_metric=distance_metric)
+            remove_worst(population_parm, population_obj, pop, nInput, nOutput,
+                         x_distance_metrics=x_distance_metrics,
+                         y_distance_metrics=y_distance_metrics)
         gc.collect()
         n_eval += count
             

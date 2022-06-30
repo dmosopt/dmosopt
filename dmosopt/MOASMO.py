@@ -4,7 +4,7 @@ import sys, pprint
 import numpy as np
 from numpy.random import default_rng
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, gp, sa, sampling
-from dmosopt.feasibility import FeasibilityModel
+from dmosopt.feasibility import LogisticFeasibilityModel
 
 def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
@@ -65,7 +65,7 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
         if feasibility_model:
-            fsbm = FeasibilityModel(Xinit,  C)
+            fsbm = LogisticFeasibilityModel(Xinit,  C)
         if len(feasible) > 0:
             feasible = feasible.ravel()
             x = Xinit[feasible,:].copy()
@@ -114,7 +114,7 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
             y_resample = np.zeros((N_resample,nOutput))
             c_resample = None
             if C is not None:
-                fsbm = FeasibilityModel(x_sm,  C)
+                fsbm = LogisticFeasibilityModel(x_sm,  C)
                 c_resample = np.zeros((N_resample,nConstraints))
                 for j in range(N_resample):
                     y_resample[j,:], c_resample[j,:] = model.evaluate(x_resample[j,:])
@@ -133,7 +133,7 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
             
     xtmp = x.copy()
     ytmp = y.copy()
-    xtmp, ytmp, rank, crowd = MOEA.sortMO(xtmp, ytmp, nInput, nOutput)
+    xtmp, ytmp, rank, _ = MOEA.sortMO(xtmp, ytmp, nInput, nOutput)
     idxp = (rank == 0)
     bestx = xtmp[idxp,:]
     besty = ytmp[idxp,:]
@@ -230,7 +230,7 @@ def onestep(param_names, objective_names, xlb, xub, pct, \
             feasible = feasible.ravel()
             try:
                 if feasibility_model:
-                    fsbm = FeasibilityModel(Xinit,  C)
+                    fsbm = LogisticFeasibilityModel(Xinit,  C)
                 x = x[feasible,:]
                 y = y[feasible,:]
             except:
@@ -414,7 +414,7 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
             c = c[feasible,:]
             if epochs is not None:
                 epochs = epochs[feasible]
-    xtmp, ytmp, rank, crowd, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
+    xtmp, ytmp, rank, _, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
     best_x = xtmp[idxp,:]
     best_y = ytmp[idxp,:]
@@ -454,7 +454,7 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     else:
         feasible = None
 
-    perm_x, perm_y, rank, crowd, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
+    perm_x, perm_y, rank, _, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     # x, y are already permutated upon return
     perm_f = f[perm] 
     perm_epoch = epochs[perm]
