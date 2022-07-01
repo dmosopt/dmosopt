@@ -250,6 +250,7 @@ class DistOptimizer():
         sensitivity_method=None,
         sensitivity_options={},
         local_random=None,
+        random_seed=None,
         feasibility_model=False,
         termination_conditions=None,
         **kwargs
@@ -284,6 +285,13 @@ class DistOptimizer():
         :param bool save: (optional) Save settings and progress periodically.
         """
 
+        if (random_seed is not None) and (local_random is not None):
+            raise RuntimeError("Both random_seed and local_random are specified! "
+                               "Only one or the other must be specified. ")
+
+        if random_seed is not None:
+            local_random = default_rng(seed=random_seed)
+        
         self.opt_id = opt_id
         self.verbose = verbose
         self.population_size = population_size
@@ -301,6 +309,7 @@ class DistOptimizer():
         self.termination_conditions = termination_conditions
         self.metadata = metadata
         self.local_random = local_random
+        self.random_seed = random_seed
         if self.resample_fraction > 1.0:
             self.resample_fraction = 1.0
         
@@ -340,9 +349,14 @@ class DistOptimizer():
         max_epoch = -1
         if file_path is not None:
             if os.path.isfile(file_path):
-                max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_dtypes, constraint_names, problem_parameters, problem_ids = \
+                stored_random_seed, max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_dtypes, constraint_names, problem_parameters, problem_ids = \
                     init_from_h5(file_path, param_names, opt_id, self.logger)
-                    
+
+        if stored_random_seed is not None:
+            if local_random is not None:
+                if self.logger is not None:
+                    self.logger.warning(f"Using saved random seed to create local RNG. ")
+            self.local_random = default_rng(seed=stored_random_seed)
 
         assert(dim > 0)
         param_spec = ParamSpec(bound1=np.asarray(lo_bounds), bound2=np.asarray(hi_bounds), is_integer=is_int)
@@ -411,7 +425,8 @@ class DistOptimizer():
                 init_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                         self.param_spec, self.param_names, self.objective_names, 
                         self.feature_dtypes, self.constraint_names,
-                        self.problem_parameters, self.metadata, self.file_path)
+                        self.problem_parameters, self.metadata, self.random_seed,
+                        self.file_path)
                     
 
 
@@ -490,7 +505,7 @@ class DistOptimizer():
             save_to_h5(self.opt_id, self.problem_ids, self.has_problem_ids,
                        self.param_names, self.objective_names, self.feature_dtypes, self.constraint_names,
                        self.param_spec, finished_evals, self.problem_parameters, 
-                       self.metadata, self.file_path, self.logger)
+                       self.metadata, self.random_seed, self.file_path, self.logger)
 
 
     def save_surrogate_evals(self, problem_id, epoch, gen_index, x_sm, y_sm):
@@ -794,6 +809,10 @@ def h5_load_raw(input_file, opt_id):
                 raw_results[problem_id]['epochs'] = opt_grp[str(problem_id)]['epochs'][:]
             if 'predictions' in opt_grp[str(problem_id)]:
                 raw_results[problem_id]['predictions'] = opt_grp[str(problem_id)]['predictions'][:]
+
+    random_seed = None
+    if 'random_seed' in opt_grp:
+        random_seed = opt_grp['random_seed'][0]
                                         
     f.close()
     
@@ -809,7 +828,8 @@ def h5_load_raw(input_file, opt_id):
         upper.append(hi)
         
     raw_spec = (is_integer, lower, upper)
-    info = { 'objectives': objective_names,
+    info = { 'random_seed': random_seed,
+             'objectives': objective_names,
              'features': feature_names,
              'constraints': constraint_names,
              'params': param_names,                            
@@ -915,12 +935,12 @@ def init_from_h5(file_path, param_names, opt_id, logger=None):
     feature_names = info['features']
     constraint_names = info['constraints']
     problem_ids = info['problem_ids'] if 'problem_ids' in info else None
-
+    random_seed = info['random_seed'] if 'random_seed' in info else None
     
-    return max_epoch, old_evals, params, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids
+    return random_seed, max_epoch, old_evals, params, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids
 
 
-def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_names, feature_names, constraint_names, spec, evals, problem_parameters, metadata, fpath, logger):
+def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_names, feature_names, constraint_names, spec, evals, problem_parameters, metadata, random_seed, fpath, logger):
     """
     Save progress and settings to an HDF5 file 'fpath'.
     """
@@ -935,6 +955,8 @@ def save_to_h5(opt_id, problem_ids, has_problem_ids, param_names, objective_name
             opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
         else:
             opt_grp['problem_ids'] = np.asarray([0], dtype=np.int32)
+        if random_seed is not None:
+            opt_grp['random_seed'] = np.asarray([random_seed], dtype=np.int)
             
     opt_grp = h5_get_group(f, opt_id)
 
@@ -1023,7 +1045,7 @@ def save_surrogate_evals_to_h5(opt_id, problem_id, param_names, objective_names,
     f.close()
 
     
-def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_names, feature_dtypes, constraint_names, problem_parameters, metadata, fpath):
+def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_names, feature_dtypes, constraint_names, problem_parameters, metadata, random_seed, fpath):
     """
     Save progress and settings to an HDF5 file 'fpath'.
     """
@@ -1036,6 +1058,8 @@ def init_h5(opt_id, problem_ids, has_problem_ids, spec, param_names, objective_n
             opt_grp['problem_ids'] = np.asarray(list(problem_ids), dtype=np.int32)
         if metadata is not None:
             opt_grp['metadata'] = metadata
+        if random_seed is not None:
+            opt_grp['random_seed'] = np.asarray([random_seed], dtype=np.int)
 
 
     f.close()
