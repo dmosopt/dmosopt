@@ -30,6 +30,7 @@ class SOptStrategy():
                  population_size=100, resample_fraction=0.25, num_generations=100,
                  crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
                  surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
+                 sensitivity_method=None, sensitivity_options={},
                  distance_metric=None,  optimizer="nsga2",
                  feasibility_model=False, termination_conditions=None, local_random=None,
                  logger=None):
@@ -40,6 +41,8 @@ class SOptStrategy():
         self.feasibility_model = feasibility_model
         self.surrogate_options = surrogate_options
         self.surrogate_method = surrogate_method
+        self.sensitivity_options = sensitivity_options
+        self.sensitivity_method = sensitivity_method
         self.optimizer = optimizer
         self.distance_metric = distance_metric
         self.prob = prob
@@ -149,13 +152,15 @@ class SOptStrategy():
         x_sm = None
         y_sm = None
         x_resample = None
-        res = opt.onestep(self.prob.dim, self.prob.n_objectives,
+        res = opt.onestep(self.prob.param_names, self.prob.objective_names,
                           self.prob.lb, self.prob.ub, self.resample_fraction,
                           self.x, self.y, self.c, pop=self.population_size,
                           optimizer=self.optimizer,
                           optimizer_kwargs=optimizer_kwargs,
                           surrogate_method=self.surrogate_method,
                           surrogate_options=self.surrogate_options,
+                          sensitivity_method=self.sensitivity_method,
+                          sensitivity_options=self.sensitivity_options,
                           feasibility_model=self.feasibility_model,
                           termination=self.termination,
                           local_random=self.local_random,
@@ -242,6 +247,8 @@ class DistOptimizer():
         surrogate_options={'anisotropic': False,
                            'optimizer': "sceua" },
         optimizer="nsga2",
+        sensitivity_method=None,
+        sensitivity_options={},
         local_random=None,
         feasibility_model=False,
         termination_conditions=None,
@@ -287,6 +294,8 @@ class DistOptimizer():
         self.distance_metric = distance_metric
         self.surrogate_method = surrogate_method
         self.surrogate_options = surrogate_options
+        self.sensitivity_method = sensitivity_method
+        self.sensitivity_options = sensitivity_options
         self.optimizer = optimizer
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
@@ -444,6 +453,8 @@ class DistOptimizer():
                                         distance_metric=self.distance_metric,
                                         surrogate_method=self.surrogate_method,
                                         surrogate_options=self.surrogate_options,
+                                        sensitivity_method=self.sensitivity_method,
+                                        sensitivity_options=self.sensitivity_options,
                                         optimizer=self.optimizer,
                                         feasibility_model=self.feasibility_model,
                                         termination_conditions=self.termination_conditions,
@@ -686,10 +697,10 @@ def h5_init_types(f, opt_id, param_names, objective_names, feature_dtypes, const
                    ("value", np.float32)])
     opt_grp['problem_parameters_type'] = dt
 
-    dset = h5_get_dataset(opt_grp, 'problem_parameters', maxshape=(len(param_mapping),),
+    dset = h5_get_dataset(opt_grp, 'problem_parameters', maxshape=(len(problem_parameters),),
                           dtype=opt_grp['problem_parameters_type'].dtype)
-    dset.resize((len(param_mapping),))
-    a = np.zeros(len(param_mapping), dtype=opt_grp['problem_parameters_type'].dtype)
+    dset.resize((len(problem_parameters),))
+    a = np.zeros(len(problem_parameters), dtype=opt_grp['problem_parameters_type'].dtype)
     idx = 0
     for idx, (parm, val) in enumerate(problem_parameters.items()):
         a[idx]["parameter"] = param_mapping[parm]
@@ -1120,7 +1131,7 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
     while epoch_count < sopt.n_epochs:
 
         epoch = epoch_count + start_epoch
-        controller.recv()
+        controller.process()
 
         if len(task_ids) > 0:
             rets = controller.probe_all_next_results()
@@ -1183,25 +1194,29 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
             sopt.save_evals()
             saved_eval_count = eval_count
 
-        if not next_epoch:
-            n_workers = 1
-            if controller.workers_available:
-                n_workers = len(controller.ready_workers)
-            for w in range(n_workers):
-                eval_req_dict = {}
-                eval_x_dict = {}
-                for problem_id in sopt.problem_ids:
-                    eval_req = sopt.optimizer_dict[problem_id].get_next_request()
-                    if eval_req is None:
-                        next_epoch = True
-                    else:
-                        eval_req_dict[problem_id] = eval_req
-                        eval_x_dict[problem_id] = eval_req.parameters
-                if next_epoch:
+        task_args = []
+        task_reqs = []
+        while not next_epoch:
+            eval_req_dict = {}
+            eval_x_dict = {}
+            for problem_id in sopt.problem_ids:
+                eval_req = sopt.optimizer_dict[problem_id].get_next_request()
+                if eval_req is None:
+                    next_epoch = True
                     break
+                else:
+                    eval_req_dict[problem_id] = eval_req
+                    eval_x_dict[problem_id] = eval_req.parameters
+            
+            if next_epoch:
+                break
+            else:
+                task_args.append((sopt.opt_id, eval_x_dict,))
+                task_reqs.append(eval_req_dict)
 
-                task_id = controller.submit_call("eval_fun", module_name="dmosopt.dmosopt",
-                                                 args=(sopt.opt_id, eval_x_dict,))
+        if len(task_args) > 0:
+            new_task_ids = controller.submit_multiple("eval_fun", module_name="dmosopt.dmosopt", args=task_args)
+            for task_id, eval_req_dict in zip(new_task_ids, task_reqs):
                 task_ids.append(task_id)
                 for problem_id in sopt.problem_ids:
                     sopt.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]

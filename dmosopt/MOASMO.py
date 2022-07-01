@@ -3,10 +3,10 @@
 import sys, pprint
 import numpy as np
 from numpy.random import default_rng
-from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, gp, sampling
-from dmosopt.feasibility import FeasibilityModel
+from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, gp, sa, sampling
+from dmosopt.feasibility import LogisticFeasibilityModel
 
-def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
+def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
                  initial_maxiter=5, initial_method="slh",
                  feasibility_model=False,
@@ -18,14 +18,16 @@ def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
                                      'mutation_rate': None,
                                      'sampling_method': None,
                                      'di_crossover': 1., 'di_mutation': 20. },
+                 sensitivity_method=None,
+                 sensitivity_options={},
                  termination=None,
                  local_random=None,
                  logger=None):
     """ 
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     model: the evaluated model function
-    nInput: number of model input
-    nOutput: number of output objectives
+    param_names: names of model inputs
+    objective_names: names of output objectives
     xlb: lower bound of input
     xub: upper bound of input
     n_epochs: number of epochs
@@ -38,6 +40,8 @@ def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
+    nInput = len(param_names)
+    nOutput = len(objective_names)
     N_resample = int(pop*pct)
     if (surrogate_method is not None) and (Xinit is None and Yinit is None):
         Ninit = nInput * 10
@@ -61,7 +65,7 @@ def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
     if C is not None:
         feasible = np.argwhere(np.all(C > 0., axis=1))
         if feasibility_model:
-            fsbm = FeasibilityModel(Xinit,  C)
+            fsbm = LogisticFeasibilityModel(Xinit,  C)
         if len(feasible) > 0:
             feasible = feasible.ravel()
             x = Xinit[feasible,:].copy()
@@ -80,7 +84,14 @@ def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
                        surrogate_method=surrogate_method,
                        surrogate_options=surrogate_options,
                        logger=logger)
-        
+            if sensitivity_method is not None:
+                di_dict = analyze_sensitivity(sm, xlb, xub, param_names, objective_names,
+                                              sensitivity_method=sensitivity_method,
+                                              sensitivity_options=sensitivity_options,
+                                              logger=logger)
+                optimizer_kwargs['di_mutation'] = di_dict['di_mutation']
+                optimizer_kwargs['di_crossover'] = di_dict['di_crossover']
+                
         if optimizer == 'nsga2':
             bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
                 NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
@@ -108,7 +119,7 @@ def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
             y_resample = np.zeros((N_resample,nOutput))
             c_resample = None
             if C is not None:
-                fsbm = FeasibilityModel(x_sm,  C)
+                fsbm = LogisticFeasibilityModel(x_sm,  C)
                 c_resample = np.zeros((N_resample,nConstraints))
                 for j in range(N_resample):
                     y_resample[j,:], c_resample[j,:] = model.evaluate(x_resample[j,:])
@@ -127,7 +138,7 @@ def optimization(model, nInput, nOutput, xlb, xub, n_epochs, pct, \
             
     xtmp = x.copy()
     ytmp = y.copy()
-    xtmp, ytmp, rank, crowd = MOEA.sortMO(xtmp, ytmp, nInput, nOutput)
+    xtmp, ytmp, rank, _ = MOEA.sortMO(xtmp, ytmp, nInput, nOutput)
     idxp = (rank == 0)
     bestx = xtmp[idxp,:]
     besty = ytmp[idxp,:]
@@ -176,7 +187,7 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     return Xinit
 
 
-def onestep(nInput, nOutput, xlb, xub, pct, \
+def onestep(param_names, objective_names, xlb, xub, pct, \
             Xinit, Yinit, C, pop=100,
             feasibility_model=False,
             optimizer="nsga2",
@@ -187,6 +198,8 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                                 'di_crossover': 1., 'di_mutation': 20. },
             surrogate_method="gpr",
             surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
+            sensitivity_method=None,
+            sensitivity_options={},
             termination=None,
             local_random=None,
             return_sm=False,
@@ -195,8 +208,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
     One-step mode for offline optimization.
 
-    nInput: number of model input
-    nOutput: number of output objectives
+
     xlb: lower bound of input
     xub: upper bound of input
     pct: percentage of resampled points in each iteration
@@ -209,6 +221,10 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
+
+    nInput = len(param_names)
+    nOutput = len(objective_names)
+    
     N_resample = int(pop*pct)
     x = Xinit.copy().astype(np.float32)
     y = Yinit.copy().astype(np.float32)
@@ -219,7 +235,7 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
             feasible = feasible.ravel()
             try:
                 if feasibility_model:
-                    fsbm = FeasibilityModel(Xinit,  C)
+                    fsbm = LogisticFeasibilityModel(Xinit,  C)
                 x = x[feasible,:]
                 y = y[feasible,:]
             except:
@@ -229,6 +245,15 @@ def onestep(nInput, nOutput, xlb, xub, pct, \
                surrogate_method=surrogate_method,
                surrogate_options=surrogate_options,
                logger=logger)
+    
+    if sensitivity_method is not None:
+        di_dict = analyze_sensitivity(sm, xlb, xub, param_names, objective_names,
+                                      sensitivity_method=sensitivity_method,
+                                      sensitivity_options=sensitivity_options,
+                                      logger=logger)
+        optimizer_kwargs['di_mutation'] = di_dict['di_mutation']
+        optimizer_kwargs['di_crossover'] = di_dict['di_crossover']
+    
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
@@ -293,6 +318,8 @@ def train(nInput, nOutput, xlb, xub, \
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
 
+    x, y = MOEA.remove_duplicates(x, y)
+                
     if surrogate_method == 'gpr':
         gpr_anisotropic = surrogate_options.get('anisotropic', False)
         gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
@@ -347,6 +374,42 @@ def train(nInput, nOutput, xlb, xub, \
     return sm
 
 
+def analyze_sensitivity(sm, xlb, xub, param_names, objective_names, sensitivity_method=None, sensitivity_options={}, di_min=1.0, di_max=20., logger=None):
+    
+    di_mutation = None
+    di_crossover = None
+    if sensitivity_method is not None:
+        if sensitivity_method == 'dgsm':
+            sens = sa.SA_DGSM(xlb, xub, param_names, objective_names)
+            sens_results = sens.analyze(sm)
+            S1s = np.vstack(list([sens_results['S1'][objective_name]
+                                  for objective_name in objective_names]))
+            S1max = np.max(S1s, axis=0)
+            S1nmax = S1max / np.max(S1max)
+            di_mutation = np.clip(S1nmax * di_max, di_min, None)
+            di_crossover = np.clip(S1nmax * di_max, di_min, None)
+        elif sensitivity_method == 'fast':
+            sens = sa.SA_FAST(xlb, xub, param_names, objective_names)
+            sens_results = sens.analyze(sm)
+            S1s = np.vstack(list([sens_results['S1'][objective_name]
+                                  for objective_name in objective_names]))
+            S1max = np.max(S1s, axis=0)
+            S1nmax = S1max / np.max(S1max)
+            di_mutation = np.clip(S1nmax * di_max, di_min, None)
+            di_crossover = np.clip(S1nmax * di_max, di_min, None)
+        else:
+            RuntimeError(f"Unknown sensitivity method {sensitivity_method}")
+
+    if logger is not None:
+        logger.info(f'analyze_sensitivity: di_mutation = {di_mutation}')
+        logger.info(f'analyze_sensitivity: di_crossover = {di_crossover}')
+    di_dict = {}
+    di_dict['di_mutation'] = di_mutation
+    di_dict['di_crossover'] = di_crossover
+
+    return di_dict
+
+
 def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_perm=False, return_feasible=False):
     xtmp = x.copy()
     ytmp = y.copy()
@@ -361,7 +424,7 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
             c = c[feasible,:]
             if epochs is not None:
                 epochs = epochs[feasible]
-    xtmp, ytmp, rank, crowd, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
+    xtmp, ytmp, rank, _, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
     best_x = xtmp[idxp,:]
     best_y = ytmp[idxp,:]
@@ -384,3 +447,56 @@ def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_per
         return best_x, best_y, best_f, best_c, best_epoch, perm
 
 
+def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
+    xtmp = x.copy()
+    ytmp = y.copy()
+    if c is not None:
+        feasible = np.argwhere(np.all(c > 0., axis=1))
+        if len(feasible) > 0:
+            feasible = feasible.ravel()
+            xtmp = xtmp[feasible,:]
+            ytmp = ytmp[feasible,:]
+            if f is not None:
+                f = f[feasible]
+            c = c[feasible,:]
+            if epochs is not None:
+                epochs = epochs[feasible]
+    else:
+        feasible = None
+
+    perm_x, perm_y, rank, _, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
+    # x, y are already permutated upon return
+    perm_f = f[perm] 
+    perm_epoch = epochs[perm]
+    perm_c = c[perm]
+
+    uniq_rank, rnk_inv, rnk_cnt = np.unique(rank, return_inverse=True, return_counts=True)
+
+    collect_idx = [[] for i in uniq_rank] 
+    for idx, rnk in enumerate(rnk_inv):
+        collect_idx[rnk].append(idx)    
+
+    rank_idx = np.array(collect_idx,dtype=np.ndarray)
+    for idx, i in enumerate(rank_idx):
+        rank_idx[idx] = np.array(i)
+
+    uniq_epc, epc_inv, epc_cnt = np.unique(perm_epoch, return_inverse=True, return_counts=True)
+
+    collect_epoch = [[] for i in uniq_epc]  
+    for idx, epc in enumerate(epc_inv):
+        collect_epoch[epc].append(idx)    
+    epc_idx = np.array(collect_epoch,dtype=np.ndarray)
+    for idx, i in enumerate(epc_idx):
+        epc_idx[idx] = np.array(i)
+
+    rnk_epc_idx = np.empty(shape=(uniq_rank.shape[0], uniq_epc.shape[0]), dtype=np.ndarray)
+
+    for idx, i in enumerate(rank_idx):
+        for jidx, j in enumerate(epc_idx):
+            rnk_epc_idx[idx, jidx] = np.intersect1d(i,j, assume_unique=True)
+
+    perm_arrs = (perm_x, perm_y, perm_f, perm_epoch, perm, feasible)
+    rnk_arrs = (uniq_rank, rank_idx, rnk_cnt)
+    epc_arrs = (uniq_epc, epc_idx, epc_cnt)
+    
+    return perm_arrs, rnk_arrs, epc_arrs, rnk_epc_idx 

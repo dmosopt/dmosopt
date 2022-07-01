@@ -3,6 +3,7 @@
 # many-objective optimization. A. Panichella, Proceedings of the
 # Genetic and Evolutionary Computation Conference, 2019.  
 #
+#
 # Based on implementations in platEMO and PyMOO (by Ben Crulis):
 #
 # 
@@ -16,11 +17,11 @@ from functools import reduce
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
-from dmosopt.MOEA import crossover_sbx, crossover_sbx_feasibility_selection, mutation, feasibility_selection, tournament_selection
+from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, remove_duplicates
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, di_crossover = 1., di_mutation = 20.,
+                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, nchildren=1, di_crossover = 1., di_mutation = 20.,
                  sampling_method=None, local_random=None, logger=None):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
@@ -77,10 +78,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     population_parm, population_obj, rank, crowd_dist = \
         environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=logger)
 
-    nchildren=1
-    if feasibility_model is not None:
-        nchildren = poolsize
-
     x_new = []
     y_new = []
         
@@ -99,7 +96,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             else:
                 logger.info(f"AGE-MOEA: generation {i} of {gen}...")
 
-        pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank, -crowd_dist)
+        pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, -crowd_dist, rank)
         pool = population_parm[pool_idxs,:]
 
         count = 0
@@ -110,21 +107,15 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
                 children1, children2 = crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchildren=nchildren)
-                if feasibility_model is None:
-                    child1 = children1[0]
-                    child2 = children2[0]
-                else:
-                    child1, child2 = crossover_sbx_feasibility_selection(local_random, feasibility_model, [children1, children2], logger=logger)
+                child1 = children1[0]
+                child2 = children2[0]
                 xs_gen.extend([child1, child2])
                 count += 2
             else:
                 parentidx = local_random.integers(low=0, high=poolsize)
                 parent    = pool[parentidx,:]
                 children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
-                if feasibility_model is None:
-                    child = children[0]
-                else:
-                    child = feasibility_selection(local_random, feasibility_model, children, logger=logger)
+                child     = children[0]
                 xs_gen.append(child)
                 count += 1
         x_gen = np.vstack(xs_gen)
@@ -135,14 +126,14 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
 
         population_parm = np.vstack((population_parm, x_gen))
         population_obj  = np.vstack((population_obj, y_gen))
+        population_parm, population_obj = remove_duplicates(population_parm, population_obj)
         population_parm, population_obj, rank, crowd_dist = \
             environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=logger)
         gc.collect()
         n_eval += count
 
-    sorted_population = np.lexsort(tuple((metric for metric in [rank, -crowd_dist])), axis=0)
-    bestx = population_parm[sorted_population].copy()
-    besty = population_obj[sorted_population].copy()
+    bestx = population_parm.copy()
+    besty = population_obj.copy()
 
     gen_index = np.concatenate(gen_indexes)
     x = np.vstack([x] + x_new)
@@ -153,12 +144,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
 
 
 def sortMO(x, y):
-    ''' Non domination sorting for multi-objective optimization
+    ''' Non-dominated sort for multi-objective optimization
         x: input parameter matrix
         y: output objectives matrix
-        nInput: number of input
-        nOutput: number of output
-        return_perm: if True, return permutation indices of original input
     '''
     rank = dda_non_dominated_sort(y)
     idxr = rank.argsort()
@@ -215,8 +203,7 @@ def normalize(front, extreme):
 
     return normalization
 
-
-def minkowski_matrix(A, B, p):
+def minkowski_distances(A, B, p):
     """workaround for scipy's cdist refusing p<1"""
     i_ind, j_ind = np.meshgrid(np.arange(A.shape[0]), np.arange(B.shape[0]))
     return np.power(np.power(np.abs(A[i_ind] - B[j_ind]), p).sum(axis=2), 1.0/p)
@@ -304,7 +291,7 @@ def survival_score(y, front, ideal_point):
     selected[extreme] = True
     
     nn = np.linalg.norm(ynfront, p, axis=1)
-    distances = minkowski_matrix(ynfront, ynfront, p=p)
+    distances = minkowski_distances(ynfront, ynfront, p=p)
     distances = distances / nn[:, None]
 
     neighbors = 2
@@ -332,7 +319,7 @@ def survival_score(y, front, ideal_point):
     return normalization, p, crowd_dist
 
 
-def environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, logger=None):
+def environmental_selection(local_random, population_parm, population_obj, pop, nInput, nOutput, feasibility_model=None, logger=None):
 
     # get max int value
     max_int = np.iinfo(np.int).max
@@ -348,7 +335,7 @@ def environmental_selection(local_random, population_parm, population_obj, pop, 
     # get the first front for normalization
     front_1 = np.argwhere(rank == 0).ravel()
 
-    # follows from the definition of the ideal point but with current non dominated solutions
+    # follows from the definition of the ideal point but with current non-dominated solutions
     ideal_point = np.min(ys[front_1, :], axis=0)
 
     normalization, p, crowd_dist[front_1] = survival_score(ys, front_1, ideal_point)
@@ -360,21 +347,30 @@ def environmental_selection(local_random, population_parm, population_obj, pop, 
         for r in range(1, rmax+1):
             front_r = np.argwhere(rank == r).ravel()
             yn[front_r] = ys[front_r] / normalization
-            crowd_dist[front_r] = 1. / minkowski_matrix(yn[front_r, :], ideal_point[None, :], p=p)
+            crowd_dist[front_r] = 1. / minkowski_distances(yn[front_r, :], ideal_point[None, :], p=p)
             if (count + len(front_r)) < pop:
                 selected[front_r] = True
                 count += len(front_r)
             else:
                 # Select the solutions in the last front based on their crowding distances
-                selection_rank = np.argsort(crowd_dist[front_r])[::-1]
-                selected[front_r[selection_rank[: pop - count]]] = True
+                sort_keys = []
+                if feasibility_model is not None:
+                    sort_keys.append(-feasibility_model.rank(xs[front_r]))
+                sort_keys.append(-crowd_dist[front_r])
+                perm = np.lexsort(sort_keys)
+                selected[front_r[perm[:pop - count]]] = True
                 break
 
     else:
-        selection_rank = np.argsort(crowd_dist[front_1])[::-1]
-        selected[front_1[local_random.choice(selection_rank, size=pop, replace=False)]] = True
+        sort_keys = []
+        if feasibility_model is not None:
+            sort_keys.append(-feasibility_model.rank(xs[front_1]))
+        sort_keys.append(-crowd_dist[front_1])
+        perm = np.lexsort(sort_keys)
+        selected[front_1[perm[:pop]]] = True
             
     assert(np.sum(selected) > 0)
+    
     # return selected solutions, number of selected should be equal to population size
     return xs[selected].copy(), ys[selected].copy(), rank[selected].copy(), crowd_dist[selected].copy()
 
