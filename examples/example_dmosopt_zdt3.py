@@ -63,6 +63,7 @@ if __name__ == '__main__':
                       'obj_fun_module': 'example_dmosopt_zdt3',
                       'problem_parameters': problem_parameters,
                       'optimizer': 'nsga2',
+                      'surrogate_options': {'lengthscale_bounds': (1e-4, 1000.0)},
                       'population_size': 200,
                       'num_generations': 200,
                       'termination_conditions': True,
