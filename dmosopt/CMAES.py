@@ -1,5 +1,6 @@
 ###
-### Multiobjective CMA-ES optimization class based on the paper [Voss2010]_ with generate-update interface.
+### Multiobjective CMA-ES optimization class based on the paper
+### "Improved Step Size Adaptation for the MO-CMA-ES", Voss, Hansen, Igel; 2010.
 ###
 ### Based on code from 
 ### https://raw.githubusercontent.com/CyberAgentAILab/cmaes/main/cmaes/_cma.py
@@ -10,7 +11,7 @@ import math
 import numpy as np
 from numpy.random import default_rng
 from typing import Any, Dict, List, Tuple, Optional, cast
-from dmosopt.MOEA import remove_worst, sortMO
+from dmosopt.MOEA import sortMO, remove_worst, remove_duplicates
 
 _EPS = 1e-8
 _MEAN_MAX = 1e32
@@ -54,13 +55,14 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
     gen_indexes.append(np.zeros((x_initial.shape[0],),dtype=np.uint32))
 
     for generation in range(gen):
+        
         if (termination is not None) and optimizer.should_stop():
             break
 
         x_gen = np.zeros((pop, nInput))
         solutions = []
         for i in range(optimizer.population_size):
-            x = optimizer.ask()
+            x = optimizer.generate()
             x_gen[i] = x 
 
         y_gen = model.evaluate(x_gen)
@@ -68,8 +70,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
         for i in range(optimizer.population_size):
             solutions.append((x_gen[i], y_gen[i]))
             
-        # Tell evaluation values.
-        optimizer.tell(solutions)
+        # Update w/ evaluation values.
+        optimizer.update(solutions)
 
         x_new.append(x_gen)
         y_new.append(y_gen)
@@ -123,35 +125,10 @@ class CMAES:
     .. [Voss2010] Voss, Hansen, Igel, "Improved Step Size Adaptation
        for the MO-CMA-ES", 2010.
     
-
-    Example:
-
-        .. code::
-
-           import numpy as np
-           from cmaes import CMA
-
-           def quadratic(x1, x2):
-               return (x1 - 3) ** 2 + (10 * (x2 + 2)) ** 2
-
-           optimizer = CMAES(sigma=1.3)
-
-           for generation in range(50):
-               solutions = []
-               for _ in range(optimizer.population_size):
-                   # Ask a parameter
-                   x = optimizer.ask()
-                   value = quadratic(x[0], x[1])
-                   solutions.append((x, value))
-                   print(f"#{generation} {value} (x1={x[0]}, x2 = {x[1]})")
-
-               # Tell evaluation values.
-               optimizer.tell(solutions)
-
     """
 
     def __init__(self,
-                 population_size: int,
+                 population: np.ndarray,
                  nInput: int,
                  sigma: float,
                  bounds: Optional[np.ndarray] = None,
@@ -161,11 +138,12 @@ class CMAES:
         if local_random is None:
             local_random = default_rng()
 
+        population_size = population.shape[0]
         self.parents = population
         self.dim = nInput
 
         # Selection
-        self.mu = params.get("mu", len(self.parents))
+        self.mu = params.get("mu", population_size)
         self.lambda_ = params.get("lambda_", 1)
 
         # Step size control
@@ -179,13 +157,13 @@ class CMAES:
         self.pthresh = params.get("pthresh", 0.44)
 
         # Internal parameters associated to the mu parent
-        self.sigmas = [sigma] * len(population)
+        self.sigmas = [sigma] * population_size
         # Lower Cholesky matrix (Sampling matrix)
-        self.A = [numpy.identity(self.dim) for _ in range(len(population))]
+        self.A = [np.identity(self.dim) for _ in range(population_size)]
         # Inverse Cholesky matrix (Used in the update of A)
-        self.invCholesky = [numpy.identity(self.dim) for _ in range(len(population))]
-        self.pc = [numpy.zeros(self.dim) for _ in range(len(population))]
-        self.psucc = [self.ptarg] * len(population)
+        self.invCholesky = [np.identity(self.dim) for _ in range(population_size)]
+        self.pc = [np.zeros(self.dim) for _ in range(population_size)]
+        self.psucc = [self.ptarg] * population_size
 
         
     def generate(self, ind_init):
@@ -208,15 +186,15 @@ class CMAES:
         # Each parent produce an offspring
         if self.lambda_ == self.mu:
             for i in range(self.lambda_):
-                individuals.append(ind_init(self.parents[i] + self.sigmas[i] * numpy.dot(self.A[i], arz[i])))
+                individuals.append(ind_init(self.parents[i] + self.sigmas[i] * np.dot(self.A[i], arz[i])))
                 individuals[-1]._ps = "o", i
         # Parents producing an offspring are chosen at random from the first front
         else:
             ndom = sortMO(self.parents, len(self.parents), first_front_only=True)
             for i in range(self.lambda_):
-                j = self.local_random.randint(0, len(ndom))
+                j = self.local_random.integers(0, len(ndom))
                 _, p_idx = ndom[j]._ps
-                individuals.append(ind_init(self.parents[p_idx] + self.sigmas[p_idx] * numpy.dot(self.A[p_idx], arz[i])))
+                individuals.append(ind_init(self.parents[p_idx] + self.sigmas[p_idx] * np.dot(self.A[p_idx], arz[i])))
                 individuals[-1]._ps = "o", p_idx
 
         return individuals
@@ -253,8 +231,8 @@ class CMAES:
         if k > 0:
             # reference point is chosen in the complete population
             # as the worst in each dimension +1
-            ref = numpy.array([ind.fitness.wvalues for ind in candidates]) * -1
-            ref = numpy.max(ref, axis=0) + 1
+            ref = np.array([ind.fitness.wvalues for ind in candidates]) * -1
+            ref = np.max(ref, axis=0) + 1
 
             for _ in range(len(mid_front) - k):
                 idx = self.indicator(mid_front, ref=ref)
@@ -265,18 +243,18 @@ class CMAES:
         return chosen, not_chosen
 
     def _rankOneUpdate(self, invCholesky, A, alpha, beta, v):
-        w = numpy.dot(invCholesky, v)
+        w = np.dot(invCholesky, v)
 
         # Under this threshold, the update is mostly noise
         if w.max() > 1e-20:
-            w_inv = numpy.dot(w, invCholesky)
-            norm_w2 = numpy.sum(w ** 2)
+            w_inv = np.dot(w, invCholesky)
+            norm_w2 = np.sum(w ** 2)
             a = sqrt(alpha)
-            root = numpy.sqrt(1 + beta / alpha * norm_w2)
+            root = np.sqrt(1 + beta / alpha * norm_w2)
             b = a / norm_w2 * (root - 1)
 
-            A = a * A + b * numpy.outer(v, w)
-            invCholesky = 1.0 / a * invCholesky - b / (a ** 2 + a * b * norm_w2) * numpy.outer(w, w_inv)
+            A = a * A + b * np.outer(v, w)
+            invCholesky = 1.0 / a * invCholesky - b / (a ** 2 + a * b * norm_w2) * np.outer(w, w_inv)
 
         return invCholesky, A
 
@@ -310,8 +288,8 @@ class CMAES:
                 sigmas[i] = sigmas[i] * exp((psucc[i] - ptarg) / (d * (1.0 - ptarg)))
 
                 if psucc[i] < pthresh:
-                    xp = numpy.array(ind)
-                    x = numpy.array(self.parents[p_idx])
+                    xp = np.array(ind)
+                    x = np.array(self.parents[p_idx])
                     pc[i] = (1.0 - cc) * pc[i] + sqrt(cc * (2.0 - cc)) * (xp - x) / last_steps[i]
                     invCholesky[i], A[i] = self._rankOneUpdate(invCholesky[i], A[i], 1 - ccov, ccov, pc[i])
                 else:
