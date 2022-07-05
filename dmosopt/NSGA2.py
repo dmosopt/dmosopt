@@ -11,7 +11,7 @@ from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, sortMO, 
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 distance_metric=None, pop=100, gen=100, crossover_rate = 0.5, mutation_rate = 0.05, nchildren=1,
+                 distance_metric=None, pop=100, gen=100, crossover_prob = 0.5, mutation_prob = None, nchildren=1,
                  di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None):
     ''' Nondominated Sorting Genetic Algorithm II
 
@@ -22,8 +22,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         xub: upper bound of input
         pop: number of population
         gen: number of generation
-        crossover_rate: ratio of crossover in each generation
-        mutation_rate: ratio of muration in each generation
+        crossover_prob: probability of crossover in each generation
+        mutation_prob: probability of mutation in each generation
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
         sampling_method: optional callable for initial sampling of parameters
@@ -46,8 +46,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
 
-    if mutation_rate is None:
-        mutation_rate = 1. / float(nInput)
+    if mutation_prob is None:
+        mutation_prob = 1. / float(nInput)
+    mutation_rate = 1. / float(nInput)
 
     x_initial, y_initial = None, None
     if initial is not None:
@@ -100,7 +101,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         count = 0
         xs_gen = []
         while (count < pop - 1):
-            if (local_random.random() < crossover_rate):
+            if (local_random.random() < crossover_prob):
                 parentidx = local_random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
@@ -109,10 +110,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 child2 = children2[0]
                 xs_gen.extend([child1, child2])
                 count += 2
-            else:
+            if (local_random.random() < mutation_prob):
                 parentidx = local_random.integers(low=0, high=poolsize)
                 parent    = pool[parentidx,:]
-                children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
+                children  = mutation(local_random, parent, di_mutation, xlb, xub, mutation_rate=mutation_rate, nchildren=nchildren)
                 child     = children[0]
                 xs_gen.append(child)
                 count += 1

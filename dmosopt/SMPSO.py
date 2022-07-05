@@ -12,7 +12,7 @@ from dmosopt.MOEA import mutation, sortMO, crowding_distance, remove_worst, remo
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 distance_metric=None, pop=100, gen=100, mutation_rate = 0.05, nchildren=1,
+                 distance_metric=None, pop=100, gen=100, nchildren=1,
                  di_mutation=20., swarm_size=5, sampling_method=None, local_random=None, logger=None,
                  **kwargs):
     ''' 
@@ -25,12 +25,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         xub: upper bound of input
         pop: number of population
         gen: number of generation
-        mutation_rate: ratio of muration in each generation
         di_mutation: distribution index for mutation
     '''
 
     if local_random is None:
         local_random = default_rng()
+
+    mutation_rate = 1. / float(nInput)
 
     y_distance_metrics = []
     y_distance_metrics.append(distance_metric)
@@ -41,9 +42,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if np.isscalar(di_mutation):
         di_mutation = np.asarray([di_mutation]*nInput)
     
-    if mutation_rate is None:
-        mutation_rate = 1. / float(nInput)
-
     pop_slices = list([range(p*pop, (p+1)*pop) for p in range(swarm_size)])
 
     x_initial, y_initial = None, None
@@ -117,7 +115,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             parentidx = local_random.integers(low=0, high=pop, size=(swarm_size, 1))
             for p, sl in enumerate(pop_slices):
                 parent = population_parm[sl][parentidx[p,0],:]
-                children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
+                children  = mutation(local_random, parent, di_mutation, xlb, xub, mutation_rate=mutation_rate, nchildren=nchildren)
                 child = children[0]
                 xs_gens[p].append(child)
             count += 1

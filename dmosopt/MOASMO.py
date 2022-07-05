@@ -14,8 +14,8 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
                  surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
                  optimizer="nsga2",
                  optimizer_kwargs= { 'gen': 100,
-                                     'crossover_rate': 0.9,
-                                     'mutation_rate': None,
+                                     'crossover_prob': 0.9,
+                                     'mutation_prob': None,
                                      'sampling_method': None,
                                      'di_crossover': 1., 'di_mutation': 20. },
                  sensitivity_method=None,
@@ -36,7 +36,7 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
     ### options for the embedded NSGA-II optimizer:
         pop: number of population
         gen: number of generation
-        crossover_rate: ratio of crossover in each generation
+        crossover_prob: probability of crossover in each generation
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
@@ -187,8 +187,8 @@ def onestep(param_names, objective_names, xlb, xub, pct, \
             feasibility_model=False,
             optimizer="nsga2",
             optimizer_kwargs= { 'gen': 100,
-                                'crossover_rate': 0.9,
-                                'mutation_rate': None,
+                                'crossover_prob': 0.9,
+                                'mutation_prob': None,
                                 'sampling_method': None,
                                 'di_crossover': 1., 'di_mutation': 20. },
             surrogate_method="gpr",
@@ -211,8 +211,8 @@ def onestep(param_names, objective_names, xlb, xub, pct, \
     ### options for the embedded NSGA-II:
         pop: number of population
         gen: number of generation
-        crossover_rate: ratio of crossover in each generation
-        mutation_rate: ratio of mutation in each generation
+        crossover_prob: probability of crossover in each generation
+        mutation_prob: probability of mutation in each generation
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
