@@ -28,7 +28,7 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
 class SOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh",
                  population_size=100, resample_fraction=0.25, num_generations=100,
-                 crossover_prob=0.9, mutation_prob=None, di_crossover=1., di_mutation=20.,
+                 crossover_prob=0.9, mutation_prob=0.1, di_crossover=1., di_mutation=20.,
                  surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
                  sensitivity_method=None, sensitivity_options={},
                  distance_metric=None,  optimizer="nsga2",
@@ -232,7 +232,7 @@ class DistOptimizer():
         population_size=100,
         num_generations=200,
         resample_fraction=0.25,
-        mutation_prob=None,
+        mutation_prob=0.1,
         crossover_prob=0.9,
         di_crossover=1.0,
         di_mutation=20.0,

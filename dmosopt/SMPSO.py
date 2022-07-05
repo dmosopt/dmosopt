@@ -12,7 +12,7 @@ from dmosopt.MOEA import mutation, sortMO, crowding_distance, remove_worst, remo
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 distance_metric=None, pop=100, gen=100, nchildren=1,
+                 distance_metric=None, pop=100, gen=100, nchildren=1, mutation_rate = None,
                  di_mutation=20., swarm_size=5, sampling_method=None, local_random=None, logger=None,
                  **kwargs):
     ''' 
@@ -31,7 +31,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if local_random is None:
         local_random = default_rng()
 
-    mutation_rate = 1. / float(nInput)
+    if mutation_rate is None:
+        mutation_rate = 1. / float(nInput)
 
     y_distance_metrics = []
     y_distance_metrics.append(distance_metric)

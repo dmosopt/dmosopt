@@ -11,7 +11,7 @@ from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, sortMO, 
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 distance_metric=None, pop=100, gen=100, crossover_prob = 0.5, mutation_prob = None, nchildren=1,
+                 distance_metric=None, pop=100, gen=100, crossover_prob = 0.5, mutation_prob = 0.5, mutation_rate = None, nchildren=1,
                  di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None):
     ''' Nondominated Sorting Genetic Algorithm II
 
@@ -46,9 +46,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     poolsize = int(round(pop/2.)); # size of mating pool;
     toursize = 2;                  # tournament size;
 
-    if mutation_prob is None:
-        mutation_prob = 1. / float(nInput)
-    mutation_rate = 1. / float(nInput)
+    if mutation_rate is None:
+        mutation_rate = 1. / float(nInput)
 
     x_initial, y_initial = None, None
     if initial is not None:
