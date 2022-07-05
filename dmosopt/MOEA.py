@@ -19,7 +19,7 @@ from scipy.spatial.distance import cdist
 
 
 
-def mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=1):
+def mutation(local_random, parent, di_mutation, xlb, xub, mutation_rate=0.5, nchildren=1):
     ''' Polynomial Mutation in Genetic Algorithm
         muration_rate: mutation rate
         di_mutation: distribution index for mutation

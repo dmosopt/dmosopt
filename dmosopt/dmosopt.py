@@ -28,7 +28,7 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
 class SOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh",
                  population_size=100, resample_fraction=0.25, num_generations=100,
-                 crossover_rate=0.9, mutation_rate=None, di_crossover=1., di_mutation=20.,
+                 crossover_prob=0.9, mutation_prob=0.1, di_crossover=1., di_mutation=20.,
                  surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
                  sensitivity_method=None, sensitivity_options={},
                  distance_metric=None,  optimizer="nsga2",
@@ -58,8 +58,8 @@ class SOptStrategy():
         self.resample_fraction = resample_fraction
         self.population_size = population_size
         self.num_generations = num_generations
-        self.mutation_rate = mutation_rate
-        self.crossover_rate = crossover_rate
+        self.mutation_prob = mutation_prob
+        self.crossover_prob = crossover_prob
         self.di_mutation = di_mutation
         self.di_crossover = di_crossover
         self.termination = None
@@ -140,8 +140,8 @@ class SOptStrategy():
                     self.c = np.vstack((self.c, c_completed))
             self.completed = []
         optimizer_kwargs={'gen': self.num_generations,
-                          'crossover_rate': self.crossover_rate,
-                          'mutation_rate': self.mutation_rate,
+                          'crossover_prob': self.crossover_prob,
+                          'mutation_prob': self.mutation_prob,
                           'di_crossover': self.di_crossover,
                           'di_mutation': self.di_mutation}
         if self.distance_metric is not None:
@@ -232,8 +232,8 @@ class DistOptimizer():
         population_size=100,
         num_generations=200,
         resample_fraction=0.25,
-        mutation_rate=None,
-        crossover_rate=0.9,
+        mutation_prob=0.1,
+        crossover_prob=0.9,
         di_crossover=1.0,
         di_mutation=20.0,
         distance_metric=None,
@@ -289,8 +289,8 @@ class DistOptimizer():
         self.population_size = population_size
         self.num_generations = num_generations
         self.resample_fraction = resample_fraction
-        self.mutation_rate = mutation_rate
-        self.crossover_rate = crossover_rate
+        self.mutation_prob = mutation_prob
+        self.crossover_prob = crossover_prob
         self.distance_metric = distance_metric
         self.surrogate_method = surrogate_method
         self.surrogate_options = surrogate_options
@@ -446,8 +446,8 @@ class DistOptimizer():
                                         num_generations=self.num_generations,
                                         initial_maxiter=self.initial_maxiter,
                                         initial_method=self.initial_method,
-                                        mutation_rate=self.mutation_rate,
-                                        crossover_rate=self.crossover_rate,
+                                        mutation_prob=self.mutation_prob,
+                                        crossover_prob=self.crossover_prob,
                                         di_mutation=self.di_mutation,
                                         di_crossover=self.di_crossover,
                                         distance_metric=self.distance_metric,
