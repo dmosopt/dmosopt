@@ -21,7 +21,8 @@ from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, remove_d
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 pop=100, gen=100, crossover_rate = 0.9, mutation_rate = 0.05, nchildren=1, di_crossover = 1., di_mutation = 20.,
+                 pop=100, gen=100, crossover_prob = 0.9, mutation_prob = 0.1, mutation_rate = None,
+                 nchildren = 1, di_crossover = 1., di_mutation = 20.,
                  sampling_method=None, local_random=None, logger=None):
     ''' AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
         model: the evaluated model function
@@ -31,8 +32,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         xub: upper bound of input
         pop: number of population
         gen: number of generation
-        crossover_rate: ratio of crossover in each generation
-        mutation_rate: ratio of muration in each generation
+        crossover_prob: probability of crossover in each generation
+        mutation_prob: probability of mutation in each generation
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     '''
@@ -102,7 +103,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         count = 0
         xs_gen = []
         while (count < pop - 1):
-            if (local_random.random() < crossover_rate):
+            if (local_random.random() < crossover_prob):
                 parentidx = local_random.choice(poolsize, 2, replace = False)
                 parent1   = pool[parentidx[0],:]
                 parent2   = pool[parentidx[1],:]
@@ -111,10 +112,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 child2 = children2[0]
                 xs_gen.extend([child1, child2])
                 count += 2
-            else:
+            if (local_random.random() < mutation_prob):
                 parentidx = local_random.integers(low=0, high=poolsize)
                 parent    = pool[parentidx,:]
-                children  = mutation(local_random, parent, mutation_rate, di_mutation, xlb, xub, nchildren=nchildren)
+                children  = mutation(local_random, parent, di_mutation, xlb, xub, mutation_rate=mutation_rate, nchildren=nchildren)
                 child     = children[0]
                 xs_gen.append(child)
                 count += 1
