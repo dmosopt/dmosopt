@@ -32,7 +32,7 @@ def sortMO(x, y):
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
-                 pop=100, sigma=0.9, mu=None, sampling_method=None, termination=None,
+                 pop=100, sigma=1.5, mu=None, sampling_method=None, termination=None,
                  local_random=None, logger=None, **kwargs):
     """
     Multiobjective CMA-ES optimization class based on the paper 
