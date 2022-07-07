@@ -7,11 +7,12 @@
 ### https://github.com/DEAP/deap/blob/master/deap/cma.py
 ###
 
-import math
+import gc, itertools
 import numpy as np
 from numpy.random import default_rng
 from typing import Any, Dict, List, Tuple, Optional
 from dmosopt import sampling
+from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import remove_worst, remove_duplicates
 from dmosopt.indicators import Hypervolume
@@ -31,7 +32,7 @@ def sortMO(x, y):
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
-                 pop=100, sigma=0.3, mu=None, sampling_method=None, termination=None,
+                 pop=100, sigma=0.9, mu=None, sampling_method=None, termination=None,
                  local_random=None, logger=None, **kwargs):
     """
     Multiobjective CMA-ES optimization class based on the paper 
@@ -109,17 +110,38 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
     gen_indexes = []
     gen_indexes.append(np.zeros((x_initial.shape[0],),dtype=np.uint32))
 
-    for generation in range(gen):
+    n_eval = 0
+    it = range(1, gen+1)
+
+    for i in it:
         
-        if (termination is not None) and optimizer.termination():
-            break
-
-        x_gen, p_idx_gen = optimizer.generate()
-
-        y_gen = model.evaluate(x_gen)
+        if termination is not None:
+            if optimizer.termination():
+                break
             
-        # Update w/ evaluation values.
-        optimizer.update(x_gen, y_gen, p_idx_gen)
+        if logger is not None:
+            if termination is not None:
+                logger.info(f"CMAES: generation {i}...")
+            else:
+                logger.info(f"CMAES: generation {i} of {gen}...")
+
+        count = 0
+        xs_gen = []
+        ys_gen = []
+        while (count < pop - 1):
+            x_gen_i, p_idx_gen_i = optimizer.generate()
+        
+            y_gen_i = model.evaluate(x_gen_i)
+            
+            # Update w/ evaluation values.
+            optimizer.update(x_gen_i, y_gen_i, p_idx_gen_i)
+
+            xs_gen.append(x_gen_i)
+            ys_gen.append(y_gen_i)
+            count += x_gen_i.shape[0]
+
+        x_gen = np.vstack(xs_gen)
+        y_gen = np.vstack(ys_gen)
 
         x_new.append(x_gen)
         y_new.append(y_gen)
@@ -130,7 +152,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
         population_parm, population_obj, rank = \
             remove_worst(population_parm, population_obj, pop, nInput, nOutput)
 
-        gen_indexes.append(np.ones((x_gen.shape[0],),dtype=np.uint32)*generation)
+        gen_indexes.append(np.ones((x_gen.shape[0],),dtype=np.uint32)*i)
+
+        n_eval += count
 
     bestx = population_parm.copy()
     besty = population_obj.copy()
@@ -174,7 +198,7 @@ class CMAES:
         if mu is None:
             mu = population_size
         self.mu = mu
-        self.lambda_ = params.get("lambda_", population_size//2)
+        self.lambda_ = params.get("lambda_", population_size//10)
 
         # Step size control
         self.d = params.get("d", 1.0 + self.dim / 2.0)
@@ -209,7 +233,7 @@ class CMAES:
         # Each parent produce an offspring
         if self.lambda_ == self.mu:
             for i in range(self.lambda_):
-                individuals.append(self.parents[i] + self.sigmas[i] * np.dot(self.A[i], arz[i]))
+                individuals.append(self.parents_x[i] + self.sigmas[i] * np.dot(self.A[i], arz[i]))
                 p_idxs.append(i)
         # Parents producing an offspring are chosen at random from the first front
         else:
