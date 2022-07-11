@@ -27,7 +27,7 @@ def sortMO(x, y):
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
-                 pop=100, sigma=1.5, mu=None, sampling_method=None, termination=None,
+                 pop=100, sigma=0.9, mu=None, sampling_method=None, termination=None,
                  local_random=None, logger=None, **kwargs):
     """
     Multiobjective CMA-ES optimization class based on the paper 
@@ -201,7 +201,7 @@ class CMAES:
 
         # Step size control
         self.d = params.get("d", 1.0 + self.dim / 2.0)
-        self.ptarg = params.get("ptarg", 1.0 / (5.0 + 0.5))
+        self.ptarg = params.get("ptarg", 1.0 / (5.0 + 0.707))
         self.cp = params.get("cp", self.ptarg / (2.0 + self.ptarg))
 
         # Covariance matrix adaptation
@@ -327,7 +327,7 @@ class CMAES:
         :param y:
         """
 
-        # Every parent gets assigned a "parent index" of -1
+        # Every parent i gets assigned a "parent index" of i
         P = self.parents_x.shape[0]
         parent_pidxs = np.asarray(range(P), dtype=np.int_)
 
@@ -387,6 +387,8 @@ class CMAES:
                 self.psucc[p_idx] = (1.0 - cp) * self.psucc[p_idx]
                 self.sigmas[p_idx] = self.sigmas[p_idx] * np.exp((self.psucc[p_idx] - ptarg) / (d * (1.0 - ptarg)))
 
+
+        
         # Make a copy of the internal parameters
         # The parameter is in the temporary variable for offspring and in the original one for parents
         self.parents_x = candidates_x[chosen]
