@@ -3,7 +3,6 @@
 ### "Improved Step Size Adaptation for the MO-CMA-ES", Voss, Hansen, Igel; 2010.
 ###
 ### Based on code from 
-### https://raw.githubusercontent.com/CyberAgentAILab/cmaes/main/cmaes/_cma.py
 ### https://github.com/DEAP/deap/blob/master/deap/cma.py
 ###
 
@@ -16,10 +15,6 @@ from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import remove_worst, remove_duplicates
 from dmosopt.indicators import Hypervolume
-
-_EPS = 1e-8
-_MEAN_MAX = 1e32
-_SIGMA_MAX = 1e32
 
 def sortMO(x, y):
     ''' Non-dominated sort for multi-objective optimization
@@ -98,11 +93,12 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
     if y_initial is not None:
         y = np.vstack((y_initial, y))
 
+    population_parm = x[:pop]
+    population_obj  = y[:pop]
+
     bounds = np.column_stack((xlb, xub))
     optimizer = CMAES(x=x, y=y, sigma=sigma, mu=mu, bounds=bounds, local_random=local_random, **kwargs)
 
-    population_parm = np.zeros((0, nInput))
-    population_obj  = np.zeros((0, nOutput))
 
     x_new = []
     y_new = []
@@ -112,11 +108,14 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
 
     n_eval = 0
     it = range(1, gen+1)
+    if termination is not None:
+        it = itertools.count(1)
 
     for i in it:
         
         if termination is not None:
-            if optimizer.termination():
+            opt = OptHistory(i, n_eval, population_parm, population_obj, None)
+            if termination.has_terminated(opt):
                 break
             
         if logger is not None:
@@ -212,12 +211,21 @@ class CMAES:
 
         # Internal parameters associated to the mu parent
         self.sigmas = np.asarray([sigma] * population_size)
+
         # Lower Cholesky matrix (Sampling matrix)
         self.A = np.stack([np.identity(self.dim) for _ in range(population_size)])
+
         # Inverse Cholesky matrix (Used in the update of A)
         self.invCholesky = np.stack([np.identity(self.dim) for _ in range(population_size)])
         self.pc = np.stack([np.zeros(self.dim) for _ in range(population_size)])
         self.psucc = np.asarray([self.ptarg] * population_size)
+
+        # Termination criteria
+        # stop if the standard deviation of the normal distribution is smaller than tol_x in all
+        # coordinates and sigma * p_c is smaller than tol_x in all components
+        self.tol_x = params.get("tol_x", 1e-12 * sigma)
+        # stop if sigma * max(diag(D)) increases by more than this number.
+        self.tol_x_up = params.get("tol_x_up", 1e4)
 
         
     def generate(self):
@@ -389,41 +397,3 @@ class CMAES:
         self.A = np.where(candidates_offspring[chosen].reshape((-1,1,1)), A[chosen], self.A[candidates_pidxs[chosen]])
         self.pc = np.where(candidates_offspring[chosen].reshape((-1,1)), pc[chosen], self.pc[candidates_pidxs[chosen]])
         self.psucc = np.where(candidates_offspring[chosen], psucc[chosen], self.psucc[candidates_pidxs[chosen]])
-
-    def termination(self) -> bool:
-        B, D = self.invCholesky, self.A
-        dC = np.diag(self.pc)
-
-        ## TODO
-        return False
-    
-        # Stop if the std of the normal distribution is smaller than tolx
-        # in all coordinates and pc is smaller than tolx in all components.
-        if np.all(self._sigma * dC < self._tolx) and np.all(
-            self._sigma * self._pc < self._tolx
-        ):
-            return True
-
-        # Stop if detecting divergent behavior.
-        if self._sigma * np.max(D) > self._tolxup:
-            return True
-
-        # No effect coordinates: stop if adding 0.2-standard deviations
-        # in any single coordinate does not change m.
-        if np.any(self._mean == self._mean + (0.2 * self._sigma * np.sqrt(dC))):
-            return True
-
-        # No effect axis: stop if adding 0.1-standard deviation vector in
-        # any principal axis direction of C does not change m. 
-        i = self.generation % self.dim
-        if np.all(self._mean == self._mean + (0.1 * self._sigma * D[i] * B[:, i])):
-            return True
-
-        # Stop if the condition number of the covariance matrix exceeds 1e14.
-        condition_cov = np.max(D) / np.min(D)
-        if condition_cov > self._tolconditioncov:
-            return True
-
-        return False
-    
-        
