@@ -7,6 +7,7 @@ Created on Mon Nov 17 14:18:23 2014
 import sys
 import numpy as np
 import fractions as fc
+import math
 import itertools
 from dmosopt.discrepancy import CD2
 
@@ -91,14 +92,14 @@ def EulerFunction(n):
 def GenVector(n):
     h = []
     for i in range(n):
-        if fc.gcd(i,n) == 1:
+        if math.gcd(i,n) == 1:
             h.append(i)
     return np.asarray(h)
 
 def PowerGenVector(n,s):
     a = []
     for i in range(2,n):
-        if fc.gcd(i,n) == 1:
+        if math.gcd(i,n) == 1:
             a.append(i)
     aa = []
     #for i in range(min(len(a),20)):

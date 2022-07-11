@@ -1,69 +1,291 @@
 import numpy as np
 from numpy.random import default_rng
+import logging
+from dmosopt import sampling
 from sly import Lexer, Parser
+from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, remove_duplicates
 
 class ParamSpacePoints:
-    def __init__(self, N, SpaceUnc, SpaceUncMethod=None, SpaceCons=None, seed=None):
+    def __init__(self, N, Space, Method=None, seed=None, parents=None):
         self.seed = seed
         self.rng = default_rng() if self.seed is None else default_rng(self.eed)
 
+
         self.N_params = N
-        self.SpaceUnc = SpaceUnc
-        self.SpaceUncMethod = SpaceUncMethod
-        self.SpaceUnc_vals = self.generate_unconstrained(self.SpaceUnc)
-        self.ParamSample = self.SpaceUnc_vals
-
-        if SpaceCons is not None:
-            cons_params = SpaceCons.keys()
-            if len(cons_params):
-                self.SpaceCons = SpaceCons
-                self.SpaceCons_bnds = self.generate_constrained(self.SpaceUnc_vals, SpaceCons)
-                self.SpaceUnc_val = self.sample_space_cons(self.SpaceCons_bnds)
-                self.ParamSample.update(self.SpaceUnc_val)
-
-    def generate_unconstrained(self, Space):
+        self.Space = Space
+        self.parents_dict = parents 
+        self.analyze_param_space()
+        self.MethodUnc = Method
+    
+        if Method is None and parents is None:
+            self.SpaceUncMethod = 'slh' 
         
-      #  self.SpaceUnc_val = # Call Method 
-
-        # For isyntax testing only 
-        Space_val = {
-            key: np.random.uniform(*val, size=self.N_params) for key, val in Space.items()
-        }
-        return Space_val 
+        self.generate_param()
 
 
-    def generate_constrained(self, SpaceUnc_val, SpaceCons):
+
+    def analyze_param_space(self):
+        Space = self.Space
+        params_idx_unc = []
+        params_idx_con = []
+        self.param_keys = np.sort(list(Space.keys()))
+        for kidx, key in enumerate(self.param_keys):
+            typ = type(Space[key])
+            if typ is list:
+                params_idx_unc.append(kidx) 
+            elif typ is dict:
+                params_idx_con.append(kidx) 
+        self.prm_idx_unc = np.array(params_idx_unc)
+        self.prm_idx_con = np.array(params_idx_con)
+    
+        self.prm_unc_dim = np.array(params_idx_unc).shape[0]
+        self.prm_con_dim = np.array(params_idx_con).shape[0]
+
+        self.param_dim = self.prm_unc_dim + self.prm_con_dim 
+
+        self.unc_intervals = np.empty(shape=(self.prm_unc_dim, 2))
+#        self.param_arr = np.full(shape=(self.N_params, self.param_dim), fill_value=np.nan) 
+                
+        for idx, kidx in enumerate(self.prm_idx_unc):
+            key = self.param_keys[kidx] 
+            self.unc_intervals[idx, :] = Space[key]
+
+
+        self.EvoMeth = False
+
+        if self.parents_dict is not None:
+
+            if len(self.parents_dict['params']) == self.parents_dict['values'].shape[1]:
+
+                if np.isin(self.param_keys[self.prm_idx_unc], self.parents_dict['params'], assume_unique=True).all():
+                    self.EvoMeth = True
+                    self.SpaceUncMethod = 'Evo'
+
+                    class parents: pass
+                    self.parents = parents() 
+                    for key, val in self.parents_dict.items():
+                        setattr(self.parents, key, val)
+
+                    sort_parent_params_idx = []
+                    for key in self.param_keys[self.prm_idx_unc]:
+                        sort_parent_params_idx.append(np.where(self.parents.params==key)[0][0])
+
+                    self.parents.unc_values = self.parents.values[:, sort_parent_params_idx] 
+
+                # can be extended to not ignore constrained params 
+                # would need to check whether cons params respect bounds... ideally they should...
+                else:
+                    print('Missing unconstrained params from parents')
+
+            else:
+                print('Mismatch between parent params and values dimensions.')
+
+
+    def generate_param(self):
+        self.generate_unconstrained()
+
+        print(self.param_arr)
+
+        if self.prm_con_dim:
+            self.solve_constrained_dependency()
+            self.generate_constrained() 
+
+    def generate_unconstrained(self):
+        method = self.SpaceUncMethod
+        if method in ['glp', 'slh', 'lh', 'mc']:
+            self.param_arr = np.full(shape=(self.N_params, self.param_dim), fill_value=np.nan) 
+            Xinit = self.initial_sampling(method) 
+            xlb = self.unc_intervals[:,0]
+            xub = self.unc_intervals[:,1]
+            self.param_arr[:,self.prm_idx_unc]  = Xinit * (xub - xlb) + xlb
+        elif self.EvoMeth:
+            Xinit = self.get_children() 
+        elif callable(method):
+            Xinit = method(Ninit, nInput, local_random)
+        else:
+            raise RuntimeError(f'Unknown method {method}')
+
+
+    def get_children(self):
+
+        '''    
+            model: the evaluated model function
+            nInput: number of model input
+            nOutput: number of output objectives
+            xlb: lower bound of input
+            xub: upper bound of input
+            pop: number of population
+            gen: number of generation
+            crossover_rate: ratio of crossover in each generation
+            mutation_rate: ratio of muration in each generation
+            di_crossover: distribution index for crossover
+            di_mutation: distribution index for mutation
+            sampling_method: optional callable for initial sampling of parameters
+        '''
+
+
+        self.parents.poolsize = int(round(self.parents.pop_size/2.)); # 
+        self.parents.local_random = self.rng if self.parents.local_random is None else self.parents.local_random
+        self.parents.nchildren = 1 if self.parents.feasibility_model is None else self.parents.poolsize
+            
+        xs_gen = []
+        count = 0
+
+        while (count < self.parents.pop_size - 1):
+            if (self.parents.local_random.random() < self.parents.crossover_rate):
+                print( count, 'Crossover', self.parents.local_random.random(),  self.parents.crossover_rate)
+                parentidx = self.parents.local_random.choice(self.parents.poolsize, 2, replace = False)
+
+                parent1 = self.parents.unc_values[parentidx[0],:]
+                parent2 = self.parents.unc_values[parentidx[1],:]
+                children1, children2 = crossover_sbx(self.parents.local_random, parent1, parent2, self.parents.di_crossover, self.unc_intervals[:,0], self.unc_intervals[:,1], nchildren=self.parents.nchildren)
+                if self.parents.feasibility_model is None:
+                    child1 = children1[0]
+                    child2 = children2[0]
+                else:
+                    child1, child2 = crossover_sbx_feasibility_selection(self.parents.local_random, self.parents.feasibility_model, [children1, children2], logger=logger)
+                xs_gen.extend([child1, child2])
+                count += 2
+            elif self.parents.ranks is not None:
+          #  else:
+                print('Mutation')
+                pool_idxs = tournament_selection(self.parents.local_random, self.parents.pop_size, self.parents.poolsize, self.parents.toursize, self.parents.ranks)
+               
+                # Need value_array to have been ranked beforehand 
+                pool = self.parents.unc_values[pool_idxs,:]
+
+                parentidx = self.parents.local_random.integers(low=0, high=self.parents.poolsize)
+                parent    = pool[parentidx,:]
+                children  = mutation(self.parents.local_random, parent, self.parents.mutation_rate, self.parents.di_mutation, self.unc_intervals[:,0], self.unc_intervals[:,1], nchildren=self.parents.nchildren)
+                if self.parents.feasibility_model is None:
+                    child = children[0]
+                else:
+                    child = feasibility_selection(self.parents.local_random, self.parents.feasibility_model, children, logger=logger)
+                xs_gen.append(child)
+                count += 1
+
+        self.N_params = len(xs_gen)
+        self.param_arr = np.full(shape=(self.N_params, self.param_dim), fill_value=np.nan) 
+        self.param_arr[:,self.prm_idx_unc] = np.vstack(xs_gen)
+
+
+    def initial_sampling(self, method="glp", maxiter=5, local_random=None, logger=None):
+        """ 
+        Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
+        nEval: number of evaluations per parameter
+        nInput: number of model parameters
+        nOutput: number of output objectives
+        xlb: lower bound of input
+        xub: upper bound of input
+        """
+        Ninit = self.N_params 
+        nInput = self.prm_unc_dim 
+    
+        if local_random is None:
+            local_random = self.rng 
+    
+        if (Ninit <= 0):
+            return None
+    
+        if logger is not None:
+            logger.info(f"xinit: generating {Ninit} initial parameters...")
+        
+        ini_func = getattr(sampling, method)
+        Xinit = ini_func(Ninit, nInput, local_random=local_random, maxiter=maxiter)
+    
+        return Xinit
+
+    def solve_constrained_dependency(self):
+        consprm_dt = np.dtype([('param', 'U64'), ('abs', np.bool), ('absbnds', float, 2), ('lbprms', np.ndarray), ('lbrels', np.ndarray), ('ubprms', np.ndarray), ('ubrels', np.ndarray), ('rank', int), ('perm_idx', int)])
+        cons_arr = np.empty(shape=self.prm_idx_con.shape[0], dtype=consprm_dt)
+        cons_arr['rank'] = 100
+        unc_parms = self.param_keys[self.prm_idx_unc]
+        for pidx, prm in enumerate(self.prm_idx_con):
+            key = self.param_keys[self.prm_idx_con][pidx]
+            cons_ent = cons_arr[pidx]
+            cons_ent['param'] = key
+            val = self.Space[key]
+            valkys = val.keys()
+
+            if 'abs' in valkys:
+                if np.isfinite(np.multiply(*val['abs'])):
+                    if val['abs'][1] > val['abs'][0]:
+                        cons_ent['abs'] = True 
+                        cons_ent['absbnds'] = val['abs'] 
+                        
+            if 'lb' in valkys:
+                lbcons = val['lb']
+                lbprms = []
+                lbrels = []
+                for const in lbcons:
+                    lbprms.append(const[0]) 
+                    lbrels.append(const[1])
+                cons_ent['lbprms'] = np.array(lbprms)
+                cons_ent['lbrels'] = np.array(lbrels)
+
+            if 'ub' in valkys:
+                ubcons = val['ub']
+                ubprms = []
+                ubrels = []
+                for const in ubcons:
+                    ubprms.append(const[0]) 
+                    ubrels.append(const[1])
+                cons_ent['ubprms'] = np.array(ubprms)
+                cons_ent['ubrels'] = np.array(ubrels)
+
+            if cons_ent['lbprms'] is None and cons_ent['ubprms'] is None:
+                cons_ent['rank'] = 0 
+            else:
+                lbprms = [] if cons_ent['lbprms'] is None else cons_ent['lbprms']
+                ubprms = [] if cons_ent['ubprms'] is None else cons_ent['ubprms']
+                depprms = np.union1d(lbprms, ubprms)
+                test_depprms = np.in1d(depprms, unc_parms, assume_unique=True)
+                if test_depprms.all():
+                    cons_ent['rank'] = 0 
+
+        # Implemented for 1 level only... can expand later in a while loop
+        # Need to catch circular dependencies
+        zranked = np.where(cons_arr['rank']==0)[0]
+        nzranks = np.delete(np.arange(cons_arr.shape[0]), zranked)  
+        rank_i = 0
+
+        cunc_params = cons_arr['param'][zranked]
+        for cnsidx in nzranks:
+            cons_ent = cons_arr[cnsidx]
+            lbprms = [] if cons_ent['lbprms'] is None else cons_ent['lbprms']
+            ubprms = [] if cons_ent['ubprms'] is None else cons_ent['ubprms']
+            depprms = np.union1d(lbprms, ubprms)
+            con_depprms = np.setdiff1d(depprms, cunc_params, assume_unique=True)
+            cons_ent['rank'] = len(con_depprms) 
+
+        self.perm_idx = np.argsort(cons_arr['rank'])
+        self.cons_arr = cons_arr
+
+    def generate_constrained(self):
 
         self.lexercons = BoundaryLexer()
         self.parsercons = BoundaryParser()
         cons_bounds = {}
 
-        for key, val in SpaceCons.items(): 
-            valkys = val.keys()
+        for constr in self.cons_arr[self.perm_idx]:
             absbnds = None
             lbbnds = None
             ubbnds = None
-
-            if 'abs' in valkys:
-                if np.isfinite(np.multiply(*val['abs'])):
-                    if val['abs'][1] > val['abs'][0]:
-                        absbnds = val['abs']
-
-            if 'lb' in valkys:
-                if len(val['lb']):
-                    lbcons = val['lb']
-                    lbbnds = self.get_bounds(lbcons, SpaceUnc_val) 
-
-            if 'ub' in valkys:
-                if len(val['ub']):
-                    ubcons = val['ub']
-                    ubbnds = self.get_bounds(ubcons, SpaceUnc_val) 
+            key =  constr['param']
+            absbnds = constr['absbnds']
+            if constr['lbprms'] is not None:
+                lbbnds = self.get_bounds(constr['lbprms'], constr['lbrels']) 
+            if constr['ubprms'] is not None:
+                ubbnds = self.get_bounds(constr['ubprms'], constr['ubrels']) 
 
             bounds = self.solve_bounds(absbnds, lbbnds, ubbnds)
+            cons_bounds[key] = (bounds, self.Space[key]['method'])
 
-            cons_bounds[key] = (bounds, val['method']) 
+        cons_sampled_vals = self.sample_space_cons(cons_bounds)
+        for kidx in self.prm_idx_con:
+            key = self.param_keys[kidx]
+            self.param_arr[:, kidx] = cons_sampled_vals[key]
 
-        return cons_bounds
 
     def solve_bounds(self, absbnds, lbbnds, ubbnds, absolute=True, default=True, singlevalid=True):
     
@@ -133,26 +355,20 @@ class ParamSpacePoints:
 
         return lb, ub
 
-    def get_bounds(self, bndcnst, spc_unc_val):
+    def get_bounds(self, prms, rels):
     
-        bnds = np.empty(shape=self.N_params, dtype='O') 
-        for idx in range(self.N_params):
-            bnds_temp = []
-            for cons in bndcnst:
-                bnd = self.get_constr_bounds(idx, cons, spc_unc_val)
-                bnds_temp.append(bnd)
-            bnds[idx] = np.array(bnds_temp)
-    
-        return bnds
+        uncparams = prms 
 
-    def get_constr_bounds(self, idx, constr, space_unc_val):
-        param, rel = constr
+        N_constr = uncparams.shape[0] 
+        bnds = np.empty(shape=(self.N_params, N_constr), dtype='O') 
+        param_idx = np.searchsorted(self.param_keys[self.prm_idx_unc], uncparams)
     
-        param_val = space_unc_val[param][idx]
-    
-        val = self.parsercons.parse(self.lexercons.tokenize(f'{param_val} {rel}'))
-    
-        return val
+        for prmidx, prm in enumerate(param_idx):
+            param_vals = self.param_arr[:, self.prm_idx_unc[prm]] 
+            rel = rels[prmidx]
+            for validx, param_val in enumerate(param_vals): 
+                bnds[validx, prmidx] = self.parsercons.parse(self.lexercons.tokenize(f'{param_val} {rel}'))
+        return bnds 
 
     def sample_space_cons(self, spcons_bnds):
     
