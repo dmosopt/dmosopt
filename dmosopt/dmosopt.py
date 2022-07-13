@@ -347,6 +347,7 @@ class DistOptimizer():
                     del(problem_parameters[parm])
         old_evals = {}
         max_epoch = -1
+        stored_random_seed = None
         if file_path is not None:
             if os.path.isfile(file_path):
                 stored_random_seed, max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_dtypes, constraint_names, problem_parameters, problem_ids = \
