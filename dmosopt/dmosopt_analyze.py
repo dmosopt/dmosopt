@@ -36,7 +36,7 @@ def list_find(f, lst):
 @click.option("--verbose", '-v', is_flag=True)
 def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, output_file, verbose):
 
-    max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
+    _, max_epoch, old_evals, param_names, is_int, lo_bounds, hi_bounds, objective_names, feature_names, constraint_names, problem_parameters, problem_ids = \
                   init_from_h5(file_path, None, opt_id, None)
 
     if problem_ids is None:
