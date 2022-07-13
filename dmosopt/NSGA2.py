@@ -57,7 +57,11 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         x = sampling.lh(pop, nInput, local_random)
         x = x * (xub - xlb) + xlb
     elif callable(sampling_method):
-        x = sampling_method(pop, nInput, local_random, xlb, xub)
+        sampling_method_params = kwargs.get('sampling_method_params', None)
+        if sampling_method_params is None:
+            x = sampling_method(local_random, pop, nInput, xlb, xub)
+        else:
+            x = sampling_method(local_random, **sampling_method_params)
     else:
         raise RuntimeError(f'Unknown sampling method {sampling_method}')
     if x_initial is not None:
