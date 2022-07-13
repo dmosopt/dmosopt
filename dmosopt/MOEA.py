@@ -191,6 +191,7 @@ def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
     candidates = np.arange(pop)
     sorted_candidates = np.lexsort(tuple((metric[candidates] for metric in metrics)))
     prob, _ = reduce(tournament_prob, candidates, ([], 0.5))
+    prob = prob / np.sum(prob)
     poolidx = local_random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
     return poolidx
 
