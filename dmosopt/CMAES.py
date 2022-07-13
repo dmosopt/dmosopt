@@ -201,9 +201,9 @@ class CMAES:
         self.lambda_ = params.get("lambda_", population_size//2)
 
         # Step size control
-        self.d = self.params.get("d", 1.0 + self.dim / 2.0)
-        self.ptarg = self.params.get("ptarg", 1.0 / (5.0 + 0.5))
-        self.cp = self.params.get("cp", self.ptarg / (2.0 + self.ptarg))
+        self.d = params.get("d", 1.0 + self.dim / 2.0)
+        self.ptarg = params.get("ptarg", 1.0 / (5.0 + 0.5))
+        self.cp = params.get("cp", self.ptarg / (2.0 + self.ptarg))
 
         # Covariance matrix adaptation
         self.cc = params.get("cc", 2.0 / (self.dim + 2.0))
