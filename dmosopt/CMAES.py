@@ -7,6 +7,7 @@
 ###
 
 import gc, itertools
+from functools import partial
 import numpy as np
 from numpy.random import default_rng
 from typing import Any, Dict, List, Tuple, Optional
@@ -27,7 +28,7 @@ def sortMO(x, y):
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
-                 pop=100, sigma=0.9, mu=None, sampling_method=None, termination=None,
+                 pop=100, sigma=0.1, mu=None, sampling_method=None, termination=None,
                  local_random=None, logger=None, **kwargs):
     """
     Multiobjective CMA-ES optimization class based on the paper 
@@ -97,7 +98,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
     population_obj  = y[:pop]
 
     bounds = np.column_stack((xlb, xub))
-    optimizer = CMAES(x=x, y=y, sigma=sigma, mu=mu, bounds=bounds, local_random=local_random, **kwargs)
+    optimizer = CMAES(x=population_parm, y=population_obj, sigma=sigma, mu=mu, bounds=bounds, local_random=local_random, **kwargs)
 
 
     x_new = []
@@ -197,12 +198,12 @@ class CMAES:
         if mu is None:
             mu = population_size
         self.mu = mu
-        self.lambda_ = params.get("lambda_", population_size//10)
+        self.lambda_ = params.get("lambda_", population_size//2)
 
         # Step size control
-        self.d = params.get("d", 1.0 + self.dim / 2.0)
-        self.ptarg = params.get("ptarg", 1.0 / (5.0 + 0.707))
-        self.cp = params.get("cp", self.ptarg / (2.0 + self.ptarg))
+        self.d = self.params.get("d", 1.0 + self.dim / 2.0)
+        self.ptarg = self.params.get("ptarg", 1.0 / (5.0 + 0.5))
+        self.cp = self.params.get("cp", self.ptarg / (2.0 + self.ptarg))
 
         # Covariance matrix adaptation
         self.cc = params.get("cc", 2.0 / (self.dim + 2.0))
@@ -214,18 +215,11 @@ class CMAES:
 
         # Lower Cholesky matrix (Sampling matrix)
         self.A = np.stack([np.identity(self.dim) for _ in range(population_size)])
-
+        
         # Inverse Cholesky matrix (Used in the update of A)
         self.invCholesky = np.stack([np.identity(self.dim) for _ in range(population_size)])
         self.pc = np.stack([np.zeros(self.dim) for _ in range(population_size)])
         self.psucc = np.asarray([self.ptarg] * population_size)
-
-        # Termination criteria
-        # stop if the standard deviation of the normal distribution is smaller than tol_x in all
-        # coordinates and sigma * p_c is smaller than tol_x in all components
-        self.tol_x = params.get("tol_x", 1e-12 * sigma)
-        # stop if sigma * max(diag(D)) increases by more than this number.
-        self.tol_x_up = params.get("tol_x_up", 1e4)
 
         
     def generate(self):
@@ -234,28 +228,21 @@ class CMAES:
         :returns: A list of individuals.
         """
         arz = self.local_random.normal(size=(self.lambda_, self.dim))
-        individuals = list()
-        
-        p_idxs = []
-        
-        # Each parent produce an offspring
+        individuals = None
+
+        # Each parent produces an offspring
         if self.lambda_ == self.mu:
-            for i in range(self.lambda_):
-                individuals.append(self.parents_x[i] + self.sigmas[i] * np.dot(self.A[i], arz[i]))
-                p_idxs.append(i)
+            individuals  = self.parents_x + self.sigmas.reshape((-1,1)) * np.einsum('ijk,ik->ij',self.A, arz)
+            p_idx_array = np.asarray(range(self.lambda_), dtype=np.int_)
         # Parents producing an offspring are chosen at random from the first front
         else:
             rank = sortMO(self.parents_x, self.parents_y)
             front_1 = np.argwhere(rank == 0).ravel()
-            for i in range(self.lambda_):
-                j = self.local_random.integers(0, len(front_1))
-                p_idx = front_1[j]
-                individuals.append(self.parents_x[p_idx] + self.sigmas[p_idx] * np.dot(self.A[p_idx], arz[i]))
-                p_idxs.append(p_idx)
+            js = self.local_random.integers(0, len(front_1), size=self.lambda_)
+            p_idx_array = front_1[js]
+            individuals = self.parents_x[p_idx_array] + self.sigmas[p_idx_array].reshape((-1,1)) * np.einsum('ijk,ik->ij', self.A[p_idx_array], arz)
 
-        x_new = np.vstack(individuals)
-        x_new = np.clip(x_new, self.bounds[:,0], self.bounds[:,1])
-        p_idx_array = np.asarray(p_idxs, dtype=np.int_)
+        x_new = np.clip(individuals, self.bounds[:,0], self.bounds[:,1])
         return x_new, p_idx_array
 
 
@@ -283,7 +270,7 @@ class CMAES:
                 chosen[front_r] = True
                 chosen_count += len(front_r)
             elif mid_front is None and chosen_count < self.mu:
-                mid_front = front_r.tolist()
+                mid_front = front_r.copy()
                 # With this front, we selected enough individuals
                 full = True
             else:
@@ -297,11 +284,16 @@ class CMAES:
             ref = np.max(candidates_y, axis=0) + 1
             indicator = self.indicator(ref_point=ref)
             
-            for _ in range(len(mid_front) - k):
-                idx = np.argmax(indicator.do(candidates_y[mid_front]))
-                not_chosen[mid_front.pop(idx)] = True
+            def contribution(front, i):
+                # The contribution of point p_i in point set P
+                # is the hypervolume of P without p_i
+                return indicator.do(np.concatenate((candidates_y[front[:i]], candidates_y[front[i+1:]])))
 
-            chosen[mid_front] = True
+            contrib_values = np.fromiter(map(partial(contribution, mid_front), range(len(mid_front))), dtype=np.float32)
+            contrib_order = np.argsort(contrib_values)[::-1]
+
+            chosen[mid_front[contrib_order[:k]]] = True
+            not_chosen[mid_front[contrib_order[k:]]] = True
 
         return chosen, not_chosen
 
@@ -363,8 +355,8 @@ class CMAES:
                 sigmas[i] = sigmas[i] * np.exp((psucc[i] - ptarg) / (d * (1.0 - ptarg)))
 
                 if psucc[i] < pthresh:
-                    xp = np.array(ind)
-                    x = np.array(self.parents_x[p_idx])
+                    xp = candidates_x[ind]
+                    x = self.parents_x[p_idx]
                     pc[i] = (1.0 - cc) * pc[i] + np.sqrt(cc * (2.0 - cc)) * (xp - x) / last_steps[i]
                     invCholesky[i], A[i] = self._update_cov(invCholesky[i], A[i], 1 - ccov, ccov, pc[i])
                 else:
