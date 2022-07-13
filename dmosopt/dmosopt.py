@@ -72,7 +72,7 @@ class SOptStrategy():
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
-        xinit = opt.xinit(n_initial, prob.dim, prob.n_objectives, prob.lb, prob.ub, nPrevious=nPrevious,
+        xinit = opt.xinit(n_initial, prob.param_names, prob.lb, prob.ub, nPrevious=nPrevious,
                           maxiter=initial_maxiter, method=initial_method, local_random=self.local_random,
                           logger=self.logger)
         self.reqs = []
