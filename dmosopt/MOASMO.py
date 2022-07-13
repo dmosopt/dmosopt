@@ -45,9 +45,7 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
     N_resample = int(pop*pct)
     if (surrogate_method is not None) and (Xinit is None and Yinit is None):
         Ninit = nInput * 10
-        Xinit = xinit(Ninit, nInput, method=initial_method, maxiter=initial_maxiter, logger=logger)
-        for i in range(Ninit):
-            Xinit[i,:] = Xinit[i,:] * (xub - xlb) + xlb
+        Xinit = xinit(Ninit, param_names, method=initial_method, maxiter=initial_maxiter, logger=logger)
         Yinit = np.zeros((Ninit, nOutput))
         C = None
         if nConstraints is not None:
@@ -147,15 +145,15 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
     return bestx, besty, x, y
 
 
-def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxiter=5, local_random=None, logger=None):
+def xinit(nEval, param_names, xlb, xub, nPrevious=None, method="glp", maxiter=5, local_random=None, logger=None):
     """ 
     Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
     nEval: number of evaluations per parameter
-    nInput: number of model parameters
-    nOutput: number of output objectives
+    param_names: model parameter names
     xlb: lower bound of input
     xub: upper bound of input
     """
+    nInput = len(param_names)
     Ninit = nInput * nEval
 
     if local_random is None:
@@ -167,9 +165,19 @@ def xinit(nEval, nInput, nOutput, xlb, xub, nPrevious=None, method="glp", maxite
     if (Ninit <= 0) or (Ninit <= nPrevious):
         return None
 
+    if isinstance(method, dict):
+        Xinit = np.column_stack([method[k] for k in param_names])
+        for i in range(Xinit.shape[1]):
+            in_bounds = np.all(np.logical_and(Xinit[:,i] <= xub[i], Xinit[:,i] >= xlb[i]))
+            if not in_bounds:
+                logger.error(f'xinit: out of bounds values detected for parameter {param_names[i]}')
+            assert(in_bounds)
+        return Xinit
+      
+
     if logger is not None:
         logger.info(f"xinit: generating {Ninit} initial parameters...")
-    
+             
     if method == "glp":
         Xinit = sampling.glp(Ninit, nInput, local_random=local_random, maxiter=maxiter)
     elif method == "slh":
