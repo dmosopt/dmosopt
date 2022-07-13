@@ -6,6 +6,9 @@ from abc import abstractmethod
 
 import numpy as np
 from dmosopt.normalization import PreNormalization
+from dmosopt.hv import HyperVolume as _HyperVolume
+from dmosopt.dda import dda_non_dominated_sort
+
 
 def euclidean_distance(a, b, norm=None):
     return np.sqrt((((a - b) / norm) ** 2).sum(axis=1))
@@ -132,3 +135,41 @@ class IGD(DistanceIndicator):
 
     def __init__(self, pf, **kwargs):
         super().__init__(pf, euclidean_distance, 1, **kwargs)
+
+        
+class Hypervolume(Indicator):
+
+    def __init__(self, ref_point=None, pf=None, nds=False, norm_ref_point=True, ideal=None, nadir=None, **kwargs):
+        
+        pf = at_least_2d_array(pf, extend_as="row")
+        ideal, nadir = derive_ideal_and_nadir_from_pf(pf, ideal=ideal, nadir=nadir)
+
+        super().__init__(ideal=ideal, nadir=nadir, **kwargs)
+
+        # whether the input should be checked for domination or not
+        self.nds = nds
+
+        # the reference point that shall be used - either derived from pf or provided
+        ref_point = ref_point
+        if ref_point is None:
+            if pf is not None:
+                ref_point = pf.max(axis=0)
+
+        # we also have to normalize the reference point to have the same scales
+        if norm_ref_point:
+            ref_point = self.normalization.forward(ref_point)
+
+        self.ref_point = ref_point
+        assert self.ref_point is not None, "For Hypervolume a reference point needs to be provided!"
+
+    def _do(self, F):
+        
+        if self.nds:
+            rank = dda_non_dominated_sort(F)
+            non_dom = np.argwhere(rank == 0).ravel()
+            F = np.copy(F[non_dom, :])
+
+        hv = _HyperVolume(self.ref_point)
+        val = hv.compute(F)
+        
+        return val
