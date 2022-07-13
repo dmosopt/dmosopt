@@ -11,8 +11,8 @@ from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, sortMO, 
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
-                 distance_metric=None, pop=100, gen=100, crossover_prob = 0.5, mutation_prob = 0.5, mutation_rate = None, nchildren=1,
-                 di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None):
+                 distance_metric=None, pop=100, gen=100, crossover_prob = 0.9, mutation_prob = 0.1, mutation_rate = None, nchildren=1,
+                 di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None, **kwargs):
     ''' Nondominated Sorting Genetic Algorithm II
 
         model: the evaluated model function

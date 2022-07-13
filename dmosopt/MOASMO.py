@@ -91,7 +91,8 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
                                               logger=logger)
                 optimizer_kwargs['di_mutation'] = di_dict['di_mutation']
                 optimizer_kwargs['di_crossover'] = di_dict['di_crossover']
-                
+
+
         if optimizer == 'nsga2':
             bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
                 NSGA2.optimization(sm, nInput, nOutput, xlb, xub, feasibility_model=fsbm, logger=logger, \
@@ -195,7 +196,8 @@ def onestep(param_names, objective_names, xlb, xub, pct, \
                                 'crossover_prob': 0.9,
                                 'mutation_prob': 0.1,
                                 'sampling_method': None,
-                                'di_crossover': 1., 'di_mutation': 20. },
+                                'di_crossover': 1.,
+                                'di_mutation': 20. },
             surrogate_method="gpr",
             surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
             sensitivity_method=None,
@@ -253,22 +255,25 @@ def onestep(param_names, objective_names, xlb, xub, pct, \
                                       logger=logger)
         optimizer_kwargs['di_mutation'] = di_dict['di_mutation']
         optimizer_kwargs['di_crossover'] = di_dict['di_crossover']
-    
+
     if optimizer == 'nsga2':
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             NSGA2.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                feasibility_model=fsbm, logger=logger, \
-                               pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+                               pop=pop, local_random=local_random, termination=termination,
+                               **optimizer_kwargs)
     elif optimizer == 'age':
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             AGEMOEA.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                  feasibility_model=fsbm, logger=logger, \
-                                 pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+                                 pop=pop, local_random=local_random, termination=termination,
+                                 **optimizer_kwargs)
     elif optimizer == 'smpso':
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             SMPSO.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \
                                feasibility_model=fsbm, logger=logger, \
-                               pop=pop, local_random=local_random, termination=termination, **optimizer_kwargs)
+                               pop=pop, local_random=local_random, termination=termination,
+                               **optimizer_kwargs)
     elif optimizer == 'cmaes':
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = \
             CMAES.optimization(sm, nInput, nOutput, xlb, xub, initial=(x, y), \

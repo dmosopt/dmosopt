@@ -27,11 +27,11 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
     
 class SOptStrategy():
     def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh",
-                 population_size=100, resample_fraction=0.25, num_generations=100,
-                 crossover_prob=0.9, mutation_prob=0.1, di_crossover=1., di_mutation=20.,
+                 resample_fraction=0.25, population_size=100, num_generations=100,
                  surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
                  sensitivity_method=None, sensitivity_options={},
                  distance_metric=None,  optimizer="nsga2",
+                 optimizer_options={'crossover_prob': 0.9, 'mutation_prob': 0.1, 'di_crossover': 1., 'di_mutation': 20.},
                  feasibility_model=False, termination_conditions=None, local_random=None,
                  logger=None):
         if local_random is None:
@@ -56,12 +56,9 @@ class SOptStrategy():
         else:
             epochs, self.x, self.y, self.f, self.c = initial
         self.resample_fraction = resample_fraction
-        self.population_size = population_size
+        self.optimizer_options = optimizer_options
         self.num_generations = num_generations
-        self.mutation_prob = mutation_prob
-        self.crossover_prob = crossover_prob
-        self.di_mutation = di_mutation
-        self.di_crossover = di_crossover
+        self.population_size = population_size
         self.termination = None
         if termination_conditions:
             termination_kwargs = { 'x_tol': 1e-6,
@@ -139,11 +136,9 @@ class SOptStrategy():
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
             self.completed = []
-        optimizer_kwargs={'gen': self.num_generations,
-                          'crossover_prob': self.crossover_prob,
-                          'mutation_prob': self.mutation_prob,
-                          'di_crossover': self.di_crossover,
-                          'di_mutation': self.di_mutation}
+        optimizer_kwargs={'gen': self.num_generations}
+        if self.optimizer_options is not None:
+            optimizer_kwargs.update(self.optimizer_options)
         if self.distance_metric is not None:
             optimizer_kwargs['distance_metric'] = self.distance_metric
         if self.termination is not None:
@@ -232,10 +227,6 @@ class DistOptimizer():
         population_size=100,
         num_generations=200,
         resample_fraction=0.25,
-        mutation_prob=0.1,
-        crossover_prob=0.9,
-        di_crossover=1.0,
-        di_mutation=20.0,
         distance_metric=None,
         n_epochs=10,
         save_eval=10,
@@ -247,6 +238,10 @@ class DistOptimizer():
         surrogate_options={'anisotropic': False,
                            'optimizer': "sceua" },
         optimizer="nsga2",
+        optimizer_options={'mutation_prob': 0.1,
+                           'crossover_prob': 0.9,
+                           'di_crossover': 1.0,
+                           'di_mutation': 20.0},
         sensitivity_method=None,
         sensitivity_options={},
         local_random=None,
@@ -297,14 +292,13 @@ class DistOptimizer():
         self.population_size = population_size
         self.num_generations = num_generations
         self.resample_fraction = resample_fraction
-        self.mutation_prob = mutation_prob
-        self.crossover_prob = crossover_prob
         self.distance_metric = distance_metric
         self.surrogate_method = surrogate_method
         self.surrogate_options = surrogate_options
         self.sensitivity_method = sensitivity_method
         self.sensitivity_options = sensitivity_options
         self.optimizer = optimizer
+        self.optimizer_options = optimizer_options
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
         self.metadata = metadata
@@ -377,16 +371,15 @@ class DistOptimizer():
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
+        di_crossover = self.optimizer_options.get('di_crossover', 1.0)
         if isinstance(di_crossover, dict):
-            self.di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
-        else:
-            self.di_crossover = di_crossover
+            di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
+            self.optimizer_options['di_crossover'] = di_crossover
             
+        di_mutation = self.optimizer_options.get('di_mutation', 20.0)
         if isinstance(di_mutation, dict):
-            self.di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
-        else:
-            self.di_mutation = di_mutation
-
+            di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
+            self.optimizer_options['di_mutation'] = di_mutation            
         
         self.start_epoch = max_epoch
         if self.start_epoch != 0:
@@ -457,21 +450,18 @@ class DistOptimizer():
                 initial = (epochs, x, y, f, c)
 
             opt_strategy = SOptStrategy(opt_prob, self.n_initial, initial=initial, 
-                                        population_size=self.population_size, 
                                         resample_fraction=self.resample_fraction,
+                                        population_size=self.population_size,
                                         num_generations=self.num_generations,
                                         initial_maxiter=self.initial_maxiter,
                                         initial_method=self.initial_method,
-                                        mutation_prob=self.mutation_prob,
-                                        crossover_prob=self.crossover_prob,
-                                        di_mutation=self.di_mutation,
-                                        di_crossover=self.di_crossover,
                                         distance_metric=self.distance_metric,
                                         surrogate_method=self.surrogate_method,
                                         surrogate_options=self.surrogate_options,
                                         sensitivity_method=self.sensitivity_method,
                                         sensitivity_options=self.sensitivity_options,
                                         optimizer=self.optimizer,
+                                        optimizer_options=self.optimizer_options,
                                         feasibility_model=self.feasibility_model,
                                         termination_conditions=self.termination_conditions,
                                         local_random=self.local_random,
