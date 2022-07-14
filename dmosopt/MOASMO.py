@@ -8,7 +8,7 @@ from dmosopt.feasibility import LogisticFeasibilityModel
 
 def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
                  Xinit = None, Yinit = None, nConstraints = None, pop=100,
-                 initial_maxiter=5, initial_method="slh",
+                 initial_maxiter=5, initial_method="slh", initial_method_args=None,
                  feasibility_model=False,
                  surrogate_method="gpr",
                  surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
@@ -45,7 +45,7 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
     N_resample = int(pop*pct)
     if (surrogate_method is not None) and (Xinit is None and Yinit is None):
         Ninit = nInput * 10
-        Xinit = xinit(Ninit, param_names, method=initial_method, maxiter=initial_maxiter, logger=logger)
+        Xinit = xinit(Ninit, param_names, method=initial_method, method_args=initial_method_args, maxiter=initial_maxiter, logger=logger)
         Yinit = np.zeros((Ninit, nOutput))
         C = None
         if nConstraints is not None:
@@ -145,7 +145,7 @@ def optimization(model, param_names, objective_names, xlb, xub, n_epochs, pct, \
     return bestx, besty, x, y
 
 
-def xinit(nEval, param_names, xlb, xub, nPrevious=None, method="glp", maxiter=5, local_random=None, logger=None):
+def xinit(nEval, param_names, xlb, xub, nPrevious=None, method="glp", method_args=None, maxiter=5, local_random=None, logger=None):
     """ 
     Initialization for Multi-Objective Adaptive Surrogate Modelling-based Optimization
     nEval: number of evaluations per parameter
@@ -187,11 +187,11 @@ def xinit(nEval, param_names, xlb, xub, nPrevious=None, method="glp", maxiter=5,
     elif method == "mc":
         Xinit = sampling.mc(Ninit, nInput, local_random=local_random)
     elif callable(method):
-        Xinit = method(Ninit, nInput, local_random)
+        Xinit = method(local_random, *method_args, param_keys=False)
     else:
         raise RuntimeError(f'Unknown method {method}')
 
-    Xinit = Xinit[nPrevious:,:] * (xub - xlb) + xlb
+  #  Xinit = Xinit[nPrevious:,:] * (xub - xlb) + xlb
 
     return Xinit
 

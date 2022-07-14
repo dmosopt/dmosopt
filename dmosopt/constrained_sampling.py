@@ -5,11 +5,23 @@ from dmosopt import sampling
 from sly import Lexer, Parser
 from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, remove_duplicates
 
-class ParamSpacePoints:
-    def __init__(self, N, Space, Method=None, seed=None, parents=None):
-        self.seed = seed
-        self.rng = default_rng() if self.seed is None else default_rng(self.eed)
 
+def constrained_sampling(local_random, N, Space, Method=None, parents=None, seed=None, param_keys=False):
+    sampled_points = ParamSpacePoints(local_random, N, Space, Method, parents, seed)
+    if param_keys:
+        return sampled_points.param_keys, sampled_points.param_arr  
+    else:
+        return sampled_points.param_arr  
+
+class ParamSpacePoints:
+    def __init__(self, local_random, N, Space, Method=None, parents=None, seed=None):
+        if local_random is not None:
+            self.rng = local_random 
+        elif seed is not None:
+            self.rng = default_rng(seed) 
+        else:
+            self.rng = default_rng() 
+            self.seed = self.rng.bit_generator.state['state']['state']
 
         self.N_params = N
         self.Space = Space
@@ -21,8 +33,6 @@ class ParamSpacePoints:
             self.SpaceUncMethod = 'slh' 
         
         self.generate_param()
-
-
 
     def analyze_param_space(self):
         Space = self.Space
@@ -84,8 +94,6 @@ class ParamSpacePoints:
     def generate_param(self):
         self.generate_unconstrained()
 
-        print(self.param_arr)
-
         if self.prm_con_dim:
             self.solve_constrained_dependency()
             self.generate_constrained() 
@@ -127,13 +135,14 @@ class ParamSpacePoints:
         self.parents.poolsize = int(round(self.parents.pop_size/2.)); # 
         self.parents.local_random = self.rng if self.parents.local_random is None else self.parents.local_random
         self.parents.nchildren = 1 if self.parents.feasibility_model is None else self.parents.poolsize
+
+        pool_idxs = tournament_selection(self.parents.local_random, self.parents.pop_size, self.parents.poolsize, self.parents.toursize, self.parents.ranks)
             
         xs_gen = []
         count = 0
 
         while (count < self.parents.pop_size - 1):
             if (self.parents.local_random.random() < self.parents.crossover_rate):
-                print( count, 'Crossover', self.parents.local_random.random(),  self.parents.crossover_rate)
                 parentidx = self.parents.local_random.choice(self.parents.poolsize, 2, replace = False)
 
                 parent1 = self.parents.unc_values[parentidx[0],:]
@@ -146,11 +155,7 @@ class ParamSpacePoints:
                     child1, child2 = crossover_sbx_feasibility_selection(self.parents.local_random, self.parents.feasibility_model, [children1, children2], logger=logger)
                 xs_gen.extend([child1, child2])
                 count += 2
-            elif self.parents.ranks is not None:
-          #  else:
-                print('Mutation')
-                pool_idxs = tournament_selection(self.parents.local_random, self.parents.pop_size, self.parents.poolsize, self.parents.toursize, self.parents.ranks)
-               
+            if (self.parents.local_random.random() < self.parents.mutation_rate):
                 # Need value_array to have been ranked beforehand 
                 pool = self.parents.unc_values[pool_idxs,:]
 

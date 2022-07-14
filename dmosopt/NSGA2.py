@@ -12,7 +12,7 @@ from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, sortMO, 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_model=None, termination=None,
                  distance_metric=None, pop=100, gen=100, crossover_prob = 0.9, mutation_prob = 0.1, mutation_rate = None, nchildren=1,
-                 di_crossover=1., di_mutation=20., sampling_method=None, local_random=None, logger=None, **kwargs):
+                 di_crossover=1., di_mutation=20., sampling_method=None, sampling_method_args=None, local_random=None, logger=None, **kwargs):
     ''' Nondominated Sorting Genetic Algorithm II
 
         model: the evaluated model function
@@ -57,7 +57,10 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         x = sampling.lh(pop, nInput, local_random)
         x = x * (xub - xlb) + xlb
     elif callable(sampling_method):
-        x = sampling_method(pop, nInput, local_random, xlb, xub)
+#        x = sampling_method(pop, nInput, local_random, xlb, xub)
+#        sampling_args = (local_random, *sampling_method_args)
+        print('using callable')
+        x = sampling_method(sampling_method_args)
     else:
         raise RuntimeError(f'Unknown sampling method {sampling_method}')
     if x_initial is not None:

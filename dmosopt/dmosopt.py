@@ -26,7 +26,7 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
         
     
 class SOptStrategy():
-    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh",
+    def __init__(self, prob, n_initial=10, initial=None, initial_maxiter=5, initial_method="slh", initial_method_args=None,
                  resample_fraction=0.25, population_size=100, num_generations=100,
                  surrogate_method='gpr', surrogate_options={'anisotropic': False, 'optimizer': "sceua"},
                  sensitivity_method=None, sensitivity_options={},
@@ -34,6 +34,7 @@ class SOptStrategy():
                  optimizer_options={'crossover_prob': 0.9, 'mutation_prob': 0.1, 'di_crossover': 1., 'di_mutation': 20.},
                  feasibility_model=False, termination_conditions=None, local_random=None,
                  logger=None):
+
         if local_random is None:
             local_random = default_rng()
         self.local_random = local_random
@@ -72,8 +73,9 @@ class SOptStrategy():
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
+
         xinit = opt.xinit(n_initial, prob.param_names, prob.lb, prob.ub, nPrevious=nPrevious,
-                          maxiter=initial_maxiter, method=initial_method, local_random=self.local_random,
+                          maxiter=initial_maxiter, method=initial_method, method_args=initial_method_args, local_random=self.local_random,
                           logger=self.logger)
         self.reqs = []
         if xinit is not None:
@@ -218,6 +220,7 @@ class DistOptimizer():
         n_initial=10,
         initial_maxiter=5,
         initial_method="slh",
+        initial_method_args=None,
         verbose=False,
         reduce_fun=None,
         reduce_fun_args=None,
@@ -331,9 +334,15 @@ class DistOptimizer():
         param_names, is_int, lo_bounds, hi_bounds = [], [], [], []
         if space is not None:
             dim = len(space)
-            for parm, conf in space.items():
-                param_names.append(parm)
-                lo, hi = conf
+            sorted_params = np.sort(list(space.keys()))
+            for parm in sorted_params:
+                conf = space[parm]
+                if type(conf) is list:
+                    param_names.append(parm)
+                    lo, hi = conf
+                elif type(conf) is dict:
+                    param_names.append(parm)
+                    lo, hi = conf['abs']
                 is_int.append(type(lo) == int and type(hi) == int)
                 lo_bounds.append(lo)
                 hi_bounds.append(hi)
@@ -367,6 +376,7 @@ class DistOptimizer():
         self.n_initial = n_initial
         self.initial_maxiter = initial_maxiter
         self.initial_method = initial_method
+        self.initial_method_args = (n_initial, space) 
         self.problem_parameters, self.param_names = problem_parameters, param_names
         self.is_int = is_int
         self.file_path, self.save = file_path, save
@@ -455,6 +465,7 @@ class DistOptimizer():
                                         num_generations=self.num_generations,
                                         initial_maxiter=self.initial_maxiter,
                                         initial_method=self.initial_method,
+                                        initial_method_args=self.initial_method_args,
                                         distance_metric=self.distance_metric,
                                         surrogate_method=self.surrogate_method,
                                         surrogate_options=self.surrogate_options,
@@ -1282,6 +1293,7 @@ def eval_fun(opt_id, *args):
     return sopt_dict[opt_id].eval_fun(*args)
 
 def run(sopt_params, feasible=True, return_features=False, return_constraints=False, spawn_workers=False, sequential_spawn=False, spawn_startup_wait=None, spawn_executable=None, spawn_args=[], nprocs_per_worker=1, collective_mode="gather", verbose=True, worker_debug=False):
+
     if distwq.is_controller:
         distwq.run(fun_name="sopt_ctrl", module_name="dmosopt.dmosopt",
                    verbose=verbose, args=(sopt_params, verbose,),

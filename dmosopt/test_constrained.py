@@ -1,5 +1,7 @@
 import numpy as np
-from constrained_sampling import ParamSpacePoints 
+#from constrained_sampling import ParamSpacePoints 
+from constrained_sampling import constrained_sampling 
+
 
 if __name__=='__main__':
     Space = {
@@ -68,11 +70,11 @@ if __name__=='__main__':
         'params': parents_params, 
         'values': parents_val,
         'pop_size': 10,
-        'crossover_rate': 0.01,
+        'crossover_rate': 0.9,
         'mutation_rate': 0.2,
         'di_crossover': 1,
         'di_mutation': 20,
-        'nchildren': 20,
+        'nchildren': 10,
         'feasibility_model': None,
         'cross_constrained': False,
 #        'ranks': None,
@@ -87,9 +89,12 @@ if __name__=='__main__':
 #    print(Space)
 
 #    sampled_points = ParamSpacePoints(10, Space)
-    sampled_points = ParamSpacePoints(10, Space, Method=None, parents=parents_test)
-    print(sampled_points.param_keys)
-    print(sampled_points.param_arr)
+#    sampled_points = ParamSpacePoints(10, Space, Method=None, parents=parents_test)
+
+    sampled_points = constrained_sampling(None, 10, Space, Method=None, parents=parents_test, param_keys=True)
+#    print(sampled_points.param_keys)
+#    print(sampled_points.param_arr)
+    print(sampled_points)
 
 
 
