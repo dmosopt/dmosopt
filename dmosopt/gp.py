@@ -173,7 +173,7 @@ class SIV_Matern:
                     logger.info(f"SIV_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent")
                     break
         print_summary(gp_model)
-        self.sm = gp_model
+        self.sm = gp_model.posterior()
 
     def predict(self,xin):
         x = np.zeros_like(xin, dtype=np.float64)
@@ -185,7 +185,7 @@ class SIV_Matern:
         for i in range(N):
             x[i,:] = (xin[i,:] - self.xlb) / self.xrng
 
-        mean, var = self.sm.predict_y(x)
+        mean, var = self.sm.predict_f(x)
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
         y = np.zeros((N, self.nOutput), dtype=np.float32)
@@ -301,7 +301,7 @@ class SVGP_Matern:
                         break
             print_summary(gp_model)
             #assert(opt_log.success)
-            smlist.append(gp_model)
+            smlist.append(gp_model.posterior())
         self.smlist = smlist
 
     def predict(self,xin):
@@ -314,7 +314,7 @@ class SVGP_Matern:
         for i in range(N):
             x[i,:] = (xin[i,:] - self.xlb) / self.xrng
         for i in range(self.nOutput):
-            mean, var = self.smlist[i].predict_y(x)
+            mean, var = self.smlist[i].predict_f(x)
             # undo normalization
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
             y[:,i] = tf.cast(y_mean, tf.float32)
@@ -405,7 +405,7 @@ class VGP_Matern:
                         break
             print_summary(gp_model)
             #assert(opt_log.success)
-            smlist.append(gp_model)
+            smlist.append(gp_model.posterior())
         self.smlist = smlist
 
     def predict(self,xin):
@@ -418,7 +418,7 @@ class VGP_Matern:
         for i in range(N):
             x[i,:] = (xin[i,:] - self.xlb) / self.xrng
         for i in range(self.nOutput):
-            mean, var = self.smlist[i].predict_y(x)
+            mean, var = self.smlist[i].predict_f(x)
             # undo normalization
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
             y[:,i] = tf.cast(y_mean, tf.float32)
