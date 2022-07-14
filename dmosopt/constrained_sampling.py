@@ -23,7 +23,7 @@ class ParamSpacePoints:
             self.rng = default_rng() 
             self.seed = self.rng.bit_generator.state['state']['state']
 
-        self.N_params = N
+        self.N = N
         self.Space = Space
         self.parents_dict = parents 
         self.analyze_param_space()
@@ -56,6 +56,8 @@ class ParamSpacePoints:
         self.unc_intervals = np.empty(shape=(self.prm_unc_dim, 2))
 #        self.param_arr = np.full(shape=(self.N_params, self.param_dim), fill_value=np.nan) 
                 
+        self.N_params = self.N * self.param_dim
+
         for idx, kidx in enumerate(self.prm_idx_unc):
             key = self.param_keys[kidx] 
             self.unc_intervals[idx, :] = Space[key]
