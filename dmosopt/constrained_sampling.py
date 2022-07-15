@@ -6,15 +6,15 @@ from sly import Lexer, Parser
 from dmosopt.MOEA import crossover_sbx, mutation, tournament_selection, remove_duplicates
 
 
-def constrained_sampling(local_random, N, Space, Method=None, parents=None, seed=None, param_keys=False):
-    sampled_points = ParamSpacePoints(local_random, N, Space, Method, parents, seed)
+def constrained_sampling(local_random, N, Space, Method=None, constr_param=True, parents=None, seed=None, param_keys=False):
+    sampled_points = ParamSpacePoints(local_random, N, Space, Method, constr_param, parents, seed)
     if param_keys:
         return sampled_points.param_keys, sampled_points.param_arr  
     else:
         return sampled_points.param_arr  
 
 class ParamSpacePoints:
-    def __init__(self, local_random, N, Space, Method=None, parents=None, seed=None):
+    def __init__(self, local_random, N, Space, Method=None, constr_param=True, parents=None, seed=None):
         if local_random is not None:
             self.rng = local_random 
         elif seed is not None:
@@ -26,6 +26,7 @@ class ParamSpacePoints:
         self.N = N
         self.Space = Space
         self.parents_dict = parents 
+        self.constr_param = constr_param
         self.analyze_param_space()
         self.MethodUnc = Method
     
@@ -39,12 +40,19 @@ class ParamSpacePoints:
         params_idx_unc = []
         params_idx_con = []
         self.param_keys = np.sort(list(Space.keys()))
-        for kidx, key in enumerate(self.param_keys):
-            typ = type(Space[key])
-            if typ is list:
+        if self.constr_param:
+            for kidx, key in enumerate(self.param_keys):
+                typ = type(Space[key])
+                if typ is list:
+                    params_idx_unc.append(kidx) 
+                elif typ is dict:
+                    params_idx_con.append(kidx) 
+        else:
+            for kidx, key in enumerate(self.param_keys):
                 params_idx_unc.append(kidx) 
-            elif typ is dict:
-                params_idx_con.append(kidx) 
+
+
+
         self.prm_idx_unc = np.array(params_idx_unc)
         self.prm_idx_con = np.array(params_idx_con)
     
@@ -60,7 +68,10 @@ class ParamSpacePoints:
 
         for idx, kidx in enumerate(self.prm_idx_unc):
             key = self.param_keys[kidx] 
-            self.unc_intervals[idx, :] = Space[key]
+            try:
+                self.unc_intervals[idx, :] = Space[key]
+            except TypeError:
+                self.unc_intervals[idx, :] = Space[key]['abs']
 
 
         self.EvoMeth = False

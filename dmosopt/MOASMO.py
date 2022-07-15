@@ -187,7 +187,7 @@ def xinit(nEval, param_names, xlb, xub, nPrevious=None, method="glp", method_arg
     elif method == "mc":
         Xinit = sampling.mc(Ninit, nInput, local_random=local_random)
     elif callable(method):
-        Xinit = method(local_random, *method_args, param_keys=False)
+        Xinit = method(local_random, **method_args)
     else:
         raise RuntimeError(f'Unknown method {method}')
 

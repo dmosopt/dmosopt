@@ -376,7 +376,8 @@ class DistOptimizer():
         self.n_initial = n_initial
         self.initial_maxiter = initial_maxiter
         self.initial_method = initial_method
-        self.initial_method_args = (n_initial, space) 
+        initial_method_args.update({'N': n_initial, 'Space': space})
+        self.initial_method_args = initial_method_args 
         self.problem_parameters, self.param_names = problem_parameters, param_names
         self.is_int = is_int
         self.file_path, self.save = file_path, save
