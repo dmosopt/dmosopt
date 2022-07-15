@@ -489,8 +489,8 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     for idx, rnk in enumerate(rnk_inv):
         collect_idx[rnk].append(idx)    
 
-    rank_idx = np.array(collect_idx,dtype=np.ndarray)
-    for idx, i in enumerate(rank_idx):
+    rank_idx = np.empty(shape=len(collect_idx), dtype=np.ndarray)
+    for idx, i in enumerate(collect_idx):
         rank_idx[idx] = np.array(i)
 
     uniq_epc, epc_inv, epc_cnt = np.unique(perm_epoch, return_inverse=True, return_counts=True)
@@ -498,12 +498,11 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     collect_epoch = [[] for i in uniq_epc]  
     for idx, epc in enumerate(epc_inv):
         collect_epoch[epc].append(idx)    
-    epc_idx = np.array(collect_epoch,dtype=np.ndarray)
-    for idx, i in enumerate(epc_idx):
+    epc_idx = np.empty(shape=len(collect_epoch), dtype=np.ndarray)
+    for idx, i in enumerate(collect_epoch):
         epc_idx[idx] = np.array(i)
 
     rnk_epc_idx = np.empty(shape=(uniq_rank.shape[0], uniq_epc.shape[0]), dtype=np.ndarray)
-
     for idx, i in enumerate(rank_idx):
         for jidx, j in enumerate(epc_idx):
             rnk_epc_idx[idx, jidx] = np.intersect1d(i,j, assume_unique=True)
