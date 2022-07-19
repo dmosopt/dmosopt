@@ -1,12 +1,13 @@
 ###
-### Multiobjective CMA-ES optimization class based on the paper
+### Multiobjective CMA-ES optimization class based on the papers
+### "Efficient Covariance Matrix Update for Variable Metric Evolution Strategies", Suttorp, Hansen, Igel; 2009.
 ### "Improved Step Size Adaptation for the MO-CMA-ES", Voss, Hansen, Igel; 2010.
 ###
-### Based on code from 
+### Based on code from:
 ### https://github.com/DEAP/deap/blob/master/deap/cma.py
 ###
 
-import gc, itertools
+import gc, itertools, math
 from functools import partial
 import numpy as np
 from numpy.random import default_rng
@@ -28,7 +29,7 @@ def sortMO(x, y):
 
 
 def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
-                 pop=100, sigma=0.1, mu=None, sampling_method=None, termination=None,
+                 pop=100, sigma=0.01, mu=None, sampling_method=None, termination=None,
                  local_random=None, logger=None, **kwargs):
     """
     Multiobjective CMA-ES optimization class based on the paper 
@@ -169,7 +170,37 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
     gen_index = np.concatenate(gen_indexes)
     
     return bestx, besty, gen_index, x, y
+
+
+def updateCholesky(A, Ainv, z, psucc, pc, cc, ccov, pthresh):
+
+    alpha = None
+    if psucc < pthresh:
+        pc = (1.0 - cc) * pc + np.sqrt(cc * (2.0 - cc)) * z
+        alpha = 1.0 - ccov
+    else:
+        pc = (1.0 - cc) * pc
+        alpha = (1.0 - ccov) + ccov * cc * (2.0 - cc)
+
+    beta = ccov
+    w = np.dot(Ainv, pc)
+
+    # Under this threshold, the update is mostly noise
+    if w.max() > 1e-20:
+        w_inv = np.dot(w, Ainv)
+        a = np.sqrt(alpha)
+        norm_w2 = np.sum(w ** 2)
+        root = np.sqrt(1 + beta / alpha * norm_w2)
+        b = a / norm_w2 * (root - 1)
+        A = a * A + b * np.outer(pc, w.T)
+
+        c = 1.0 / (a * norm_w2) * (1.0 - 1.0 / root)
+        Ainv = (1.0 / a) * Ainv - c * w * (w.T * Ainv)
+
+        
+    return A, Ainv, pc
     
+
 
 class CMAES:
     
@@ -202,7 +233,7 @@ class CMAES:
         if mu is None:
             mu = population_size
         self.mu = mu
-        self.lambda_ = params.get("lambda_", population_size//2)
+        self.lambda_ = params.get("lambda_", nInput)
 
         # Step size control
         self.d = params.get("d", 1.0 + self.dim / 2.0)
@@ -221,7 +252,7 @@ class CMAES:
         self.A = np.stack([np.identity(self.dim) for _ in range(population_size)])
         
         # Inverse Cholesky matrix (Used in the update of A)
-        self.invCholesky = np.stack([np.identity(self.dim) for _ in range(population_size)])
+        self.Ainv = np.stack([np.identity(self.dim) for _ in range(population_size)])
         self.pc = np.stack([np.zeros(self.dim) for _ in range(population_size)])
         self.psucc = np.asarray([self.ptarg] * population_size)
 
@@ -236,13 +267,13 @@ class CMAES:
 
         # Each parent produces an offspring
         if self.lambda_ == self.mu:
-            individuals  = self.parents_x + self.sigmas.reshape((-1,1)) * np.einsum('ijk,ik->ij',self.A, arz)
+            individuals  = self.parents_x + self.sigmas.reshape((-1,1)) * np.einsum('ijk,ik->ij', self.A, arz)
             p_idx_array = np.asarray(range(self.lambda_), dtype=np.int_)
         # Parents producing an offspring are chosen at random from the first front
         else:
             rank = sortMO(self.parents_x, self.parents_y)
             front_1 = np.argwhere(rank == 0).ravel()
-            js = self.local_random.integers(0, len(front_1), size=self.lambda_)
+            js = self.local_random.choice(len(front_1), size=self.lambda_)
             p_idx_array = front_1[js]
             individuals = self.parents_x[p_idx_array] + self.sigmas[p_idx_array].reshape((-1,1)) * np.einsum('ijk,ik->ij', self.A[p_idx_array], arz)
 
@@ -294,28 +325,12 @@ class CMAES:
                 return indicator.do(np.concatenate((candidates_y[front[:i]], candidates_y[front[i+1:]])))
 
             contrib_values = np.fromiter(map(partial(contribution, mid_front), range(len(mid_front))), dtype=np.float32)
-            contrib_order = np.argsort(contrib_values)[::-1]
+            contrib_order = np.argsort(contrib_values)
 
             chosen[mid_front[contrib_order[:k]]] = True
             not_chosen[mid_front[contrib_order[k:]]] = True
 
         return chosen, not_chosen
-
-    def _update_cov(self, invCholesky, A, alpha, beta, v):
-        w = np.dot(invCholesky, v)
-
-        # Under this threshold, the update is mostly noise
-        if w.max() > 1e-20:
-            w_inv = np.dot(w, invCholesky)
-            norm_w2 = np.sum(w ** 2)
-            a = np.sqrt(alpha)
-            root = np.sqrt(1 + beta / alpha * norm_w2)
-            b = a / norm_w2 * (root - 1)
-
-            A = a * A + b * np.outer(v, w)
-            invCholesky = 1.0 / a * invCholesky - b / (a ** 2 + a * b * norm_w2) * np.outer(w, w_inv)
-
-        return invCholesky, A
 
     def update(self, x, y, p_idxs):
         """Update the current covariance matrix strategies from the population.
@@ -341,13 +356,13 @@ class CMAES:
         chosen_offspring = np.logical_and(chosen, candidates_offspring)
         last_steps = np.where(chosen_offspring, self.sigmas[candidates_pidxs], np.nan)
         sigmas = np.where(chosen_offspring, self.sigmas[candidates_pidxs], np.nan)
-        invCholesky = np.where(chosen_offspring.reshape((-1, 1, 1)), self.invCholesky[candidates_pidxs], np.nan)
+        Ainv = np.where(chosen_offspring.reshape((-1, 1, 1)), self.Ainv[candidates_pidxs], np.nan)
         A = np.where(chosen_offspring.reshape((-1, 1, 1)), self.A[candidates_pidxs], np.nan)
         pc = np.where(chosen_offspring.reshape((-1, 1)), self.pc[candidates_pidxs], np.nan)
         psucc = np.where(chosen_offspring, self.psucc[candidates_pidxs], np.nan)
 
         # Update the internal parameters for successful offspring
-        for i, ind in enumerate(np.nonzero(chosen)[0]):
+        for ind in np.nonzero(chosen)[0]:
             
             is_offspring = candidates_offspring[ind]
             p_idx = candidates_pidxs[ind]
@@ -355,19 +370,15 @@ class CMAES:
             # Only the offspring update the parameter set
             if is_offspring:
                 # Update (Success = 1 since it is chosen)
-                psucc[i] = (1.0 - cp) * psucc[i] + cp
-                sigmas[i] = sigmas[i] * np.exp((psucc[i] - ptarg) / (d * (1.0 - ptarg)))
+                psucc[ind] = (1.0 - cp) * psucc[ind] + cp
+                sigmas[ind] = sigmas[ind] * np.exp((psucc[ind] - ptarg) / (d * (1.0 - ptarg)))
 
-                if psucc[i] < pthresh:
-                    xp = candidates_x[ind]
-                    x = self.parents_x[p_idx]
-                    pc[i] = (1.0 - cc) * pc[i] + np.sqrt(cc * (2.0 - cc)) * (xp - x) / last_steps[i]
-                    invCholesky[i], A[i] = self._update_cov(invCholesky[i], A[i], 1 - ccov, ccov, pc[i])
-                else:
-                    pc[i] = (1.0 - cc) * pc[i]
-                    pc_weight = cc * (2.0 - cc)
-                    invCholesky[i], A[i] = self._update_cov(invCholesky[i], A[i], 1 - ccov + pc_weight, ccov, pc[i])
+                xp = candidates_x[ind]
+                x = self.parents_x[p_idx]
+                z = (xp - x) / last_steps[ind]
+                A[ind], Ainv[ind], pc[ind] = updateCholesky(A[ind], Ainv[ind], z, psucc[ind], pc[ind], cc, ccov, pthresh)
 
+                ## Update step size
                 self.psucc[p_idx] = (1.0 - cp) * self.psucc[p_idx] + cp
                 self.sigmas[p_idx] = self.sigmas[p_idx] * np.exp((self.psucc[p_idx] - ptarg) / (d * (1.0 - ptarg)))
 
@@ -383,7 +394,6 @@ class CMAES:
                 self.psucc[p_idx] = (1.0 - cp) * self.psucc[p_idx]
                 self.sigmas[p_idx] = self.sigmas[p_idx] * np.exp((self.psucc[p_idx] - ptarg) / (d * (1.0 - ptarg)))
 
-
         
         # Make a copy of the internal parameters
         # The parameter is in the temporary variable for offspring and in the original one for parents
@@ -391,7 +401,7 @@ class CMAES:
         self.parents_y = candidates_y[chosen]
         
         self.sigmas = np.where(candidates_offspring[chosen], sigmas[chosen], self.sigmas[candidates_pidxs[chosen]])
-        self.invCholesky = np.where(candidates_offspring[chosen].reshape((-1,1,1)), invCholesky[chosen], self.invCholesky[candidates_pidxs[chosen]])
+        self.Ainv = np.where(candidates_offspring[chosen].reshape((-1,1,1)), Ainv[chosen], self.Ainv[candidates_pidxs[chosen]])
         self.A = np.where(candidates_offspring[chosen].reshape((-1,1,1)), A[chosen], self.A[candidates_pidxs[chosen]])
         self.pc = np.where(candidates_offspring[chosen].reshape((-1,1)), pc[chosen], self.pc[candidates_pidxs[chosen]])
         self.psucc = np.where(candidates_offspring[chosen], psucc[chosen], self.psucc[candidates_pidxs[chosen]])
