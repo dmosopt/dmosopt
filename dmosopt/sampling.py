@@ -7,6 +7,19 @@ import numpy as np
 from dmosopt import GLP
 from scipy.stats import qmc
 
+def SobolDesign(n,s,local_random):
+    ''' Generate Sobol Design
+        n: number of samples
+        s: number of dimensions
+    '''
+
+    sampler = qmc.Sobol(d=s,scramble=True,seed=local_random)
+    m=10 # start at 1024 samples
+    while pow(2,m) < n:
+        m = m+1
+    sample = sampler.random_base2(m)
+    return sample[:n]
+
 def MonteCarloDesign(n,s,local_random):
     ''' Generate Monte Carlo Design
         n: number of samples
@@ -156,3 +169,7 @@ def glp(n,s,local_random,maxiter = 0):
     else:
         return GoodLatticePointsDesignDecorrelation(n,s,local_random,maxiter)
 
+def sobol(n,s,local_random):
+    ''' short name of SobolDesign'''
+    return SobolDesign(n,s,local_random)
+    

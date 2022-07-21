@@ -186,6 +186,8 @@ def xinit(nEval, param_names, xlb, xub, nPrevious=None, method="glp", maxiter=5,
         Xinit = sampling.lh(Ninit, nInput, local_random=local_random, maxiter=maxiter)
     elif method == "mc":
         Xinit = sampling.mc(Ninit, nInput, local_random=local_random)
+    elif method == "sobol":
+        Xinit = sampling.sobol(Ninit, nInput, local_random=local_random)
     elif callable(method):
         Xinit = method(Ninit, nInput, local_random)
     else:
