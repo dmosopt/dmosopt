@@ -185,7 +185,7 @@ def tournament_prob(ax, i):
     ax[0].append(p1)
     return (ax[0], p)
 
-def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
+def tournament_selection(local_random, pop, poolsize, *metrics):
     ''' tournament selecting the best individuals into the mating pool'''
 
     candidates = np.arange(pop)
@@ -194,7 +194,6 @@ def tournament_selection(local_random, pop, poolsize, toursize, *metrics):
     prob = prob / np.sum(prob)
     poolidx = local_random.choice(sorted_candidates, size=poolsize, p=np.asarray(prob), replace=False)
     return poolidx
-
 
 def remove_worst(population_parm, population_obj, pop, nInput, nOutput, x_distance_metrics=None, y_distance_metrics=None):
     ''' remove the worst individuals in the population '''

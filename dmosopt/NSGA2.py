@@ -44,7 +44,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         di_mutation = np.asarray([di_mutation]*nInput)
         
     poolsize = int(round(pop/2.)); # size of mating pool;
-    toursize = 2;                  # tournament size;
 
     if mutation_rate is None:
         mutation_rate = 1. / float(nInput)
@@ -78,6 +77,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                            y_distance_metrics=y_distance_metrics)
     population_parm = x[:pop]
     population_obj  = y[:pop]
+    rank = rank[:pop]
 
     gen_indexes = []
     gen_indexes.append(np.zeros((x.shape[0],),dtype=np.uint32))
@@ -99,7 +99,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 logger.info(f"NSGA2: generation {i}...")
             else:
                 logger.info(f"NSGA2: generation {i} of {gen}...")
-        pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, rank)
+        pool_idxs = tournament_selection(local_random, pop, poolsize, rank)
         pool = population_parm[pool_idxs,:]
         count = 0
         xs_gen = []
