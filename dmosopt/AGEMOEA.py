@@ -47,7 +47,6 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         di_mutation = np.asarray([di_mutation]*nInput)
 
     poolsize = int(round(pop/2.)); # size of mating pool;
-    toursize = 2;                  # tournament size;
 
     if mutation_rate is None:
         mutation_rate = 1. / float(nInput)
@@ -101,7 +100,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             else:
                 logger.info(f"AGE-MOEA: generation {i} of {gen}...")
 
-        pool_idxs = tournament_selection(local_random, pop, poolsize, toursize, -crowd_dist, rank)
+        pool_idxs = tournament_selection(local_random, pop, poolsize, -crowd_dist, rank)
         pool = population_parm[pool_idxs,:]
 
         count = 0
