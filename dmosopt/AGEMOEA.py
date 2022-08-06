@@ -58,6 +58,9 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
     if sampling_method is None:
         x = sampling.lh(pop, nInput, local_random)
         x = x * (xub - xlb) + xlb
+    elif sampling_method == 'sobol':
+        x = sampling.sobol(pop, nInput, local_random)
+        x = x * (xub - xlb) + xlb
     elif callable(sampling_method):
         sampling_method_params = kwargs.get('sampling_method_params', None)
         if sampling_method_params is None:
