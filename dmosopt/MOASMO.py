@@ -381,6 +381,20 @@ def train(nInput, nOutput, xlb, xub, \
                            adam_lr=siv_adam_lr, n_iter=siv_n_iter,
                            num_latent_gps=siv_num_latent_gps,
                            logger=logger)
+    elif surrogate_method == 'crv':
+        crv_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
+        crv_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
+        crv_natgrad_gamma=surrogate_options.get('natgrad_gamma', 0.1)
+        crv_adam_lr=surrogate_options.get('adam_lr', 0.01)
+        crv_n_iter=surrogate_options.get('n_iter', 30000)
+        crv_num_latent_gps=surrogate_options.get('num_latent_gps', None)
+        sm = gp.CRV_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
+                            gp_lengthscale_bounds=crv_lengthscale_bounds,
+                            gp_likelihood_sigma=crv_likelihood_sigma,
+                            natgrad_gamma=crv_natgrad_gamma,
+                            adam_lr=crv_adam_lr, n_iter=crv_n_iter,
+                            num_latent_gps=crv_num_latent_gps,
+                            logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
