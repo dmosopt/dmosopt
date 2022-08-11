@@ -65,7 +65,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
      
 class CRV_Matern:
 
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=50, inducing_fraction=0.2, min_inducing=100, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=1.0, num_latent_gps=None, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, batch_size=50, inducing_fraction=0.2, min_inducing=100, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, natgrad_gamma=0.1, adam_lr=0.01, n_iter=30000, min_elbo_pct_change=0.1, num_latent_gps=None, logger=None):
         if not _has_gpflow:
             raise RuntimeError('CRV_Matern requires the GPflow library to be installed.')
             
