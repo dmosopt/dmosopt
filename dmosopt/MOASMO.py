@@ -356,18 +356,21 @@ def train(nInput, nOutput, xlb, xub, \
                            adam_lr=vgp_adam_lr, n_iter=vgp_n_iter,
                            logger=logger)
     elif surrogate_method == 'svgp':
+        svgp_batch_size=surrogate_options.get('batch_size', 50)
         svgp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
         svgp_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
         svgp_natgrad_gamma=surrogate_options.get('natgrad_gamma', 0.1)
         svgp_adam_lr=surrogate_options.get('adam_lr', 0.01)
         svgp_n_iter=surrogate_options.get('n_iter', 30000)
         sm = gp.SVGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
+                            batch_size=svgp_batch_size,
                             gp_lengthscale_bounds=svgp_lengthscale_bounds,
                             gp_likelihood_sigma=svgp_likelihood_sigma,
                             natgrad_gamma=svgp_natgrad_gamma,
                             adam_lr=svgp_adam_lr, n_iter=svgp_n_iter,
                             logger=logger)
     elif surrogate_method == 'siv':
+        siv_batch_size=surrogate_options.get('batch_size', 50)
         siv_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
         siv_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
         siv_natgrad_gamma=surrogate_options.get('natgrad_gamma', 0.1)
@@ -375,6 +378,7 @@ def train(nInput, nOutput, xlb, xub, \
         siv_n_iter=surrogate_options.get('n_iter', 30000)
         siv_num_latent_gps=surrogate_options.get('num_latent_gps', None)
         sm = gp.SIV_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
+                           batch_size=siv_batch_size,
                            gp_lengthscale_bounds=siv_lengthscale_bounds,
                            gp_likelihood_sigma=siv_likelihood_sigma,
                            natgrad_gamma=siv_natgrad_gamma,
@@ -382,6 +386,7 @@ def train(nInput, nOutput, xlb, xub, \
                            num_latent_gps=siv_num_latent_gps,
                            logger=logger)
     elif surrogate_method == 'crv':
+        crv_batch_size=surrogate_options.get('batch_size', 50)
         crv_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
         crv_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
         crv_natgrad_gamma=surrogate_options.get('natgrad_gamma', 0.1)
@@ -389,12 +394,13 @@ def train(nInput, nOutput, xlb, xub, \
         crv_n_iter=surrogate_options.get('n_iter', 30000)
         crv_num_latent_gps=surrogate_options.get('num_latent_gps', None)
         sm = gp.CRV_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
-                            gp_lengthscale_bounds=crv_lengthscale_bounds,
-                            gp_likelihood_sigma=crv_likelihood_sigma,
-                            natgrad_gamma=crv_natgrad_gamma,
-                            adam_lr=crv_adam_lr, n_iter=crv_n_iter,
-                            num_latent_gps=crv_num_latent_gps,
-                            logger=logger)
+                           batch_size=crv_batch_size,
+                           gp_lengthscale_bounds=crv_lengthscale_bounds,
+                           gp_likelihood_sigma=crv_likelihood_sigma,
+                           natgrad_gamma=crv_natgrad_gamma,
+                           adam_lr=crv_adam_lr, n_iter=crv_n_iter,
+                           num_latent_gps=crv_num_latent_gps,
+                           logger=logger)
     elif surrogate_method == 'pod':
         sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:

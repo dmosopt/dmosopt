@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
-    version="0.24.1",
+    version="0.24.2",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed multi-objective surrogate optimization algorithm.",
