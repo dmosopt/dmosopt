@@ -251,7 +251,7 @@ class SIV_Matern:
         M = int(round(inducing_fraction * N))
 
         if M < min_inducing:
-            M = z.shape[0]
+            M = xn.shape[0]
             Z = xn.copy()
         else:
             Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
