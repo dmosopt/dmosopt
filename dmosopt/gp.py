@@ -30,6 +30,28 @@ except:
 else:
     _has_gpflow = True
 
+try:
+    import torch
+    import gpytorch
+
+    class GPyTorchExactGPModelMatern(gpytorch.models.ExactGP):
+
+        def __init__(self, train_x, train_y, likelihood):
+            super().__init__(train_x, train_y, likelihood)
+            self.mean_module = gpytorch.means.ConstantMean()
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel())
+
+        def forward(self, x):
+            mean_x = self.mean_module(x)
+            covar_x = self.covar_module(x)
+            return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
+except:
+    _has_gpytorch = False
+else:
+    _has_gpytorch = True
+
     
 
 def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
@@ -62,6 +84,120 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         scale[constant_mask] = 1.0
         return scale
 
+    
+class EGP_Matern:
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, adam_lr=0.001, n_iter=3000, min_loss_pct_change=0.01, logger=None):
+        
+        if not _has_gpytorch:
+            raise RuntimeError('EGP_Matern requires the GPyTorch library to be installed.')
+            
+        self.nInput  = nInput
+        self.nOutput = nOutput
+        self.xlb = xlb
+        self.xub = xub
+        self.xrng = np.where(np.isclose(xub - xlb, 0., rtol=1e-6, atol=1e-6), 1., xub - xlb) 
+
+        self.logger = logger
+
+        N = xin.shape[0]
+        xn = np.zeros_like(xin)
+        for i in range(N):
+            xn[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        if nOutput == 1:
+            yin = yin.reshape((yin.shape[0],1))
+
+        self.y_train_mean = np.asarray([np.mean(yin[:,i]) for i in range(yin.shape[1])], dtype=np.float32)
+        self.y_train_std = np.asarray([handle_zeros_in_scale(np.std(yin[:,i], axis=0), copy=False)
+                                       for i in range(yin.shape[1])], dtype=np.float32)
+
+        # Remove mean and make unit variance
+        yn = np.column_stack(tuple((yin[:,i] - self.y_train_mean[i]) / self.y_train_std[i] for i in range(yin.shape[1])))
+        train_x = torch.from_numpy(xn)
+
+        smlist = []
+        for i in range(nOutput):
+            if logger is not None:
+                logger.info(f"EGP_Matern: creating regressor for output {i+1} of {nOutput}...")
+                logger.info(f"EGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}...")
+
+            train_y = torch.from_numpy(yn[:, i].reshape((-1,)))
+            
+            # TODO: use gp_likelihood_sigma
+            gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
+            gp_model = GPyTorchExactGPModelMatern(train_x=train_x,
+                                                  train_y=train_y,
+                                                  likelihood=gp_likelihood)
+
+            # Find optimal model hyperparameters
+            gp_model.train()
+            gp_likelihood.train()
+            
+            optimizer = torch.optim.Adam(gp_model.parameters(), lr=adam_lr)  # Includes GaussianLikelihood parameters
+
+            # TODO: set lengthscales
+            #gp_model.kernel.lengthscales = bounded_parameter(np.asarray([gp_lengthscale_bounds[0]]*nInput, dtype=np.float64),
+            #                                                 np.asarray([gp_lengthscale_bounds[1]]*nInput, dtype=np.float64),
+            #                                                 np.ones(nInput, dtype=np.float64), trainable=True,
+            #                                                 name='lengthscales')
+            
+
+            if logger is not None:
+                logger.info(f"EGP_Matern: optimizing regressor for output {i+1} of {nOutput}...")
+
+            # "Loss" for GPs - the marginal log likelihood
+            mll = gpytorch.mlls.ExactMarginalLogLikelihood(gp_likelihood, gp_model)
+            loss_log = []
+            diff_kernel = np.array([1,-1])
+
+            for it in range(n_iter):
+                # Zero gradients from previous iteration
+                optimizer.zero_grad()
+                # Output from model
+                output = gp_model(train_x)
+                # Calculate loss and backprop gradients
+                loss = -mll(output, train_y)
+                loss.backward()
+                if it % 100 == 0:
+                    logger.info('EGP_Matern: iter %d/%d - Loss: %.3f   lengthscale: %.3f   noise: %.3f' % (
+                        it + 1, n_iter, loss.item(),
+                        gp_model.covar_module.base_kernel.lengthscale.item(),
+                        gp_model.likelihood.noise.item()
+                    ))
+                loss_log.append(loss.item())
+                optimizer.step()
+                if it >= 1000:
+                    loss_change = np.convolve(loss_log, diff_kernel, 'same')[1:]
+                    loss_pct_change = (loss_change / np.abs(loss_log[1:]))*100
+                    mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
+                    if mean_loss_pct_change < min_loss_pct_change:
+                        logger.info(f"EGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent")
+                        break
+            smlist.append(gp_model)
+        self.smlist = smlist
+
+    def predict(self,xin):
+        x = np.zeros_like(xin, dtype=np.float64)
+        if len(x.shape) == 1:
+            x = x.reshape((1,self.nInput))
+            xin = xin.reshape((1,self.nInput))
+        N = x.shape[0]
+        y = np.zeros((N,self.nOutput), dtype=np.float32)
+        for i in range(N):
+            x[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            for i in range(self.nOutput):
+                self.smlist[i].eval()
+                f_preds = self.smlist[i](torch.from_numpy(x))
+                mean, var = f_preds.mean, f_preds.variance
+                # undo normalization
+                y_mean = self.y_train_std[i] * np.reshape(mean.numpy(), [-1]) + self.y_train_mean[i]
+                y[:,i] = y_mean
+        return y
+
+    def evaluate(self,x):
+                            
+        return self.predict(x)
+    
      
 class CRV_Matern:
 
@@ -113,8 +249,9 @@ class CRV_Matern:
         else:
             Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
         # initialize as list inducing inducing variables
-        iv = gpflow.inducing_variables.InducingPoints(Z)
-        iv = gpflow.inducing_variables.SharedIndependentInducingVariables(iv)
+        iv = gpflow.inducing_variables.SharedIndependentInducingVariables(
+            gpflow.inducing_variables.InducingPoints(Z)
+        )
         kernels = [gpflow.kernels.Matern52() for _ in range(nOutput)]
         gp_kernel = gpflow.kernels.LinearCoregionalization(
             kernels, W=np.random.randn(nOutput, nOutput)
