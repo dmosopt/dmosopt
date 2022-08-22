@@ -36,11 +36,15 @@ try:
 
     class GPyTorchExactGPModelMatern(gpytorch.models.ExactGP):
 
-        def __init__(self, train_x, train_y, likelihood):
+        def __init__(self, train_x, train_y, likelihood, lengthscale_bounds=None):
             super().__init__(train_x, train_y, likelihood)
+            lengthscale_prior=None
+            if lengthscale_bounds is not None:
+                lengthscale_prior = gpytorch.priors.SmoothedBoxPrior(a=lengthscale_bounds[0], b=lengthscale_bounds[1])
             self.mean_module = gpytorch.means.ConstantMean()
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel())
-
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(lengthscale_prior=lengthscale_prior))
+            
+            
         def forward(self, x):
             mean_x = self.mean_module(x)
             covar_x = self.covar_module(x)
@@ -86,7 +90,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
     
 class EGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=(1e-6, 100.0), gp_likelihood_sigma=1.0e-4, adam_lr=0.001, n_iter=3000, min_loss_pct_change=0.01, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, adam_lr=0.01, n_iter=5000, min_loss_pct_change=0.1, logger=None):
         
         if not _has_gpytorch:
             raise RuntimeError('EGP_Matern requires the GPyTorch library to be installed.')
@@ -121,25 +125,22 @@ class EGP_Matern:
                 logger.info(f"EGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}...")
 
             train_y = torch.from_numpy(yn[:, i].reshape((-1,)))
+
+            if gp_likelihood_sigma is not None:
+                noise_prior = gpytorch.priors.NormalPrior(loc=0.0, scale=gp_likelihood_sigma)
+            gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=noise_prior)
             
-            # TODO: use gp_likelihood_sigma
-            gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
             gp_model = GPyTorchExactGPModelMatern(train_x=train_x,
                                                   train_y=train_y,
-                                                  likelihood=gp_likelihood)
+                                                  likelihood=gp_likelihood,
+                                                  lengthscale_bounds=gp_lengthscale_bounds)
 
+            
             # Find optimal model hyperparameters
             gp_model.train()
             gp_likelihood.train()
             
             optimizer = torch.optim.Adam(gp_model.parameters(), lr=adam_lr)  # Includes GaussianLikelihood parameters
-
-            # TODO: set lengthscales
-            #gp_model.kernel.lengthscales = bounded_parameter(np.asarray([gp_lengthscale_bounds[0]]*nInput, dtype=np.float64),
-            #                                                 np.asarray([gp_lengthscale_bounds[1]]*nInput, dtype=np.float64),
-            #                                                 np.ones(nInput, dtype=np.float64), trainable=True,
-            #                                                 name='lengthscales')
-            
 
             if logger is not None:
                 logger.info(f"EGP_Matern: optimizing regressor for output {i+1} of {nOutput}...")
@@ -157,17 +158,17 @@ class EGP_Matern:
                 # Calculate loss and backprop gradients
                 loss = -mll(output, train_y)
                 loss.backward()
+                loss_log.append(loss.item())
                 if it % 100 == 0:
                     logger.info('EGP_Matern: iter %d/%d - Loss: %.3f   lengthscale: %.3f   noise: %.3f' % (
                         it + 1, n_iter, loss.item(),
                         gp_model.covar_module.base_kernel.lengthscale.item(),
                         gp_model.likelihood.noise.item()
                     ))
-                loss_log.append(loss.item())
                 optimizer.step()
                 if it >= 1000:
                     loss_change = np.convolve(loss_log, diff_kernel, 'same')[1:]
-                    loss_pct_change = (loss_change / np.abs(loss_log[1:]))*100
+                    loss_pct_change = (np.abs(loss_change) / np.abs(loss_log[1:]))*100
                     mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
                     if mean_loss_pct_change < min_loss_pct_change:
                         logger.info(f"EGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent")
