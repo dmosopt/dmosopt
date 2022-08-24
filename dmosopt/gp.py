@@ -115,11 +115,12 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
     
 class MEGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, adam_lr=0.01, n_iter=5000, min_loss_pct_change=0.1, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, adam_lr=0.01, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
         
         if not _has_gpytorch:
             raise RuntimeError('MEGP_Matern requires the GPyTorch library to be installed.')
-            
+
+        self.cuda = cuda
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -153,6 +154,9 @@ class MEGP_Matern:
 
         if gp_likelihood_sigma is not None:
             noise_prior = gpytorch.priors.NormalPrior(loc=0.0, scale=gp_likelihood_sigma)
+            
+
+            
         gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nOutput, noise_prior=noise_prior)
             
         gp_model = GPyTorchMultitaskExactGPModelMatern(train_x=train_x,
@@ -162,6 +166,11 @@ class MEGP_Matern:
                                                        likelihood=gp_likelihood,
                                                        lengthscale_bounds=gp_lengthscale_bounds)
 
+        if self.cuda:
+            train_x = train_x.cuda()
+            train_y = train_y.cuda()
+            gp_model = gp_model.cuda()
+            gp_likelihood = gp_likelihood.cuda()
             
         # Find optimal model hyperparameters
         gp_model.train()
@@ -211,12 +220,17 @@ class MEGP_Matern:
         y = np.zeros((N,self.nOutput), dtype=np.float32)
         for i in range(N):
             x[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        x = torch.from_numpy(x)
+        if self.cuda:
+            x = x.cuda()
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             self.sm.eval()
             self.sm.likelihood.eval()
-            f_preds = self.sm.likelihood(self.sm(torch.from_numpy(x)))
+            f_preds = self.sm.likelihood(self.sm(x))
             mean, var = f_preds.mean, f_preds.variance
             # undo normalization
+            if self.cuda:
+                mean = mean.cpu()
             y_mean = self.y_train_std * mean.numpy() + self.y_train_mean
             y[:] = y_mean
         return y
@@ -227,11 +241,12 @@ class MEGP_Matern:
     
     
 class EGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, adam_lr=0.01, n_iter=5000, min_loss_pct_change=0.1, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, adam_lr=0.01, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
         
         if not _has_gpytorch:
             raise RuntimeError('EGP_Matern requires the GPyTorch library to be installed.')
-            
+
+        self.cuda = cuda
         self.nInput  = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -254,7 +269,7 @@ class EGP_Matern:
         # Remove mean and make unit variance
         yn = np.column_stack(tuple((yin[:,i] - self.y_train_mean[i]) / self.y_train_std[i] for i in range(yin.shape[1])))
         train_x = torch.from_numpy(xn)
-
+        
         smlist = []
         for i in range(nOutput):
             if logger is not None:
@@ -262,7 +277,7 @@ class EGP_Matern:
                 logger.info(f"EGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}...")
 
             train_y = torch.from_numpy(yn[:, i].reshape((-1,)).astype(np.float32))
-
+            
             if gp_likelihood_sigma is not None:
                 noise_prior = gpytorch.priors.NormalPrior(loc=0.0, scale=gp_likelihood_sigma)
             gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=noise_prior)
@@ -272,7 +287,11 @@ class EGP_Matern:
                                                   ard_num_dims=nInput,
                                                   likelihood=gp_likelihood,
                                                   lengthscale_bounds=gp_lengthscale_bounds)
-
+            if self.cuda:
+                train_x = train_x.cuda()
+                train_y = train_y.cuda()
+                gp_model = gp_model.cuda()
+                gp_likelihood = gp_likelihood.cuda()
             
             # Find optimal model hyperparameters
             gp_model.train()
@@ -324,13 +343,18 @@ class EGP_Matern:
         y = np.zeros((N,self.nOutput), dtype=np.float32)
         for i in range(N):
             x[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        x = torch.from_numpy(x)
+        if self.cuda:
+            x = x.cuda()
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             for i in range(self.nOutput):
                 self.smlist[i].eval()
                 self.smlist[i].likelihood.eval()
-                f_preds = self.smlist[i].likelihood(self.smlist[i](torch.from_numpy(x)))
+                f_preds = self.smlist[i].likelihood(self.smlist[i](x))
                 mean, var = f_preds.mean, f_preds.variance
                 # undo normalization
+                if self.cuda:
+                    mean = mean.cpu()
                 y_mean = self.y_train_std[i] * np.reshape(mean.numpy(), [-1]) + self.y_train_mean[i]
                 y[:,i] = y_mean
         return y
