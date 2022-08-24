@@ -71,11 +71,15 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         raise RuntimeError(f'Unknown sampling method {sampling_method}')
 
     if x_initial is not None:
-        x = np.vstack((x_initial, x))
+        x = np.vstack((x_initial, x)).astype(np.float32)
+    else:
+        x = x.astype(np.float32)
 
     y = model.evaluate(x)
     if y_initial is not None:
-        y = np.vstack((y_initial, y))
+        y = np.vstack((y_initial, y)).astype(np.float32)
+    else:
+        y = y.astype(np.float32)
     
     gen_indexes = []
     gen_indexes.append(np.zeros((x.shape[0],),dtype=np.int32))

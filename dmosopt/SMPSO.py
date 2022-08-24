@@ -67,8 +67,8 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
         else:
             raise RuntimeError(f'Unknown sampling method {sampling_method}')
         if x_initial is not None:
-            x_s = np.vstack((x_initial, x_s))
-        y_s = model.evaluate(x_s)
+            x_s = np.vstack((x_initial, x_s)).astype(np.float32)
+        y_s = model.evaluate(x_s).astype(np.float32)
         xs.append(x_s)
         ys.append(y_s)
 
@@ -128,7 +128,7 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
                 xs_gens[p].append(child)
             count += 1
 
-        x_gens = np.vstack([np.vstack(x) for x in xs_gens])
+        x_gens = np.vstack([np.vstack(x) for x in xs_gens]).astype(np.float32)
         y_gens = model.evaluate(x_gens)
         x_new.append(x_gens)
         y_new.append(y_gens)

@@ -353,6 +353,16 @@ def train(nInput, nOutput, xlb, xub, \
                            gp_likelihood_sigma=egp_likelihood_sigma,
                            adam_lr=egp_adam_lr, n_iter=egp_n_iter,
                            logger=logger)
+    elif surrogate_method == 'megp':
+        megp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', None)
+        megp_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)
+        megp_adam_lr=surrogate_options.get('adam_lr', 0.01)
+        megp_n_iter=surrogate_options.get('n_iter', 5000)
+        sm = gp.MEGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
+                            gp_lengthscale_bounds=megp_lengthscale_bounds,
+                            gp_likelihood_sigma=megp_likelihood_sigma,
+                            adam_lr=megp_adam_lr, n_iter=megp_n_iter,
+                            logger=logger)
     elif surrogate_method == 'vgp':
         vgp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
         vgp_likelihood_sigma=surrogate_options.get('likelihood_sigma', 1.0e-4)

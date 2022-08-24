@@ -94,13 +94,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
     else:
         raise RuntimeError(f'Unknown sampling method {sampling_method}')
     if x_initial is not None:
-        x = np.vstack((x_initial, x))
+        x = np.vstack((x_initial, x)).astype(np.float32)
     
-    y = np.zeros((pop, nOutput))
+    y = np.zeros((pop, nOutput), dtype=np.float32)
     for i in range(pop):
         y[i,:] = model.evaluate(x[i,:])
     if y_initial is not None:
-        y = np.vstack((y_initial, y))
+        y = np.vstack((y_initial, y)).astype(np.float32)
 
     population_parm = x[:pop]
     population_obj  = y[:pop]
@@ -363,13 +363,13 @@ class CMAES:
         A = np.where(chosen_offspring.reshape((-1, 1, 1)), self.A[candidates_pidxs], np.nan)
         pc = np.where(chosen_offspring.reshape((-1, 1)), self.pc[candidates_pidxs], np.nan)
         psucc = np.where(chosen_offspring, self.psucc[candidates_pidxs], np.nan)
-
+        
         # Update the internal parameters for successful offspring
         for ind in np.nonzero(chosen)[0]:
             
             is_offspring = candidates_offspring[ind]
             p_idx = candidates_pidxs[ind]
-
+            
             # Only the offspring update the parameter set
             if is_offspring:
                 # Update (Success = 1 since it is chosen)
@@ -381,10 +381,9 @@ class CMAES:
                 z = (xp - x) / last_steps[ind]
                 A[ind], Ainv[ind], pc[ind] = updateCholesky(A[ind], Ainv[ind], z, psucc[ind], pc[ind], cc, ccov, pthresh)
 
-                ## Update step size
                 self.psucc[p_idx] = (1.0 - cp) * self.psucc[p_idx] + cp
                 self.sigmas[p_idx] = self.sigmas[p_idx] * np.exp((self.psucc[p_idx] - ptarg) / (d * (1.0 - ptarg)))
-
+                
         # It is unnecessary to update the entire parameter set for not chosen individuals
         # Their parameters will not make it to the next generation
         for ind in np.nonzero(not_chosen)[0]:
