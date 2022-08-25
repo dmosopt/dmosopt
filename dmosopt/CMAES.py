@@ -93,14 +93,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, gen=100,
             x = sampling_method(local_random, **sampling_method_params)
     else:
         raise RuntimeError(f'Unknown sampling method {sampling_method}')
-    if x_initial is not None:
-        x = np.vstack((x_initial, x)).astype(np.float32)
     
-    y = np.zeros((pop, nOutput), dtype=np.float32)
-    for i in range(pop):
-        y[i,:] = model.evaluate(x[i,:])
+    y = model.evaluate(x).astype(np.float32)
+    
+    if x_initial is not None:
+        x = np.vstack((x_initial.astype(np.float32), x))
     if y_initial is not None:
-        y = np.vstack((y_initial, y)).astype(np.float32)
+        y = np.vstack((y_initial.astype(np.float32), y))
 
     population_parm = x[:pop]
     population_obj  = y[:pop]

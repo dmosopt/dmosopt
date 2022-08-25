@@ -208,7 +208,10 @@ class MEGP_Matern:
                 if mean_loss_pct_change < min_loss_pct_change:
                     logger.info(f"MEGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent")
                     break
-
+        del(train_x)
+        del(train_y)
+        if cuda:
+            torch.cuda.empty_cache() 
         self.sm = gp_model
 
     def predict(self,xin):
@@ -233,6 +236,8 @@ class MEGP_Matern:
                 mean = mean.cpu()
             y_mean = self.y_train_std * mean.numpy() + self.y_train_mean
             y[:] = y_mean
+            del(mean)
+            del(var)
         return y
 
     def evaluate(self,x):
@@ -331,7 +336,11 @@ class EGP_Matern:
                     if mean_loss_pct_change < min_loss_pct_change:
                         logger.info(f"EGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent")
                         break
+            del(train_y)
             smlist.append(gp_model)
+        del(train_x)
+        if cuda:
+            torch.cuda.empty_cache() 
         self.smlist = smlist
 
     def predict(self,xin):
@@ -357,6 +366,8 @@ class EGP_Matern:
                     mean = mean.cpu()
                 y_mean = self.y_train_std[i] * np.reshape(mean.numpy(), [-1]) + self.y_train_mean[i]
                 y[:,i] = y_mean
+                del(mean)
+                del(var)
         return y
 
     def evaluate(self,x):
