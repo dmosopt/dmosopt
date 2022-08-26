@@ -1,3 +1,4 @@
+import gc
 import timeit
 import copy
 import numpy as np
@@ -158,11 +159,12 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
     
 class MEGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=False, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
         
         if not _has_gpytorch:
             raise RuntimeError('MEGP_Matern requires the GPyTorch library to be installed.')
 
+        self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
         self.checkpoint_size = None
         self.cuda = cuda
@@ -311,7 +313,8 @@ class MEGP_Matern:
             x = x.cuda()
         with ExitStack() as stack:
             stack.enter_context(torch.no_grad())
-            stack.enter_context(gpytorch.settings.fast_pred_var())
+            if self.fast_pred_var:
+                stack.enter_context(gpytorch.settings.fast_pred_var())
             if self.checkpoint_size is not None:
                 stack.enter_context(gpytorch.beta_features.checkpoint_kernel(self.checkpoint_size))
             self.sm.eval()
@@ -333,11 +336,12 @@ class MEGP_Matern:
     
     
 class EGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=True, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
         
         if not _has_gpytorch:
             raise RuntimeError('EGP_Matern requires the GPyTorch library to be installed.')
 
+        self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
         self.checkpoint_size = None
         self.cuda = cuda
@@ -485,7 +489,8 @@ class EGP_Matern:
 
         with ExitStack() as stack:
             stack.enter_context(torch.no_grad())
-            stack.enter_context(gpytorch.settings.fast_pred_var())
+            if self.fast_pred_var:
+                stack.enter_context(gpytorch.settings.fast_pred_var())
             if self.checkpoint_size is not None:
                 stack.enter_context(gpytorch.beta_features.checkpoint_kernel(self.checkpoint_size))
             for i in range(self.nOutput):
