@@ -1,10 +1,10 @@
+import gc
 import timeit
 import copy
 import numpy as np
 from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteKernel
-
 try:
     import gpflow
     import tensorflow as tf
@@ -29,6 +29,101 @@ except:
     _has_gpflow = False
 else:
     _has_gpflow = True
+
+try:
+    import torch
+    import gpytorch
+
+    from contextlib import ExitStack
+
+    
+    def find_best_gpu_setting(nInput,
+                              nOutput,
+                              train_f,
+                              train_x,
+                              train_y,
+                              n_devices,
+                              preconditioner_size,
+                              logger=None):
+        
+        N = train_x.size(0)
+
+        # Find the optimum partition/checkpoint size by decreasing in powers of 2
+        # Start with no partitioning (size = 0)
+        settings = [0] + [int(n) for n in np.ceil(N / 2**np.arange(1, np.floor(np.log2(N))))]
+        
+        for checkpoint_size in settings:
+            logger.info('gpytorch: Number of devices: {} -- Kernel partition size: {}'.format(n_devices, checkpoint_size))
+            try:
+                # Try a full forward and backward pass with this setting to check memory usage
+                _ = train_f(nInput, nOutput, train_x, train_y, n_iter=1,
+                            checkpoint_size=checkpoint_size,
+                            preconditioner_size=preconditioner_size)
+                
+                # when successful, break out of for-loop and jump to finally block
+                break
+            except RuntimeError as e:
+                logger.error('RuntimeError: {}'.format(e))
+            except AttributeError as e:
+                logger.error('AttributeError: {}'.format(e))
+            finally:
+                # handle CUDA OOM error
+                gc.collect()
+                torch.cuda.empty_cache()
+                
+        return checkpoint_size
+
+    
+    class GPyTorchExactGPModelMatern(gpytorch.models.ExactGP):
+
+        def __init__(self, train_x, train_y, likelihood, ard_num_dims=None, lengthscale_bounds=None, n_devices=1):
+            super().__init__(train_x, train_y, likelihood)
+            lengthscale_constraint=None
+            if lengthscale_bounds is not None:
+                lengthscale_constraint = gpytorch.constraints.Interval(lengthscale_bounds[0],
+                                                                       lengthscale_bounds[1])
+            self.mean_module = gpytorch.means.ConstantMean()
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(ard_num_dims=ard_num_dims,
+                                                                                           lengthscale_constraint=lengthscale_constraint))
+            if n_devices > 1:
+                self.covar_module = gpytorch.kernels.MultiDeviceKernel(
+                    self.covar_module, device_ids=range(n_devices))
+            
+            
+        def forward(self, x):
+            mean_x = self.mean_module(x)
+            covar_x = self.covar_module(x)
+            return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+    class GPyTorchMultitaskExactGPModelMatern(gpytorch.models.ExactGP):
+        
+        def __init__(self, train_x, train_y, likelihood, num_tasks, rank=1, ard_num_dims=None, lengthscale_bounds=None, n_devices=1):
+            
+            super().__init__(train_x, train_y, likelihood)
+            self.mean_module = gpytorch.means.MultitaskMean(
+                gpytorch.means.ConstantMean(), num_tasks=num_tasks
+            )
+            lengthscale_constraint=None
+            if lengthscale_bounds is not None:
+                lengthscale_constraint = gpytorch.constraints.Interval(lengthscale_bounds[0],
+                                                                       lengthscale_bounds[1])
+            self.covar_module = gpytorch.kernels.MultitaskKernel(gpytorch.kernels.MaternKernel(ard_num_dims=ard_num_dims,
+                                                                                               lengthscale_constraint=lengthscale_constraint),
+                                                                 num_tasks=num_tasks, rank=rank)
+            if n_devices > 1:
+                self.covar_module = gpytorch.kernels.MultiDeviceKernel(
+                    self.covar_module, device_ids=range(n_devices))
+
+        def forward(self, x):
+            mean_x = self.mean_module(x)
+            covar_x = self.covar_module(x)
+            return gpytorch.distributions.MultitaskMultivariateNormal(mean_x, covar_x)
+
+
+except:
+    _has_gpytorch = False
+else:
+    _has_gpytorch = True
 
     
 
@@ -62,6 +157,360 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         scale[constant_mask] = 1.0
         return scale
 
+    
+class MEGP_Matern:
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=False, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
+        
+        if not _has_gpytorch:
+            raise RuntimeError('MEGP_Matern requires the GPyTorch library to be installed.')
+
+        self.fast_pred_var = fast_pred_var
+        self.preconditioner_size = preconditioner_size
+        self.checkpoint_size = None
+        self.cuda = cuda
+        self.nInput  = nInput
+        self.nOutput = nOutput
+        self.xlb = xlb
+        self.xub = xub
+        self.xrng = np.where(np.isclose(xub - xlb, 0., rtol=1e-6, atol=1e-6), 1., xub - xlb) 
+        self.logger = logger
+
+        n_devices = None
+        if self.cuda:
+            n_devices = torch.cuda.device_count()
+            if logger is not None:
+                logger.info(f"MEGP_Matern: using {n_devices} GPU devices.")
+                
+        
+        N = xin.shape[0]
+        xn = np.zeros_like(xin, dtype=np.float32)
+        for i in range(N):
+            xn[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        if nOutput == 1:
+            yin = yin.reshape((yin.shape[0],1))
+
+        self.y_train_mean = np.asarray([np.mean(yin[:,i]) for i in range(yin.shape[1])], dtype=np.float32)
+        self.y_train_std = np.asarray([handle_zeros_in_scale(np.std(yin[:,i], axis=0), copy=False)
+                                       for i in range(yin.shape[1])], dtype=np.float32)
+
+        # Remove mean and make unit variance
+        yn = np.column_stack(tuple((yin[:,i] - self.y_train_mean[i]) / self.y_train_std[i] for i in range(yin.shape[1])))
+        train_x = torch.from_numpy(xn)
+        
+        if logger is not None:
+            logger.info(f"MEGP_Matern: creating regressor for output...")
+            for i in range(nOutput):
+                logger.info(f"MEGP_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}")
+
+        train_y = torch.from_numpy(yn.astype(np.float32))
+
+        gp_noise_prior = None
+        if gp_likelihood_sigma is not None:
+            gp_noise_prior = gpytorch.priors.NormalPrior(loc=0.0, scale=gp_likelihood_sigma)
+            
+        def train(nInput, nOutput, train_x, train_y, n_iter, gp_lengthscale_bounds=None, gp_noise_prior=None,
+                  checkpoint_size=None, preconditioner_size=None):
+
+            gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nOutput,
+                                                                             noise_prior=gp_noise_prior)
+            
+            gp_model = GPyTorchMultitaskExactGPModelMatern(train_x=train_x,
+                                                           train_y=train_y,
+                                                           num_tasks=nOutput,
+                                                           ard_num_dims=nInput,
+                                                           likelihood=gp_likelihood,
+                                                           lengthscale_bounds=gp_lengthscale_bounds)
+            
+            if self.cuda:
+                train_x = train_x.cuda()
+                train_y = train_y.cuda()
+                gp_model = gp_model.cuda()
+                gp_likelihood = gp_likelihood.cuda()
+            
+            # Find optimal model hyperparameters
+            gp_model.train()
+            gp_likelihood.train()
+        
+            optimizer = torch.optim.Adam(gp_model.parameters(), lr=adam_lr)  # Includes GaussianLikelihood parameters
+        
+            if logger is not None:
+                logger.info(f"MEGP_Matern: optimizing regressor...")
+
+            # "Loss" for GPs - the marginal log likelihood
+            mll = gpytorch.mlls.ExactMarginalLogLikelihood(gp_likelihood, gp_model)
+            loss_log = []
+            diff_kernel = np.array([1,-1])
+
+            with ExitStack() as stack:
+                if checkpoint_size is not None:
+                    stack.enter_context(gpytorch.beta_features.checkpoint_kernel(checkpoint_size))
+                if preconditioner_size is not None:
+                    stack.enter_context(gpytorch.settings.max_preconditioner_size(preconditioner_size))
+            
+                for it in range(n_iter):
+                    # Zero gradients from previous iteration
+                    optimizer.zero_grad()
+                    # Output from model
+                    output = gp_model(train_x)
+                    # Calculate loss and backprop gradients
+                    loss = -mll(output, train_y)
+                    loss.backward()
+                    loss_log.append(loss.item())
+                    if it % 100 == 0:
+                        if logger is not None:
+                            logger.info('MEGP_Matern: iter %d/%d - Loss: %.3f  noise: %.3f' % (
+                                it, n_iter, loss.item(),
+                                gp_model.likelihood.noise.item()
+                            ))
+                    optimizer.step()
+                    if it >= 1000:
+                        loss_change = np.convolve(loss_log, diff_kernel, 'same')[1:]
+                        loss_pct_change = (np.abs(loss_change) / np.abs(loss_log[1:]))*100
+                        mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
+                        if mean_loss_pct_change < min_loss_pct_change:
+                            if logger is not None:
+                                logger.info(f"MEGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent")
+                            break
+
+            return gp_model
+
+        if n_devices is not None and n_devices > 1:
+            # Set a large enough preconditioner size to reduce the number of CG iterations run
+            self.checkpoint_size = find_best_gpu_setting(nInput, nOutput, train, train_x, train_y,
+                                                         n_devices=n_devices,
+                                                         preconditioner_size=self.preconditioner_size,
+                                                         logger=logger)
+            gp_model = train(nInput, nOutput, train_x, train_y, n_iter=n_iter,
+                             gp_lengthscale_bounds=gp_lengthscale_bounds,
+                             gp_noise_prior=gp_noise_prior, 
+                             checkpoint_size=self.checkpoint_size,
+                             preconditioner_size=self.preconditioner_size)
+            
+            
+        else:
+            gp_model = train(nInput, nOutput, train_x, train_y,
+                             n_iter=n_iter,
+                             gp_lengthscale_bounds=gp_lengthscale_bounds,
+                             gp_noise_prior=gp_noise_prior)
+                
+        del(train_x)
+        del(train_y)
+        if cuda:
+            torch.cuda.empty_cache()
+        self.sm = gp_model
+
+    def predict(self,xin):
+        x = np.zeros_like(xin, dtype=np.float32)
+        if len(x.shape) == 1:
+            x = x.reshape((1,self.nInput))
+            xin = xin.reshape((1,self.nInput))
+        N = x.shape[0]
+        y = np.zeros((N,self.nOutput), dtype=np.float32)
+        for i in range(N):
+            x[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        x = torch.from_numpy(x)
+        if self.cuda:
+            x = x.cuda()
+        with ExitStack() as stack:
+            stack.enter_context(torch.no_grad())
+            if self.fast_pred_var:
+                stack.enter_context(gpytorch.settings.fast_pred_var())
+            if self.checkpoint_size is not None:
+                stack.enter_context(gpytorch.beta_features.checkpoint_kernel(self.checkpoint_size))
+            self.sm.eval()
+            self.sm.likelihood.eval()
+            f_preds = self.sm.likelihood(self.sm(x))
+            mean, var = f_preds.mean, f_preds.variance
+            # undo normalization
+            if self.cuda:
+                mean = mean.cpu()
+            y_mean = self.y_train_std * mean.numpy() + self.y_train_mean
+            y[:] = y_mean
+            del(mean)
+            del(var)
+        return y
+
+    def evaluate(self,x):
+                            
+        return self.predict(x)
+    
+    
+class EGP_Matern:
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=True, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
+        
+        if not _has_gpytorch:
+            raise RuntimeError('EGP_Matern requires the GPyTorch library to be installed.')
+
+        self.fast_pred_var = fast_pred_var
+        self.preconditioner_size = preconditioner_size
+        self.checkpoint_size = None
+        self.cuda = cuda
+        self.nInput  = nInput
+        self.nOutput = nOutput
+        self.xlb = xlb
+        self.xub = xub
+        self.xrng = np.where(np.isclose(xub - xlb, 0., rtol=1e-6, atol=1e-6), 1., xub - xlb) 
+
+        self.logger = logger
+
+        n_devices = None
+        if self.cuda:
+            n_devices = torch.cuda.device_count()
+            if logger is not None:
+                logger.info(f"EGP_Matern: using {n_devices} GPU devices.")
+
+        N = xin.shape[0]
+        xn = np.zeros_like(xin, dtype=np.float32)
+        for i in range(N):
+            xn[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        if nOutput == 1:
+            yin = yin.reshape((yin.shape[0],1))
+
+        self.y_train_mean = np.asarray([np.mean(yin[:,i]) for i in range(yin.shape[1])], dtype=np.float32)
+        self.y_train_std = np.asarray([handle_zeros_in_scale(np.std(yin[:,i], axis=0), copy=False)
+                                       for i in range(yin.shape[1])], dtype=np.float32)
+
+        # Remove mean and make unit variance
+        yn = np.column_stack(tuple((yin[:,i] - self.y_train_mean[i]) / self.y_train_std[i] for i in range(yin.shape[1])))
+        train_x = torch.from_numpy(xn)
+
+        gp_noise_prior = None
+        if gp_likelihood_sigma is not None:
+            gp_noise_prior = gpytorch.priors.NormalPrior(loc=0.0, scale=gp_likelihood_sigma)
+        
+        def train(nInput, nOutput, train_x, train_y, n_iter, gp_lengthscale_bounds=None, gp_noise_prior=None,
+                  checkpoint_size=None, preconditioner_size=None):
+
+            gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=gp_noise_prior)
+            
+            gp_model = GPyTorchExactGPModelMatern(train_x=train_x,
+                                                  train_y=train_y,
+                                                  ard_num_dims=nInput,
+                                                  likelihood=gp_likelihood,
+                                                  lengthscale_bounds=gp_lengthscale_bounds)
+            if self.cuda:
+                train_x = train_x.cuda()
+                train_y = train_y.cuda()
+                gp_model = gp_model.cuda()
+                gp_likelihood = gp_likelihood.cuda()
+            
+            # Find optimal model hyperparameters
+            gp_model.train()
+            gp_likelihood.train()
+            
+            optimizer = torch.optim.Adam(gp_model.parameters(), lr=adam_lr)  # Includes GaussianLikelihood parameters
+
+            # "Loss" for GPs - the marginal log likelihood
+            mll = gpytorch.mlls.ExactMarginalLogLikelihood(gp_likelihood, gp_model)
+            loss_log = []
+            diff_kernel = np.array([1,-1])
+
+            with ExitStack() as stack:
+                if checkpoint_size is not None:
+                    stack.enter_context(gpytorch.beta_features.checkpoint_kernel(checkpoint_size))
+                if preconditioner_size is not None:
+                    stack.enter_context(gpytorch.settings.max_preconditioner_size(preconditioner_size))
+                for it in range(n_iter):
+                    # Zero gradients from previous iteration
+                    optimizer.zero_grad()
+                    # Output from model
+                    output = gp_model(train_x)
+                    # Calculate loss and backprop gradients
+                    loss = -mll(output, train_y)
+                    loss.backward()
+                    loss_log.append(loss.item())
+                    if it % 100 == 0:
+                        logger.info('EGP_Matern: iter %d/%d - Loss: %.3f   lengthscale min/max: %.3f / %.3f   noise: %.3f' % (
+                            it, n_iter, loss.item(),
+                            gp_model.covar_module.base_kernel.lengthscale.min(),
+                            gp_model.covar_module.base_kernel.lengthscale.max(),
+                            gp_model.likelihood.noise.item()
+                        ))
+                    optimizer.step()
+                    if it >= 1000:
+                        loss_change = np.convolve(loss_log, diff_kernel, 'same')[1:]
+                        loss_pct_change = (np.abs(loss_change) / np.abs(loss_log[1:]))*100
+                        mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
+                        if mean_loss_pct_change < min_loss_pct_change:
+                            logger.info(f"EGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent")
+                            break
+
+            return gp_model
+        
+        smlist = []
+        for i in range(nOutput):
+            if logger is not None:
+                logger.info(f"EGP_Matern: creating regressor for output {i+1} of {nOutput}...")
+                logger.info(f"EGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}...")
+                
+            train_y = torch.from_numpy(yn[:, i].reshape((-1,)).astype(np.float32))
+            
+            if logger is not None:
+                logger.info(f"EGP_Matern: optimizing regressor for output {i+1} of {nOutput}...")
+
+            if n_devices is not None and n_devices > 1:
+                # Set a large enough preconditioner size to reduce the number of CG iterations run
+                self.checkpoint_size = find_best_gpu_setting(nInput, 1, train, train_x, train_y,
+                                                             n_devices=n_devices,
+                                                             preconditioner_size=self.preconditioner_size,
+                                                             logger=logger)
+                gp_model = train(nInput, 1, train_x, train_y, n_iter=n_iter,
+                                 gp_lengthscale_bounds=gp_lengthscale_bounds,
+                                 gp_noise_prior=gp_noise_prior, 
+                                 checkpoint_size=self.checkpoint_size,
+                                 preconditioner_size=self.preconditioner_size)
+            else:
+                gp_model = train(nInput, 1, train_x, train_y,
+                                 n_iter=n_iter,
+                                 gp_lengthscale_bounds=gp_lengthscale_bounds,
+                                 gp_noise_prior=gp_noise_prior)
+                
+            del(train_y)
+            smlist.append(gp_model)
+            
+        del(train_x)
+        
+        if cuda:
+            torch.cuda.empty_cache() 
+        self.smlist = smlist
+
+    def predict(self,xin):
+        x = np.zeros_like(xin, dtype=np.float32)
+        if len(x.shape) == 1:
+            x = x.reshape((1,self.nInput))
+            xin = xin.reshape((1,self.nInput))
+        N = x.shape[0]
+        y = np.zeros((N,self.nOutput), dtype=np.float32)
+        for i in range(N):
+            x[i,:] = (xin[i,:] - self.xlb) / self.xrng
+        x = torch.from_numpy(x)
+        if self.cuda:
+            x = x.cuda()
+
+        with ExitStack() as stack:
+            stack.enter_context(torch.no_grad())
+            if self.fast_pred_var:
+                stack.enter_context(gpytorch.settings.fast_pred_var())
+            if self.checkpoint_size is not None:
+                stack.enter_context(gpytorch.beta_features.checkpoint_kernel(self.checkpoint_size))
+            for i in range(self.nOutput):
+                self.smlist[i].eval()
+                self.smlist[i].likelihood.eval()
+                f_preds = self.smlist[i].likelihood(self.smlist[i](x))
+                mean, var = f_preds.mean, f_preds.variance
+                # undo normalization
+                if self.cuda:
+                    mean = mean.cpu()
+                y_mean = self.y_train_std[i] * np.reshape(mean.numpy(), [-1]) + self.y_train_mean[i]
+                y[:,i] = y_mean
+                del(mean)
+                del(var)
+        return y
+
+    def evaluate(self,x):
+                            
+        return self.predict(x)
+    
      
 class CRV_Matern:
 
@@ -113,8 +562,9 @@ class CRV_Matern:
         else:
             Z = xn[np.random.choice(N, size=M, replace=False), :].copy()  # Initialize inducing locations to M random inputs
         # initialize as list inducing inducing variables
-        iv = gpflow.inducing_variables.InducingPoints(Z)
-        iv = gpflow.inducing_variables.SharedIndependentInducingVariables(iv)
+        iv = gpflow.inducing_variables.SharedIndependentInducingVariables(
+            gpflow.inducing_variables.InducingPoints(Z)
+        )
         kernels = [gpflow.kernels.Matern52() for _ in range(nOutput)]
         gp_kernel = gpflow.kernels.LinearCoregionalization(
             kernels, W=np.random.randn(nOutput, nOutput)

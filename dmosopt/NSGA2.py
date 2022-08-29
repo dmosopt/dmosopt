@@ -66,14 +66,13 @@ def optimization(model, nInput, nOutput, xlb, xub, initial=None, feasibility_mod
             x = sampling_method(local_random, **sampling_method_params)
     else:
         raise RuntimeError(f'Unknown sampling method {sampling_method}')
-    if x_initial is not None:
-        x = np.vstack((x_initial, x))
+        
+    y = model.evaluate(x).astype(np.float32)
     
-    y = np.zeros((pop, nOutput))
-    for i in range(pop):
-        y[i,:] = model.evaluate(x[i,:])
+    if x_initial is not None:
+        x = np.vstack((x_initial.astype(np.float32), x))
     if y_initial is not None:
-        y = np.vstack((y_initial, y))
+        y = np.vstack((y_initial.astype(np.float32), y))
 
     x, y, rank, _ = sortMO(x, y, nInput, nOutput,
                            x_distance_metrics=x_distance_metrics,

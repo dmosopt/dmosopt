@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dmosopt", 
-    version="0.24.3",
+    version="0.25.0",
     author="Ivan Raikov",
     author_email="ivan.g.raikov@gmail.com",
     description="Distributed multi-objective surrogate optimization algorithm.",
@@ -31,6 +31,7 @@ setup(
         'mpi4py', 'numpy', 'h5py', 'scipy', 'scikit-learn', 'distwq', 
     ],
     extras_require = {
+        "gpytorch": ["gpytorch"],
         "gpflow": ["gpflow"],
         "sensitivity": ["SALib"],
     }
