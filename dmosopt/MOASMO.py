@@ -349,10 +349,12 @@ def train(nInput, nOutput, xlb, xub, \
         egp_adam_lr=surrogate_options.get('adam_lr', 0.01)
         egp_n_iter=surrogate_options.get('n_iter', 5000)
         egp_cuda=surrogate_options.get('cuda', False)
+        egp_fast_pred_var=surrogate_options.get('fast_pred_var', True)
         sm = gp.EGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
                            gp_lengthscale_bounds=egp_lengthscale_bounds,
                            gp_likelihood_sigma=egp_likelihood_sigma,
                            adam_lr=egp_adam_lr, n_iter=egp_n_iter,
+                           fast_pred_var=egp_fast_pred_var,
                            cuda=egp_cuda, logger=logger)
     elif surrogate_method == 'megp':
         megp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', None)
@@ -360,10 +362,12 @@ def train(nInput, nOutput, xlb, xub, \
         megp_adam_lr=surrogate_options.get('adam_lr', 0.01)
         megp_n_iter=surrogate_options.get('n_iter', 5000)
         megp_cuda=surrogate_options.get('cuda', False)
+        megp_fast_pred_var=surrogate_options.get('fast_pred_var', False)
         sm = gp.MEGP_Matern(x, y, nInput, nOutput, x.shape[0], xlb, xub,
                             gp_lengthscale_bounds=megp_lengthscale_bounds,
                             gp_likelihood_sigma=megp_likelihood_sigma,
                             adam_lr=megp_adam_lr, n_iter=megp_n_iter,
+                            fast_pred_var=megp_fast_pred_var,
                             cuda=megp_cuda, logger=logger)
     elif surrogate_method == 'vgp':
         vgp_lengthscale_bounds=surrogate_options.get('lengthscale_bounds', (1e-6, 100.0))
