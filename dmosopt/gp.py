@@ -10,7 +10,6 @@ try:
     import tensorflow as tf
     import tensorflow_probability as tfp
     from gpflow.utilities import print_summary
-    from gpflow.ci_utils import ci_niter, ci_range
     from gpflow.models import VGP, GPR, SVGP
     from gpflow.optimizers import NaturalGradient
     from gpflow.optimizers.natgrad import XiSqrtMeanVar
@@ -613,7 +612,7 @@ class CRV_Matern:
             natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
             adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
                 
-        iterations = ci_niter(n_iter)
+        iterations = n_iter
         elbo_log = []
         diff_kernel = np.array([1,-1])
         for it in range(iterations):
@@ -747,7 +746,7 @@ class SIV_Matern:
             natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
             adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
                 
-        iterations = ci_niter(n_iter)
+        iterations = n_iter
         elbo_log = []
         diff_kernel = np.array([1,-1])
         for it in range(iterations):
@@ -874,7 +873,7 @@ class SVGP_Matern:
                 adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
                 natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
                 
-            iterations = ci_niter(n_iter)
+            iterations = n_iter
             elbo_log = []
             diff_kernel = np.array([1,-1])
             for it in range(iterations):
@@ -974,7 +973,7 @@ class VGP_Matern:
                 logger.info(f"VGP_Matern: optimizing regressor for output {i+1} of {nOutput}...")
 
             variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
-            iterations = ci_niter(n_iter)
+            iterations = n_iter
             elbo_log = []
             diff_kernel = np.array([1,-1])
 
