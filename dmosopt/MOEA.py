@@ -181,7 +181,10 @@ def euclidean_distance(Y):
 
 def tournament_prob(ax, i):
     p = ax[1]
-    p1 = p*(1. - p)**i
+    try:
+        p1 = p*(1. - p)**i
+    except FloatingPointError:
+        p1 = 0.
     ax[0].append(p1)
     return (ax[0], p)
 
