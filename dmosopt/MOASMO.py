@@ -325,16 +325,14 @@ def train(nInput, nOutput, xlb, xub, \
         feasible = np.argwhere(np.all(C > 0., axis=1))
         if len(feasible) > 0:
             feasible = feasible.ravel()
-            try:
-                x = x[feasible,:]
-                y = y[feasible,:]
+            x = x[feasible,:]
+            y = y[feasible,:]
+            if logger is not None:
                 logger.info(f"Found {len(feasible)} feasible solutions")
-            except:
-                e = sys.exc_info()[0]
-                logger.warning(f"Unable to fit feasibility model: {e}")
 
+    
     x, y = MOEA.remove_duplicates(x, y)
-                
+
     if surrogate_method == 'gpr':
         gpr_anisotropic = surrogate_options.get('anisotropic', False)
         gpr_optimizer = surrogate_options.get('optimizer', 'sceua')
@@ -471,20 +469,34 @@ def analyze_sensitivity(sm, xlb, xub, param_names, objective_names, sensitivity_
     return di_dict
 
 
-def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_perm=False, return_feasible=False):
-    xtmp = x.copy()
-    ytmp = y.copy()
+def get_best(x, y, f, c, nInput, nOutput, epochs=None, feasible=True, return_perm=False, return_feasible=False, delete_duplicates=True):
+
+    xtmp = x
+    ytmp = y
+    
     if feasible and c is not None:
-        feasible = np.argwhere(np.all(c > 0., axis=1))
+        feasible = np.argwhere(np.all(c > 0., axis=1)).ravel()
         if len(feasible) > 0:
             feasible = feasible.ravel()
-            xtmp = xtmp[feasible,:]
-            ytmp = ytmp[feasible,:]
+            xtmp = x[feasible,:]
+            ytmp = y[feasible,:]
             if f is not None:
                 f = f[feasible]
             c = c[feasible,:]
             if epochs is not None:
                 epochs = epochs[feasible]
+
+
+    if delete_duplicates:
+        is_duplicate = MOEA.get_duplicates(ytmp)
+    
+        xtmp = xtmp[~is_duplicate]
+        ytmp = ytmp[~is_duplicate]
+        if f is not None:
+            f = f[~is_duplicate]
+        if c is not None:
+            c = c[~is_duplicate]
+
     xtmp, ytmp, rank, _, perm = MOEA.sortMO(xtmp, ytmp, nInput, nOutput, return_perm=True)
     idxp = (rank == 0)
     best_x = xtmp[idxp,:]

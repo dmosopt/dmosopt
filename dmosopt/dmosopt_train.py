@@ -37,6 +37,7 @@ def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(opt_id)
+    logger.setLevel(logging.INFO)
 
     if problem_ids is None:
         problem_ids = [0]
@@ -58,8 +59,7 @@ def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
         x = np.vstack(old_eval_xs)
         y = np.vstack(old_eval_ys)
 
-        print(f"Restored {x.shape[0]} solutions")
-        sys.stdout.flush()
+        logger.info(f"Restored {x.shape[0]} solutions")
 
         n_dim = len(lo_bounds)
         n_objectives = len(objective_names)

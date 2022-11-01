@@ -30,7 +30,7 @@ def list_find(f, lst):
 @click.option("--file-path", '-p', required=True, type=click.Path())
 @click.option("--opt-id", required=True, type=str)
 @click.option("--sort-key", required=False, type=str, multiple=True)
-@click.option("--knn", required=False, type=int, default=50)
+@click.option("--knn", required=False, type=int, default=0)
 @click.option("--filter-objectives", required=False, type=str)
 @click.option("--output-file", required=False, type=click.Path())
 @click.option("--verbose", '-v', is_flag=True)
@@ -96,17 +96,18 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
         m = len(objective_names)
         if len(sort_key) == 0:
 
-            points = np.zeros((n_res, m))
-            for i in range(n_res):
-                res_i = np.asarray([ res_dict[k][i] for k in objective_names ])
-                points[i, :] = res_i
-
-            for m_i in range(m):
-                if np.max(points[:, m_i]) > 0.:
-                    points[:, m_i] = points[:, m_i] / np.max(points[:, m_i])
-
             nn = range(points.shape[0])
             if knn > 0:
+
+                points = np.zeros((n_res, m))
+                for i in range(n_res):
+                    res_i = np.asarray([ res_dict[k][i] for k in objective_names ])
+                    points[i, :] = res_i
+
+                for m_i in range(m):
+                    if np.max(points[:, m_i]) > 0.:
+                        points[:, m_i] = points[:, m_i] / np.max(points[:, m_i])
+                
                 if points.shape[0] < knn:
                     knn = points.shape[0]
 
