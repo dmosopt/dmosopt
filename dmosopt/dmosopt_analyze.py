@@ -96,7 +96,7 @@ def main(constraints, file_path, opt_id, sort_key, knn, filter_objectives, outpu
         m = len(objective_names)
         if len(sort_key) == 0:
 
-            nn = range(points.shape[0])
+            nn = range(n_res)
             if knn > 0:
 
                 points = np.zeros((n_res, m))
