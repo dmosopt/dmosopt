@@ -75,15 +75,21 @@ try:
     
     class GPyTorchExactGPModelMatern(gpytorch.models.ExactGP):
 
-        def __init__(self, train_x, train_y, likelihood, ard_num_dims=None, lengthscale_bounds=None, n_devices=1):
+        def __init__(self, train_x, train_y, likelihood, ard_num_dims=None, lengthscale_bounds=None, batch_size=None, n_devices=1):
             super().__init__(train_x, train_y, likelihood)
             lengthscale_constraint=None
             if lengthscale_bounds is not None:
                 lengthscale_constraint = gpytorch.constraints.Interval(lengthscale_bounds[0],
                                                                        lengthscale_bounds[1])
+            self.batch_size = batch_size
+            batch_shape = None
+            if batch_size is not None:
+                batch_shape = torch.Size([batch_size])
             self.mean_module = gpytorch.means.ConstantMean()
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(ard_num_dims=ard_num_dims,
-                                                                                           lengthscale_constraint=lengthscale_constraint))
+                                                                                           lengthscale_constraint=lengthscale_constraint,
+                                                                                           batch_shape=batch_shape),
+                                                             batch_shape=batch_shape)
             if n_devices > 1:
                 self.covar_module = gpytorch.kernels.MultiDeviceKernel(
                     self.covar_module, device_ids=range(n_devices))
@@ -92,13 +98,16 @@ try:
         def forward(self, x):
             mean_x = self.mean_module(x)
             covar_x = self.covar_module(x)
-            return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+            mvn = gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+            return mvn
 
     class GPyTorchMultitaskExactGPModelMatern(gpytorch.models.ExactGP):
         
-        def __init__(self, train_x, train_y, likelihood, num_tasks, rank=1, ard_num_dims=None, lengthscale_bounds=None, n_devices=1):
+        def __init__(self, train_x, train_y, likelihood, num_tasks, rank=1, ard_num_dims=None, lengthscale_bounds=None,
+                     batch_size=None, n_devices=1):
             
             super().__init__(train_x, train_y, likelihood)
+            self.num_tasks = num_tasks
             self.mean_module = gpytorch.means.MultitaskMean(
                 gpytorch.means.ConstantMean(), num_tasks=num_tasks
             )
@@ -106,8 +115,14 @@ try:
             if lengthscale_bounds is not None:
                 lengthscale_constraint = gpytorch.constraints.Interval(lengthscale_bounds[0],
                                                                        lengthscale_bounds[1])
+            self.batch_size = batch_size
+            batch_shape = None
+            if batch_size is not None:
+                batch_shape = torch.Size([batch_size])
             self.covar_module = gpytorch.kernels.MultitaskKernel(gpytorch.kernels.MaternKernel(ard_num_dims=ard_num_dims,
-                                                                                               lengthscale_constraint=lengthscale_constraint),
+                                                                                               lengthscale_constraint=lengthscale_constraint,
+                                                                                               batch_shape=batch_shape),
+                                                                 batch_shape=batch_shape,
                                                                  num_tasks=num_tasks, rank=rank)
             if n_devices > 1:
                 self.covar_module = gpytorch.kernels.MultiDeviceKernel(
@@ -116,7 +131,14 @@ try:
         def forward(self, x):
             mean_x = self.mean_module(x)
             covar_x = self.covar_module(x)
-            return gpytorch.distributions.MultitaskMultivariateNormal(mean_x, covar_x)
+            mvn = None
+            mmvn = None
+            if self.batch_size is not None:
+                mvn = gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+                mmvn = MultitaskMultivariateNormal.from_batch_mvn(mvn, task_dim=self.num_tasks)
+            else:
+                mmvn = gpytorch.distributions.MultitaskMultivariateNormal(mean_x, covar_x)
+            return mmvn
 
 
 except:
@@ -158,7 +180,7 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
     
 class MEGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=False, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, batch_size=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=False, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
         
         if not _has_gpytorch:
             raise RuntimeError('MEGP_Matern requires the GPyTorch library to be installed.')
@@ -206,19 +228,26 @@ class MEGP_Matern:
         gp_noise_prior = None
         if gp_likelihood_sigma is not None:
             gp_noise_prior = gpytorch.priors.NormalPrior(loc=0.0, scale=gp_likelihood_sigma)
-            
+
+
+        batch_shape = None
+        if batch_size is not None:
+            batch_shape = torch.Size([batch_size])
+
         def train(nInput, nOutput, train_x, train_y, n_iter, gp_lengthscale_bounds=None, gp_noise_prior=None,
                   checkpoint_size=None, preconditioner_size=None):
 
             gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=nOutput,
-                                                                             noise_prior=gp_noise_prior)
+                                                                             noise_prior=gp_noise_prior,
+                                                                             batch_shape=batch_shape)
             
             gp_model = GPyTorchMultitaskExactGPModelMatern(train_x=train_x,
                                                            train_y=train_y,
                                                            num_tasks=nOutput,
                                                            ard_num_dims=nInput,
                                                            likelihood=gp_likelihood,
-                                                           lengthscale_bounds=gp_lengthscale_bounds)
+                                                           lengthscale_bounds=gp_lengthscale_bounds,
+                                                           batch_size=batch_size)
             
             if self.cuda:
                 train_x = train_x.cuda()
@@ -252,7 +281,10 @@ class MEGP_Matern:
                     # Output from model
                     output = gp_model(train_x)
                     # Calculate loss and backprop gradients
-                    loss = -mll(output, train_y)
+                    if batch_size is not None:
+                        loss = -mll(output, train_y)
+                    else:
+                        loss = -mll(output, train_y).sum()
                     loss.backward()
                     loss_log.append(loss.item())
                     if it % 100 == 0:
@@ -335,7 +367,7 @@ class MEGP_Matern:
     
     
 class EGP_Matern:
-    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=True, n_iter=5000, min_loss_pct_change=0.1, cuda=False, logger=None):
+    def __init__(self, xin, yin, nInput, nOutput, xlb, xub, seed=None, gp_lengthscale_bounds=None, gp_likelihood_sigma=None, preconditioner_size=100, adam_lr=0.01, fast_pred_var=True, n_iter=5000, min_loss_pct_change=0.1, batch_size=None, cuda=False, logger=None):
         
         if not _has_gpytorch:
             raise RuntimeError('EGP_Matern requires the GPyTorch library to be installed.')
@@ -376,17 +408,25 @@ class EGP_Matern:
         gp_noise_prior = None
         if gp_likelihood_sigma is not None:
             gp_noise_prior = gpytorch.priors.NormalPrior(loc=0.0, scale=gp_likelihood_sigma)
+        batch_shape = None
+        
+        if batch_size is not None:
+            batch_shape = torch.Size([batch_size])
         
         def train(nInput, nOutput, train_x, train_y, n_iter, gp_lengthscale_bounds=None, gp_noise_prior=None,
                   checkpoint_size=None, preconditioner_size=None):
 
-            gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=gp_noise_prior)
+            gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=gp_noise_prior,
+                                                                    batch_shape=batch_shape)
+
             
             gp_model = GPyTorchExactGPModelMatern(train_x=train_x,
                                                   train_y=train_y,
                                                   ard_num_dims=nInput,
                                                   likelihood=gp_likelihood,
-                                                  lengthscale_bounds=gp_lengthscale_bounds)
+                                                  lengthscale_bounds=gp_lengthscale_bounds,
+                                                  batch_size=batch_size)
+
             if self.cuda:
                 train_x = train_x.cuda()
                 train_y = train_y.cuda()
@@ -415,7 +455,10 @@ class EGP_Matern:
                     # Output from model
                     output = gp_model(train_x)
                     # Calculate loss and backprop gradients
-                    loss = -mll(output, train_y)
+                    if batch_size is None:
+                        loss = -mll(output, train_y)
+                    else:
+                        loss = -mll(output, train_y).sum()
                     loss.backward()
                     loss_log.append(loss.item())
                     if it % 100 == 0:
