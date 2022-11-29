@@ -9,12 +9,13 @@
 
 import numpy as np
 
+
 def comparison_matrix(y, output=None):
-    ''' Constructs comparison matrix for input vector y
-        y: input vector (N,)
-        output: optional output matrix argument of dimension (N, N)
-    '''
-    n, = y.shape
+    """Constructs comparison matrix for input vector y
+    y: input vector (N,)
+    output: optional output matrix argument of dimension (N, N)
+    """
+    (n,) = y.shape
     # Sort y in ascending order
     si = np.argsort(y)
     if output is None:
@@ -23,20 +24,20 @@ def comparison_matrix(y, output=None):
         output.fill(0)
     for j in range(n):
         output[si[0], j] = 1
-    for i in range(1,n):
-        if y[si[i]] == y[si[i-1]]:
+    for i in range(1, n):
+        if y[si[i]] == y[si[i - 1]]:
             for j in range(n):
-                output[si[i], j] = output[si[i-1], j]
+                output[si[i], j] = output[si[i - 1], j]
         else:
             for j in range(i, n):
                 output[si[i], si[j]] = 1
-                
+
     return output
 
 
 def dominance_degree_matrix(Y):
 
-    n,d = Y.shape
+    n, d = Y.shape
 
     D = np.zeros((n, n), dtype=np.intp)
     Cy = np.zeros((n, n), dtype=np.intp)
@@ -44,21 +45,22 @@ def dominance_degree_matrix(Y):
     for i in range(d):
         comparison_matrix(Y[:, i], output=Cy)
         D = D + Cy
-        
+
     return D
 
+
 def dda_non_dominated_sort(Y, return_dom=False):
-    ''' Rank objectives by Dominance Degree Matrix.
-        y: input matrix (N, D)
-    '''
-    n,d = Y.shape
+    """Rank objectives by Dominance Degree Matrix.
+    y: input matrix (N, D)
+    """
+    n, d = Y.shape
 
     # 1. Construct the dominance degree matrix of set Y
     D = dominance_degree_matrix(Y)
     DM = None
     if return_dom:
         DM = np.copy(D)
-    
+
     # 2. For the solutions with identical objective vectors, set the
     # corresponding elements of D to zero
     for i in range(n):
@@ -69,19 +71,19 @@ def dda_non_dominated_sort(Y, return_dom=False):
 
     # 3. Assign the solutions Yi to a number of fronts
     count = 0
-    k = 0 # the first front
-    rank = np.zeros((n, ), dtype=np.intp)
+    k = 0  # the first front
+    rank = np.zeros((n,), dtype=np.intp)
     while True:
         Q = []
         maxD = np.max(D, axis=0)
         for i in range(n):
             if maxD[i] < d and maxD[i] >= 0:
-            # solution Yi belongs to current front
+                # solution Yi belongs to current front
                 Q.append(i)
                 count += 1
         for i in Q:
-             D[i, :] = -1
-             D[:, i] = -1
+            D[i, :] = -1
+            D[:, i] = -1
 
         rank[np.asarray(Q, dtype=np.intp)] = k
         k += 1

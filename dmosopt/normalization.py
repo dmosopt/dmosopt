@@ -1,6 +1,6 @@
 #
 # Normalization routines.
-# Based on normalization clasess from PyMOO: 
+# Based on normalization clasess from PyMOO:
 # https://github.com/anyoptimization/pymoo
 
 import warnings
@@ -9,7 +9,6 @@ from abc import abstractmethod
 
 
 class Normalization:
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -24,7 +23,6 @@ class Normalization:
 
 # ---- Useful if normalization is optional - can be simply disabled by using this object
 class NoNormalization(Normalization):
-
     def forward(self, X):
         return X
 
@@ -34,7 +32,6 @@ class NoNormalization(Normalization):
 
 # ---- Normalizes between zero and one given bounds or estimating them
 class ZeroToOneNormalization(Normalization):
-
     def __init__(self, xl=None, xu=None) -> None:
         super().__init__()
 
@@ -61,13 +58,17 @@ class ZeroToOneNormalization(Normalization):
         xl_nan, xu_nan = np.isnan(xl), np.isnan(xu)
 
         # now create all the masks that are necessary
-        self.xl_only, self.xu_only = np.logical_and(~xl_nan, xu_nan), np.logical_and(xl_nan, ~xu_nan)
+        self.xl_only, self.xu_only = np.logical_and(~xl_nan, xu_nan), np.logical_and(
+            xl_nan, ~xu_nan
+        )
         self.both_nan = np.logical_and(np.isnan(xl), np.isnan(xu))
         self.neither_nan = ~self.both_nan
 
         # if neither is nan than xu must be greater or equal than xl
         any_nan = np.logical_or(np.isnan(xl), np.isnan(xu))
-        assert np.all(np.logical_or(xu >= xl, any_nan)), "xl must be less or equal than xu."
+        assert np.all(
+            np.logical_or(xu >= xl, any_nan)
+        ), "xl must be less or equal than xu."
 
     def forward(self, X):
         if X is None or (self.xl is None and self.xu is None):
@@ -80,7 +81,9 @@ class ZeroToOneNormalization(Normalization):
         N = np.copy(X)
 
         # normalize between zero and one if neither of them is nan
-        N[..., neither_nan] = (X[..., neither_nan] - xl[neither_nan]) / (xu[neither_nan] - xl[neither_nan])
+        N[..., neither_nan] = (X[..., neither_nan] - xl[neither_nan]) / (
+            xu[neither_nan] - xl[neither_nan]
+        )
 
         N[..., xl_only] = X[..., xl_only] - xl[xl_only]
 
@@ -96,7 +99,9 @@ class ZeroToOneNormalization(Normalization):
         both_nan, neither_nan = self.both_nan, self.neither_nan
 
         X = N.copy()
-        X[..., neither_nan] = xl[neither_nan] + N[..., neither_nan] * (xu[neither_nan] - xl[neither_nan])
+        X[..., neither_nan] = xl[neither_nan] + N[..., neither_nan] * (
+            xu[neither_nan] - xl[neither_nan]
+        )
 
         X[..., xl_only] = N[..., xl_only] + xl[xl_only]
 
@@ -105,17 +110,16 @@ class ZeroToOneNormalization(Normalization):
         return X
 
 
-
-
 class PreNormalization:
-
     def __init__(self, zero_to_one=False, ideal=None, nadir=None, **kwargs):
 
         # normalization related stuff if that should be performed beforehand
         self.ideal, self.nadir = ideal, nadir
 
         if zero_to_one:
-            assert self.ideal is not None and self.nadir is not None, "For normalization either provide pf or bounds!"
+            assert (
+                self.ideal is not None and self.nadir is not None
+            ), "For normalization either provide pf or bounds!"
 
             n_dim = len(self.ideal)
             self.normalization = ZeroToOneNormalization(self.ideal, self.nadir)
@@ -129,7 +133,7 @@ class PreNormalization:
     def do(self, *args, **kwargs):
         pass
 
-    
+
 def normalize(X, xl=None, xu=None, return_bounds=False, estimate_bounds_if_none=True):
     if estimate_bounds_if_none:
         if xl is None:
@@ -150,4 +154,3 @@ def normalize(X, xl=None, xu=None, return_bounds=False, estimate_bounds_if_none=
         return X
     else:
         return X, norm.xl, norm.xu
-
