@@ -60,7 +60,9 @@ class HyperVolume:
             # this way the reference point doesn't have to be explicitly used
             # in the HV computation
             for j in range(len(relevantPoints)):
-                relevantPoints[j] = [relevantPoints[j][i] - referencePoint[i] for i in range(dimensions)]
+                relevantPoints[j] = [
+                    relevantPoints[j][i] - referencePoint[i] for i in range(dimensions)
+                ]
         self.preProcess(relevantPoints)
         bounds = [-1.0e308] * dimensions
         hyperVolume = self.hvRecursive(dimensions - 1, len(relevantPoints), bounds)
@@ -107,7 +109,9 @@ class HyperVolume:
                 q = q.prev[dimIndex]
             q = p.prev[dimIndex]
             while length > 1 and (
-                    q.cargo[dimIndex] > bounds[dimIndex] or q.prev[dimIndex].cargo[dimIndex] >= bounds[dimIndex]):
+                q.cargo[dimIndex] > bounds[dimIndex]
+                or q.prev[dimIndex].cargo[dimIndex] >= bounds[dimIndex]
+            ):
                 p = q
                 remove(p, dimIndex, bounds)
                 q = p.prev[dimIndex]
@@ -117,10 +121,13 @@ class HyperVolume:
             qPrevDimIndex = q.prev[dimIndex]
             if length > 1:
                 hvol = qPrevDimIndex.volume[dimIndex] + qPrevDimIndex.area[dimIndex] * (
-                        qCargo[dimIndex] - qPrevDimIndex.cargo[dimIndex])
+                    qCargo[dimIndex] - qPrevDimIndex.cargo[dimIndex]
+                )
             else:
                 qArea[0] = 1
-                qArea[1:dimIndex + 1] = [qArea[i] * -qCargo[i] for i in range(dimIndex)]
+                qArea[1 : dimIndex + 1] = [
+                    qArea[i] * -qCargo[i] for i in range(dimIndex)
+                ]
             q.volume[dimIndex] = hvol
             if q.ignore >= dimIndex:
                 qArea[dimIndex] = qPrevDimIndex.area[dimIndex]
@@ -175,7 +182,6 @@ class MultiList:
     """
 
     class Node:
-
         def __init__(self, numberLists, cargo=None):
             self.cargo = cargo
             self.next = [None] * numberLists

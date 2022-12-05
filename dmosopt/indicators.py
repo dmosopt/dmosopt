@@ -14,7 +14,9 @@ def euclidean_distance(a, b, norm=None):
     return np.sqrt((((a - b) / norm) ** 2).sum(axis=1))
 
 
-def vectorized_cdist(A, B, func_dist=euclidean_distance, fill_diag_with_inf=False, **kwargs) -> object:
+def vectorized_cdist(
+    A, B, func_dist=euclidean_distance, fill_diag_with_inf=False, **kwargs
+) -> object:
     assert A.ndim <= 2 and B.ndim <= 2
 
     A, only_row = at_least_2d_array(A, extend_as="row", return_if_reshaped=True)
@@ -61,8 +63,6 @@ def at_least_2d_array(x, extend_as="row", return_if_reshaped=False):
         return x
 
 
-
-
 def derive_ideal_and_nadir_from_pf(pf, ideal=None, nadir=None):
 
     # try to derive ideal and nadir if not already set and pf provided
@@ -76,7 +76,6 @@ def derive_ideal_and_nadir_from_pf(pf, ideal=None, nadir=None):
 
 
 class Indicator(PreNormalization):
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -104,8 +103,17 @@ class Indicator(PreNormalization):
 
 
 class DistanceIndicator(Indicator):
-
-    def __init__(self, pf, dist_func, axis, zero_to_one=False, ideal=None, nadir=None, norm_by_dist=False, **kwargs):
+    def __init__(
+        self,
+        pf,
+        dist_func,
+        axis,
+        zero_to_one=False,
+        ideal=None,
+        nadir=None,
+        norm_by_dist=False,
+        **kwargs
+    ):
 
         # the pareto front if necessary to calculate the indicator
         pf = at_least_2d_array(pf, extend_as="row")
@@ -124,7 +132,9 @@ class DistanceIndicator(Indicator):
 
         # if zero_to_one is disabled this can be used to normalize the distance calculation itself
         if self.norm_by_dist:
-            assert self.ideal is not None and self.nadir is not None, "If norm_by_dist is enabled ideal and nadir must be set!"
+            assert (
+                self.ideal is not None and self.nadir is not None
+            ), "If norm_by_dist is enabled ideal and nadir must be set!"
             norm = self.nadir - self.ideal
 
         D = vectorized_cdist(self.pf, F, func_dist=self.dist_func, norm=norm)
@@ -132,15 +142,22 @@ class DistanceIndicator(Indicator):
 
 
 class IGD(DistanceIndicator):
-
     def __init__(self, pf, **kwargs):
         super().__init__(pf, euclidean_distance, 1, **kwargs)
 
-        
-class Hypervolume(Indicator):
 
-    def __init__(self, ref_point=None, pf=None, nds=False, norm_ref_point=True, ideal=None, nadir=None, **kwargs):
-        
+class Hypervolume(Indicator):
+    def __init__(
+        self,
+        ref_point=None,
+        pf=None,
+        nds=False,
+        norm_ref_point=True,
+        ideal=None,
+        nadir=None,
+        **kwargs
+    ):
+
         pf = at_least_2d_array(pf, extend_as="row")
         ideal, nadir = derive_ideal_and_nadir_from_pf(pf, ideal=ideal, nadir=nadir)
 
@@ -160,10 +177,12 @@ class Hypervolume(Indicator):
             ref_point = self.normalization.forward(ref_point)
 
         self.ref_point = ref_point
-        assert self.ref_point is not None, "For Hypervolume a reference point needs to be provided!"
+        assert (
+            self.ref_point is not None
+        ), "For Hypervolume a reference point needs to be provided!"
 
     def _do(self, F):
-        
+
         if self.nds:
             rank = dda_non_dominated_sort(F)
             non_dom = np.argwhere(rank == 0).ravel()
@@ -171,5 +190,5 @@ class Hypervolume(Indicator):
 
         hv = _HyperVolume(self.ref_point)
         val = hv.compute(F)
-        
+
         return val
