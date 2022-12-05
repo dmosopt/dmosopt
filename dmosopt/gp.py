@@ -378,7 +378,7 @@ class MEGP_Matern:
 
             return gp_model
 
-        if n_devices is not None and n_devices > 1:
+        if n_devices is not None and n_devices >= 1:
             # Set a large enough preconditioner size to reduce the number of CG iterations run
             self.checkpoint_size = find_best_gpu_setting(
                 nInput,
@@ -640,7 +640,7 @@ class EGP_Matern:
                     f"EGP_Matern: optimizing regressor for output {i+1} of {nOutput}..."
                 )
 
-            if n_devices is not None and n_devices > 1:
+            if n_devices is not None and n_devices >= 1:
                 # Set a large enough preconditioner size to reduce the number of CG iterations run
                 self.checkpoint_size = find_best_gpu_setting(
                     nInput,
