@@ -177,6 +177,8 @@ try:
             return output
 
         def predict(self, test_x):
+            model.eval()
+            model.likelihood.eval()
             with torch.no_grad():
 
                 # The output of the model is a multitask MVN, where both the data points
@@ -372,7 +374,6 @@ class MDGP_Matern:
         self.linear_mean = linear_mean
         self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
-        self.checkpoint_size = None
         self.cuda = cuda
         self.nInput = nInput
         self.nOutput = nOutput
@@ -443,7 +444,6 @@ class MDGP_Matern:
             n_iter,
             gp_lengthscale_bounds=None,
             gp_noise_prior=None,
-            checkpoint_size=None,
             preconditioner_size=None,
         ):
 
@@ -485,10 +485,6 @@ class MDGP_Matern:
             diff_kernel = np.array([1, -1])
 
             with ExitStack() as stack:
-                if checkpoint_size is not None:
-                    stack.enter_context(
-                        gpytorch.beta_features.checkpoint_kernel(checkpoint_size)
-                    )
                 if preconditioner_size is not None:
                     stack.enter_context(
                         gpytorch.settings.max_preconditioner_size(preconditioner_size)
@@ -533,40 +529,15 @@ class MDGP_Matern:
 
             return gp_model
 
-        if n_devices is not None and n_devices >= 1:
-            # Set a large enough preconditioner size to reduce the number of CG iterations run
-            self.checkpoint_size = find_best_gpu_setting(
-                nInput,
-                nOutput,
-                train,
-                train_x,
-                train_y,
-                n_devices=n_devices,
-                preconditioner_size=self.preconditioner_size,
-                logger=logger,
-            )
-            gp_model = train(
-                nInput,
-                nOutput,
-                train_x,
-                train_y,
-                n_iter=n_iter,
-                gp_lengthscale_bounds=gp_lengthscale_bounds,
-                gp_noise_prior=gp_noise_prior,
-                checkpoint_size=self.checkpoint_size,
-                preconditioner_size=self.preconditioner_size,
-            )
-
-        else:
-            gp_model = train(
-                nInput,
-                nOutput,
-                train_x,
-                train_y,
-                n_iter=n_iter,
-                gp_lengthscale_bounds=gp_lengthscale_bounds,
-                gp_noise_prior=gp_noise_prior,
-            )
+        gp_model = train(
+            nInput,
+            nOutput,
+            train_x,
+            train_y,
+            n_iter=n_iter,
+            gp_lengthscale_bounds=gp_lengthscale_bounds,
+            gp_noise_prior=gp_noise_prior,
+        )
 
         del train_x
         del train_y
@@ -590,14 +561,7 @@ class MDGP_Matern:
             stack.enter_context(torch.no_grad())
             if self.fast_pred_var:
                 stack.enter_context(gpytorch.settings.fast_pred_var())
-            if self.checkpoint_size is not None:
-                stack.enter_context(
-                    gpytorch.beta_features.checkpoint_kernel(self.checkpoint_size)
-                )
-            self.sm.eval()
-            self.sm.likelihood.eval()
-            f_preds = self.sm.likelihood(self.sm(x))
-            mean, var = f_preds.mean, f_preds.variance
+            mean, var = self.sm.predict(x)
             # undo normalization
             if self.cuda:
                 mean = mean.cpu()
