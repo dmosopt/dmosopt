@@ -35,7 +35,7 @@ else:
 try:
     import torch
     import gpytorch
-
+    from torch.nn import Linear
     from contextlib import ExitStack
 
     def find_best_gpu_setting(
@@ -88,6 +88,106 @@ try:
 
         return checkpoint_size
 
+    class GPyTorchDGPMaternLayer(gpytorch.models.deep_gps.DeepGPLayer):
+        def __init__(
+            self,
+            input_dims,
+            output_dims,
+            num_inducing=128,
+            linear_mean=True,
+            ard_num_dims=None,
+            lengthscale_bounds=None,
+            n_devices=1,
+        ):
+
+            inducing_points = torch.randn(output_dims, num_inducing, input_dims)
+            batch_shape = torch.Size([output_dims])
+
+            lengthscale_constraint = None
+            if lengthscale_bounds is not None:
+                lengthscale_constraint = gpytorch.constraints.Interval(
+                    lengthscale_bounds[0], lengthscale_bounds[1]
+                )
+
+            variational_distribution = (
+                gpytorch.variational.CholeskyVariationalDistribution(
+                    num_inducing_points=num_inducing, batch_shape=batch_shape
+                )
+            )
+            variational_strategy = gpytorch.variational.VariationalStrategy(
+                self,
+                inducing_points,
+                variational_distribution,
+                learn_inducing_locations=True,
+            )
+
+            super().__init__(variational_strategy, input_dims, output_dims)
+            self.mean_module = (
+                gpytorch.means.ConstantMean()
+                if linear_mean
+                else gpytorch.means.LinearMean(input_dims)
+            )
+            self.covar_module = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.MaternKernel(
+                    nu=2.5,
+                    batch_shape=batch_shape,
+                    ard_num_dims=ard_num_dims,
+                    lengthscale_constraint=lengthscale_constraint,
+                ),
+                batch_shape=batch_shape,
+                ard_num_dims=None,
+            )
+            if n_devices > 1:
+                self.covar_module = gpytorch.kernels.MultiDeviceKernel(
+                    self.covar_module, device_ids=range(n_devices)
+                )
+
+        def forward(self, x):
+            mean_x = self.mean_module(x)
+            covar_x = self.covar_module(x)
+            return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+    class MultitaskDeepGPMatern(gpytorch.models.deep_gps.DeepGP):
+        def __init__(self, train_x_shape, likelihood, lengthscale_bounds=None):
+
+            hidden_layer = GPyTorchDGPMaternLayer(
+                input_dims=train_x_shape[-1],
+                output_dims=num_hidden_dgp_dims,
+                lengthscale_bounds=lengthscale_bounds,
+                linear_mean=True,
+            )
+            last_layer = GPyTorchDGPMaternLayer(
+                input_dims=hidden_layer.output_dims,
+                output_dims=num_tasks,
+                lengthscale_bounds=lengthscale_bounds,
+                linear_mean=False,
+            )
+
+            super().__init__()
+
+            self.hidden_layer = hidden_layer
+            self.last_layer = last_layer
+
+            # We're going to use a multitask likelihood instead of the standard GaussianLikelihood
+            self.likelihood = likelihood
+
+        def forward(self, inputs):
+            hidden_rep1 = self.hidden_layer(inputs)
+            output = self.last_layer(hidden_rep1)
+            return output
+
+        def predict(self, test_x):
+            with torch.no_grad():
+
+                # The output of the model is a multitask MVN, where both the data points
+                # and the tasks are jointly distributed
+                # To compute the marginal predictive NLL of each data point,
+                # we will call `to_data_independent_dist`,
+                # which removes the data cross-covariance terms from the distribution.
+                preds = model.likelihood(model(test_x)).to_data_independent_dist()
+
+            return preds.mean.mean(0), preds.variance.mean(0)
+
     class GPyTorchExactGPModelMatern(gpytorch.models.ExactGP):
         def __init__(
             self,
@@ -96,6 +196,7 @@ try:
             likelihood,
             ard_num_dims=None,
             lengthscale_bounds=None,
+            linear_mean=True,
             batch_size=None,
             n_devices=1,
         ):
@@ -109,7 +210,12 @@ try:
             batch_shape = None
             if batch_size is not None:
                 batch_shape = torch.Size([batch_size])
-            self.mean_module = gpytorch.means.ConstantMean()
+            input_dims = train_x.shape[1]
+            self.mean_module = (
+                gpytorch.means.ConstantMean()
+                if linear_mean
+                else gpytorch.means.LinearMean(input_dims)
+            )
             self.covar_module = gpytorch.kernels.ScaleKernel(
                 gpytorch.kernels.MaternKernel(
                     ard_num_dims=ard_num_dims,
@@ -127,7 +233,15 @@ try:
             mean_x = self.mean_module(x)
             covar_x = self.covar_module(x)
             mvn = gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-            return mvn
+            if self.batch_size is not None:
+                mmvn = (
+                    gpytorch.distributions.MultitaskMultivariateNormal.from_batch_mvn(
+                        mvn
+                    )
+                )
+                return mmvn
+            else:
+                return mvn
 
     class GPyTorchMultitaskExactGPModelMatern(gpytorch.models.ExactGP):
         def __init__(
@@ -139,14 +253,19 @@ try:
             rank=1,
             ard_num_dims=None,
             lengthscale_bounds=None,
+            linear_mean=True,
             batch_size=None,
             n_devices=1,
         ):
 
             super().__init__(train_x, train_y, likelihood)
+            input_dims = train_x.shape[1]
             self.num_tasks = num_tasks
             self.mean_module = gpytorch.means.MultitaskMean(
-                gpytorch.means.ConstantMean(), num_tasks=num_tasks
+                gpytorch.means.ConstantMean()
+                if linear_mean
+                else gpytorch.means.LinearMean(input_dims),
+                num_tasks=num_tasks,
             )
             lengthscale_constraint = None
             if lengthscale_bounds is not None:
@@ -175,18 +294,16 @@ try:
         def forward(self, x):
             mean_x = self.mean_module(x)
             covar_x = self.covar_module(x)
-            mvn = None
-            mmvn = None
+            mvn = gpytorch.distributions.MultitaskMultivariateNormal(mean_x, covar_x)
             if self.batch_size is not None:
-                mvn = gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-                mmvn = MultitaskMultivariateNormal.from_batch_mvn(
-                    mvn, task_dim=self.num_tasks
+                mmvn = (
+                    gpytorch.distributions.MultitaskMultivariateNormal.from_batch_mvn(
+                        mvn, task_dim=self.num_tasks
+                    )
                 )
+                return mmvn
             else:
-                mmvn = gpytorch.distributions.MultitaskMultivariateNormal(
-                    mean_x, covar_x
-                )
-            return mmvn
+                return mvn
 
 except:
     _has_gpytorch = False
@@ -223,6 +340,276 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
             scale = scale.copy()
         scale[constant_mask] = 1.0
         return scale
+
+
+class MDGP_Matern:
+    def __init__(
+        self,
+        xin,
+        yin,
+        nInput,
+        nOutput,
+        xlb,
+        xub,
+        seed=None,
+        gp_lengthscale_bounds=None,
+        gp_likelihood_sigma=None,
+        linear_mean=True,
+        preconditioner_size=100,
+        adam_lr=0.01,
+        fast_pred_var=False,
+        n_iter=5000,
+        min_loss_pct_change=0.1,
+        cuda=False,
+        logger=None,
+    ):
+
+        if not _has_gpytorch:
+            raise RuntimeError(
+                "MDGP_Matern requires the GPyTorch library to be installed."
+            )
+
+        self.linear_mean = linear_mean
+        self.fast_pred_var = fast_pred_var
+        self.preconditioner_size = preconditioner_size
+        self.checkpoint_size = None
+        self.cuda = cuda
+        self.nInput = nInput
+        self.nOutput = nOutput
+        self.xlb = xlb
+        self.xub = xub
+        self.xrng = np.where(
+            np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
+        )
+        self.logger = logger
+
+        n_devices = None
+        if self.cuda:
+            n_devices = torch.cuda.device_count()
+            if logger is not None:
+                logger.info(f"MDGP_Matern: using {n_devices} GPU devices.")
+
+        N = xin.shape[0]
+        xn = np.zeros_like(xin, dtype=np.float32)
+        for i in range(N):
+            xn[i, :] = (xin[i, :] - self.xlb) / self.xrng
+        if nOutput == 1:
+            yin = yin.reshape((yin.shape[0], 1))
+
+        self.y_train_mean = np.asarray(
+            [np.mean(yin[:, i]) for i in range(yin.shape[1])], dtype=np.float32
+        )
+        self.y_train_std = np.asarray(
+            [
+                handle_zeros_in_scale(np.std(yin[:, i], axis=0), copy=False)
+                for i in range(yin.shape[1])
+            ],
+            dtype=np.float32,
+        )
+
+        # Remove mean and make unit variance
+        yn = np.column_stack(
+            tuple(
+                (yin[:, i] - self.y_train_mean[i]) / self.y_train_std[i]
+                for i in range(yin.shape[1])
+            )
+        )
+        train_x = torch.from_numpy(xn)
+
+        if logger is not None:
+            logger.info(f"MDGP_Matern: creating regressor for output...")
+            for i in range(nOutput):
+                logger.info(
+                    f"MDGP_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                )
+
+        train_y = torch.from_numpy(yn.astype(np.float32))
+
+        gp_noise_prior = None
+        if gp_likelihood_sigma is not None:
+            gp_noise_prior = gpytorch.priors.NormalPrior(
+                loc=0.0, scale=gp_likelihood_sigma
+            )
+
+        batch_shape = None
+        if batch_size is not None:
+            batch_shape = torch.Size([nInput])
+
+        def train(
+            nInput,
+            nOutput,
+            train_x,
+            train_y,
+            n_iter,
+            gp_lengthscale_bounds=None,
+            gp_noise_prior=None,
+            checkpoint_size=None,
+            preconditioner_size=None,
+        ):
+
+            gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
+                num_tasks=nOutput, noise_prior=gp_noise_prior, batch_shape=batch_shape
+            )
+
+            gp_model = GPyTorchMultitaskDeepGPMatern(
+                train_x_shape=train_x.shape,
+                num_tasks=nOutput,
+                likelihood=gp_likelihood,
+                lengthscale_bounds=gp_lengthscale_bounds,
+            )
+
+            if self.cuda:
+                train_x = train_x.cuda()
+                train_y = train_y.cuda()
+                gp_model = gp_model.cuda()
+                gp_likelihood = gp_likelihood.cuda()
+
+            # Find optimal model hyperparameters
+            gp_model.train()
+            gp_likelihood.train()
+
+            optimizer = torch.optim.Adam(
+                gp_model.parameters(), lr=adam_lr
+            )  # Includes GaussianLikelihood parameters
+
+            if logger is not None:
+                logger.info(f"MDGP_Matern: optimizing regressor...")
+
+            # "Loss" for GPs - the marginal log likelihood
+            mll = gpytorch.mlls.DeepApproximateMLL(
+                gpytorch.mlls.VariationalELBO(
+                    model.likelihood, model, num_data=train_y.size(0)
+                )
+            )
+            loss_log = []
+            diff_kernel = np.array([1, -1])
+
+            with ExitStack() as stack:
+                if checkpoint_size is not None:
+                    stack.enter_context(
+                        gpytorch.beta_features.checkpoint_kernel(checkpoint_size)
+                    )
+                if preconditioner_size is not None:
+                    stack.enter_context(
+                        gpytorch.settings.max_preconditioner_size(preconditioner_size)
+                    )
+
+                for it in range(n_iter):
+                    # Zero gradients from previous iteration
+                    optimizer.zero_grad()
+                    # Output from model
+                    output = gp_model(train_x)
+                    # Calculate loss and backprop gradients
+                    if batch_size is not None:
+                        loss = -mll(output, train_y)
+                    else:
+                        loss = -mll(output, train_y).sum()
+                    loss.backward()
+                    loss_log.append(loss.item())
+                    if it % 100 == 0:
+                        if logger is not None:
+                            logger.info(
+                                "MEGP_Matern: iter %d/%d - Loss: %.3f  noise: %.3f"
+                                % (
+                                    it,
+                                    n_iter,
+                                    loss.item(),
+                                    gp_model.likelihood.noise.item(),
+                                )
+                            )
+                    optimizer.step()
+                    if it >= 1000:
+                        loss_change = np.convolve(loss_log, diff_kernel, "same")[1:]
+                        loss_pct_change = (
+                            np.abs(loss_change) / np.abs(loss_log[1:])
+                        ) * 100
+                        mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
+                        if mean_loss_pct_change < min_loss_pct_change:
+                            if logger is not None:
+                                logger.info(
+                                    f"MEGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent"
+                                )
+                            break
+
+            return gp_model
+
+        if n_devices is not None and n_devices >= 1:
+            # Set a large enough preconditioner size to reduce the number of CG iterations run
+            self.checkpoint_size = find_best_gpu_setting(
+                nInput,
+                nOutput,
+                train,
+                train_x,
+                train_y,
+                n_devices=n_devices,
+                preconditioner_size=self.preconditioner_size,
+                logger=logger,
+            )
+            gp_model = train(
+                nInput,
+                nOutput,
+                train_x,
+                train_y,
+                n_iter=n_iter,
+                gp_lengthscale_bounds=gp_lengthscale_bounds,
+                gp_noise_prior=gp_noise_prior,
+                checkpoint_size=self.checkpoint_size,
+                preconditioner_size=self.preconditioner_size,
+            )
+
+        else:
+            gp_model = train(
+                nInput,
+                nOutput,
+                train_x,
+                train_y,
+                n_iter=n_iter,
+                gp_lengthscale_bounds=gp_lengthscale_bounds,
+                gp_noise_prior=gp_noise_prior,
+            )
+
+        del train_x
+        del train_y
+        if cuda:
+            torch.cuda.empty_cache()
+        self.sm = gp_model
+
+    def predict(self, xin):
+        x = np.zeros_like(xin, dtype=np.float32)
+        if len(x.shape) == 1:
+            x = x.reshape((1, self.nInput))
+            xin = xin.reshape((1, self.nInput))
+        N = x.shape[0]
+        y = np.zeros((N, self.nOutput), dtype=np.float32)
+        for i in range(N):
+            x[i, :] = (xin[i, :] - self.xlb) / self.xrng
+        x = torch.from_numpy(x)
+        if self.cuda:
+            x = x.cuda()
+        with ExitStack() as stack:
+            stack.enter_context(torch.no_grad())
+            if self.fast_pred_var:
+                stack.enter_context(gpytorch.settings.fast_pred_var())
+            if self.checkpoint_size is not None:
+                stack.enter_context(
+                    gpytorch.beta_features.checkpoint_kernel(self.checkpoint_size)
+                )
+            self.sm.eval()
+            self.sm.likelihood.eval()
+            f_preds = self.sm.likelihood(self.sm(x))
+            mean, var = f_preds.mean, f_preds.variance
+            # undo normalization
+            if self.cuda:
+                mean = mean.cpu()
+            y_mean = self.y_train_std * mean.numpy() + self.y_train_mean
+            y[:] = y_mean
+            del mean
+            del var
+        return y
+
+    def evaluate(self, x):
+
+        return self.predict(x)
 
 
 class MEGP_Matern:
