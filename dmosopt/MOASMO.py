@@ -535,13 +535,12 @@ def train(
         megp_adam_lr = surrogate_options.get("adam_lr", 0.01)
         megp_n_iter = surrogate_options.get("n_iter", 5000)
         megp_cuda = surrogate_options.get("cuda", False)
-        megp_fast_pred_var = surrogate_options.get("fast_pred_var", False)
+        megp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         sm = gp.MEGP_Matern(
             x,
             y,
             nInput,
             nOutput,
-            x.shape[0],
             xlb,
             xub,
             gp_lengthscale_bounds=megp_lengthscale_bounds,
@@ -550,6 +549,58 @@ def train(
             n_iter=megp_n_iter,
             fast_pred_var=megp_fast_pred_var,
             cuda=megp_cuda,
+            logger=logger,
+        )
+    elif surrogate_method == "mdspp":
+        mdspp_num_hidden_dims = surrogate_options.get("num_hidden_dims", 3)
+        mdspp_num_inducing = surrogate_options.get("num_inducing", 128)
+        mdspp_lengthscale_bounds = surrogate_options.get("lengthscale_bounds", None)
+        mdspp_likelihood_sigma = surrogate_options.get("likelihood_sigma", 1.0e-4)
+        mdspp_adam_lr = surrogate_options.get("adam_lr", 0.1)
+        mdspp_n_iter = surrogate_options.get("n_iter", 5000)
+        mdspp_cuda = surrogate_options.get("cuda", False)
+        mdspp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
+        sm = gp.MDSPP_Matern(
+            x,
+            y,
+            nInput,
+            nOutput,
+            xlb,
+            xub,
+            num_hidden_dims=mdspp_num_hidden_dims,
+            num_inducing=mdspp_num_inducing,
+            gp_lengthscale_bounds=mdspp_lengthscale_bounds,
+            gp_likelihood_sigma=mdspp_likelihood_sigma,
+            adam_lr=mdspp_adam_lr,
+            n_iter=mdspp_n_iter,
+            fast_pred_var=mdspp_fast_pred_var,
+            cuda=mdspp_cuda,
+            logger=logger,
+        )
+    elif surrogate_method == "mdgp":
+        mdgp_num_hidden_dims = surrogate_options.get("num_hidden_dims", 3)
+        mdgp_num_inducing = surrogate_options.get("num_inducing", 128)
+        mdgp_lengthscale_bounds = surrogate_options.get("lengthscale_bounds", None)
+        mdgp_likelihood_sigma = surrogate_options.get("likelihood_sigma", 1.0e-4)
+        mdgp_adam_lr = surrogate_options.get("adam_lr", 0.01)
+        mdgp_n_iter = surrogate_options.get("n_iter", 5000)
+        mdgp_cuda = surrogate_options.get("cuda", False)
+        mdgp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
+        sm = gp.MDGP_Matern(
+            x,
+            y,
+            nInput,
+            nOutput,
+            xlb,
+            xub,
+            num_hidden_dims=mdgp_num_hidden_dims,
+            num_inducing=mdgp_num_inducing,
+            gp_lengthscale_bounds=mdgp_lengthscale_bounds,
+            gp_likelihood_sigma=mdgp_likelihood_sigma,
+            adam_lr=mdgp_adam_lr,
+            n_iter=mdgp_n_iter,
+            fast_pred_var=mdgp_fast_pred_var,
+            cuda=mdgp_cuda,
             logger=logger,
         )
     elif surrogate_method == "vgp":
