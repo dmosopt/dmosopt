@@ -895,14 +895,14 @@ def h5_init_types(
     dt = np.dtype(
         [
             ("parameter", opt_grp["parameter_enum"]),
-            ("is_integer", np.bool),
+            ("is_integer", bool),
             ("lower", np.float32),
             ("upper", np.float32),
         ]
     )
     opt_grp["parameter_spec_type"] = dt
 
-    is_integer = np.asarray(spec.is_integer, dtype=np.bool)
+    is_integer = np.asarray(spec.is_integer, dtype=bool)
     upper = np.asarray(spec.bound2, dtype=np.float32)
     lower = np.asarray(spec.bound1, dtype=np.float32)
 
