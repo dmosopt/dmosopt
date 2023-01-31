@@ -1419,6 +1419,16 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
                 objfun_init_name, sys.modules[objfun_init_module].__dict__
             )
             objfun = objfun_init(**objfun_init_args, worker=worker)
+    else:
+        ctrl_init_fun_module = sopt_params.get("controller_init_fun_module", "__main__")
+        ctrl_init_fun_name = sopt_params.get("controller_init_fun_name", None)
+        ctrl_init_fun_args = sopt_params.get("controller_init_fun_args", {})
+        if ctrl_init_fun_module not in sys.modules:
+            importlib.import_module(ctrl_init_fun_module)
+        ctrl_init_fun = eval(
+            ctrl_init_fun_name, sys.modules[ctrl_init_fun_module].__dict__
+        )
+        ctrl_init_fun(**ctrl_init_fun_args)
 
     sopt_params["obj_fun"] = objfun
     reducefun_module = sopt_params.get("reduce_fun_module", "__main__")
