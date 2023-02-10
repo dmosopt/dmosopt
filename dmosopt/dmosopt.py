@@ -1729,7 +1729,6 @@ def run(
             module_name="dmosopt.dmosopt",
             broker_fun_name=sopt_params.get("broker_fun_name", None),
             broker_module_name=sopt_params.get("broker_module_name", None),
-            broker_is_worker=True,
             verbose=verbose,
             args=(
                 sopt_params,
