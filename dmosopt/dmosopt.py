@@ -805,7 +805,7 @@ def h5_init_types(
     )
     dset.resize((len(objective_names),))
     a = np.zeros(len(objective_names), dtype=opt_grp["objective_spec_type"].dtype)
-    for idx, parm in enumerate(objective_names):
+    for idx, parm in enumerate(objective_keys):
         a[idx]["objective"] = objective_mapping[parm]
     dset[:] = a
 
@@ -1425,10 +1425,11 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
         ctrl_init_fun_args = sopt_params.get("controller_init_fun_args", {})
         if ctrl_init_fun_module not in sys.modules:
             importlib.import_module(ctrl_init_fun_module)
-        ctrl_init_fun = eval(
-            ctrl_init_fun_name, sys.modules[ctrl_init_fun_module].__dict__
-        )
-        ctrl_init_fun(**ctrl_init_fun_args)
+        if ctrl_init_fun_name is not None:
+            ctrl_init_fun = eval(
+                ctrl_init_fun_name, sys.modules[ctrl_init_fun_module].__dict__
+            )
+            ctrl_init_fun(**ctrl_init_fun_args)
 
     sopt_params["obj_fun"] = objfun
     reducefun_module = sopt_params.get("reduce_fun_module", "__main__")
@@ -1471,13 +1472,14 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 task_id, res = ret
 
                 if sopt.reduce_fun is None:
-                    rres = res
+                    rres = res[0]
                 else:
                     if sopt.reduce_fun_args is None:
                         rres = sopt.reduce_fun(res)
                     else:
                         rres = sopt.reduce_fun(res, *sopt.reduce_fun_args)
 
+                logger.info(f"rres = {rres}")
                 for problem_id in rres:
                     eval_req = sopt.eval_reqs[problem_id][task_id]
                     eval_x = eval_req.parameters
@@ -1727,6 +1729,7 @@ def run(
             module_name="dmosopt.dmosopt",
             broker_fun_name=sopt_params.get("broker_fun_name", None),
             broker_module_name=sopt_params.get("broker_module_name", None),
+            broker_is_worker=True,
             verbose=verbose,
             args=(
                 sopt_params,
