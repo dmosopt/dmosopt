@@ -805,7 +805,7 @@ def h5_init_types(
     )
     dset.resize((len(objective_names),))
     a = np.zeros(len(objective_names), dtype=opt_grp["objective_spec_type"].dtype)
-    for idx, parm in enumerate(objective_keys):
+    for idx, parm in enumerate(objective_names):
         a[idx]["objective"] = objective_mapping[parm]
     dset[:] = a
 
@@ -827,7 +827,7 @@ def h5_init_types(
         )
         dset.resize((len(feature_keys),))
         a = np.zeros(len(feature_keys), dtype=opt_grp["feature_spec_type"].dtype)
-        for idx, parm in enumerate(feature_keys):
+        for idx, parm in enumerate(feature_names):
             a[idx]["feature"] = feature_mapping[parm]
         dset[:] = a
 
@@ -931,11 +931,10 @@ def h5_load_raw(input_file, opt_id):
     opt_grp = h5_get_group(f, opt_id)
 
     objective_enum_dict = h5py.check_enum_dtype(opt_grp["objective_enum"].dtype)
-    objective_idx_dict = {parm: idx for parm, idx in objective_enum_dict.items()}
-    objective_name_dict = {idx: parm for parm, idx in objective_idx_dict.items()}
+    objective_enum_name_dict = {idx: parm for parm, idx in objective_enum_dict.items()}
     n_objectives = len(objective_enum_dict)
     objective_names = [
-        objective_name_dict[spec[0]] for spec in iter(opt_grp["objective_spec"])
+        objective_enum_name_dict[spec[0]] for spec in iter(opt_grp["objective_spec"])
     ]
 
     n_constraints = 0
@@ -1472,14 +1471,13 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 task_id, res = ret
 
                 if sopt.reduce_fun is None:
-                    rres = res[0]
+                    rres = res
                 else:
                     if sopt.reduce_fun_args is None:
                         rres = sopt.reduce_fun(res)
                     else:
                         rres = sopt.reduce_fun(res, *sopt.reduce_fun_args)
 
-                logger.info(f"rres = {rres}")
                 for problem_id in rres:
                     eval_req = sopt.eval_reqs[problem_id][task_id]
                     eval_x = eval_req.parameters
