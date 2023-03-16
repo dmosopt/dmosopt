@@ -1472,14 +1472,13 @@ def sopt_ctrl(controller, sopt_params, verbose=True):
                 task_id, res = ret
 
                 if sopt.reduce_fun is None:
-                    rres = res[0]
+                    rres = res
                 else:
                     if sopt.reduce_fun_args is None:
                         rres = sopt.reduce_fun(res)
                     else:
                         rres = sopt.reduce_fun(res, *sopt.reduce_fun_args)
 
-                logger.info(f"rres = {rres}")
                 for problem_id in rres:
                     eval_req = sopt.eval_reqs[problem_id][task_id]
                     eval_x = eval_req.parameters
