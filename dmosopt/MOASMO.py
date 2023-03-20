@@ -600,6 +600,33 @@ def train(
             n_iter=svgp_n_iter,
             logger=logger,
         )
+    elif surrogate_method == "spv":
+        spv_batch_size = surrogate_options.get("batch_size", 50)
+        spv_lengthscale_bounds = surrogate_options.get(
+            "lengthscale_bounds", (1e-6, 100.0)
+        )
+        spv_likelihood_sigma = surrogate_options.get("likelihood_sigma", 1.0e-4)
+        spv_natgrad_gamma = surrogate_options.get("natgrad_gamma", 0.1)
+        spv_adam_lr = surrogate_options.get("adam_lr", 0.01)
+        spv_n_iter = surrogate_options.get("n_iter", 30000)
+        spv_num_latent_gps = surrogate_options.get("num_latent_gps", None)
+        sm = gp.SPV_Matern(
+            x,
+            y,
+            nInput,
+            nOutput,
+            x.shape[0],
+            xlb,
+            xub,
+            batch_size=spv_batch_size,
+            gp_lengthscale_bounds=spv_lengthscale_bounds,
+            gp_likelihood_sigma=spv_likelihood_sigma,
+            natgrad_gamma=spv_natgrad_gamma,
+            adam_lr=spv_adam_lr,
+            n_iter=spv_n_iter,
+            num_latent_gps=spv_num_latent_gps,
+            logger=logger,
+        )
     elif surrogate_method == "siv":
         siv_batch_size = surrogate_options.get("batch_size", 50)
         siv_lengthscale_bounds = surrogate_options.get(
