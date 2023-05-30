@@ -390,7 +390,7 @@ def environmental_selection(
 ):
 
     # get max int value
-    max_int = np.iinfo(np.int).max
+    max_int = np.iinfo(np.int32).max
 
     xs, ys, rank = sortMO(population_parm, population_obj)
     rmax = int(np.max(rank[rank != max_int]))
