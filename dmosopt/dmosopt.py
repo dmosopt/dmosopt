@@ -827,7 +827,7 @@ def h5_init_types(
         )
         dset.resize((len(feature_keys),))
         a = np.zeros(len(feature_keys), dtype=opt_grp["feature_spec_type"].dtype)
-        for idx, parm in enumerate(feature_names):
+        for idx, parm in enumerate(feature_keys):
             a[idx]["feature"] = feature_mapping[parm]
         dset[:] = a
 
