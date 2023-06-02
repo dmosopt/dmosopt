@@ -1396,7 +1396,9 @@ def eval_obj_fun_mp(
     return result_dict
 
 
-def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
+def sopt_init(
+    sopt_params, worker=None, nprocs_per_worker=None, verbose=False, init_strategy=False
+):
     objfun = None
     objfun_module = sopt_params.get("obj_fun_module", "__main__")
     objfun_name = sopt_params.get("obj_fun_name", None)
@@ -1438,6 +1440,20 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
     if reducefun_name is not None:
         reducefun = eval(reducefun_name, sys.modules[reducefun_module].__dict__)
         sopt_params["reduce_fun"] = reducefun
+    else:
+        # If using MPI with 1 process per worker, then each worker
+        # will always return a list containing one element, and
+        # therefore we can apply a reduce function that returns the
+        # first element of the list.
+        if distwq.is_controller and distwq.workers_available:
+            if nprocs_per_worker == 1:
+                reducefun = lambda xs: xs[0]
+                sopt_params["reduce_fun"] = reducefun
+            elif nprocs_per_worker > 1:
+                raise RuntimeError(
+                    f"When nprocs_per_workers > 1, a reduce function must be specified."
+                )
+
     sopt = DistOptimizer(**sopt_params, verbose=verbose)
     if init_strategy:
         sopt.init_strategy()
@@ -1445,13 +1461,18 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
     return sopt
 
 
-def sopt_ctrl(controller, sopt_params, verbose=True):
+def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
     """Controller for distributed surrogate optimization."""
     logger = logging.getLogger(sopt_params["opt_id"])
     logger.info(f"Initializing optimization controller...")
     if verbose:
         logger.setLevel(logging.INFO)
-    sopt = sopt_init(sopt_params, verbose=verbose, init_strategy=True)
+    sopt = sopt_init(
+        sopt_params,
+        nprocs_per_worker=nprocs_per_worker,
+        verbose=verbose,
+        init_strategy=True,
+    )
     logger.info(f"Optimizing for {sopt.n_epochs} epochs...")
     start_epoch = sopt.start_epoch
     epoch_count = 0
@@ -1698,6 +1719,7 @@ def run(
             verbose=verbose,
             args=(
                 sopt_params,
+                nprocs_per_worker,
                 verbose,
             ),
             worker_grouping_method="spawn" if spawn_workers else "split",
