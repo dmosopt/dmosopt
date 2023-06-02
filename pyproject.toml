@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dmosopt"
-version = "0.26.0"
+version = "0.29.0"
 description = "Distributed multi-objective surrogate optimization algorithm."
 authors = ["Ivan Raikov <ivan.g.raikov@gmail.com>"]
 license = "GPL-3.0-or-later"
@@ -13,7 +13,7 @@ numpy = "^1.23.5"
 h5py = "^3.7.0"
 scipy = "^1.9.3"
 scikit-learn = "^1.1.3"
-distwq = "^1.0.3"
+distwq = ">=1.1.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.8.0"
@@ -32,3 +32,9 @@ build-backend = "poetry.core.masonry.api"
 gpflow = ["gpflow"]
 gpytorch = ["gpytorch"]
 sensitivity = ["SALib"]
+
+[tool.poetry.scripts]
+# Main functions
+dmosopt-analyze = "dmosopt.dmosopt_analyze:main"
+dmosopt-train = "dmosopt.dmosopt_train:main"
+dmosopt-onestep = "dmosopt.dmosopt_onestep:main"

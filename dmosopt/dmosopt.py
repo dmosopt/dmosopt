@@ -895,14 +895,14 @@ def h5_init_types(
     dt = np.dtype(
         [
             ("parameter", opt_grp["parameter_enum"]),
-            ("is_integer", np.bool),
+            ("is_integer", bool),
             ("lower", np.float32),
             ("upper", np.float32),
         ]
     )
     opt_grp["parameter_spec_type"] = dt
 
-    is_integer = np.asarray(spec.is_integer, dtype=np.bool)
+    is_integer = np.asarray(spec.is_integer, dtype=bool)
     upper = np.asarray(spec.bound2, dtype=np.float32)
     lower = np.asarray(spec.bound1, dtype=np.float32)
 
@@ -931,11 +931,10 @@ def h5_load_raw(input_file, opt_id):
     opt_grp = h5_get_group(f, opt_id)
 
     objective_enum_dict = h5py.check_enum_dtype(opt_grp["objective_enum"].dtype)
-    objective_idx_dict = {parm: idx for parm, idx in objective_enum_dict.items()}
-    objective_name_dict = {idx: parm for parm, idx in objective_idx_dict.items()}
+    objective_enum_name_dict = {idx: parm for parm, idx in objective_enum_dict.items()}
     n_objectives = len(objective_enum_dict)
     objective_names = [
-        objective_name_dict[spec[0]] for spec in iter(opt_grp["objective_spec"])
+        objective_enum_name_dict[spec[0]] for spec in iter(opt_grp["objective_spec"])
     ]
 
     n_constraints = 0
@@ -1397,7 +1396,9 @@ def eval_obj_fun_mp(
     return result_dict
 
 
-def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
+def sopt_init(
+    sopt_params, worker=None, nprocs_per_worker=None, verbose=False, init_strategy=False
+):
     objfun = None
     objfun_module = sopt_params.get("obj_fun_module", "__main__")
     objfun_name = sopt_params.get("obj_fun_name", None)
@@ -1419,6 +1420,17 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
                 objfun_init_name, sys.modules[objfun_init_module].__dict__
             )
             objfun = objfun_init(**objfun_init_args, worker=worker)
+    else:
+        ctrl_init_fun_module = sopt_params.get("controller_init_fun_module", "__main__")
+        ctrl_init_fun_name = sopt_params.get("controller_init_fun_name", None)
+        ctrl_init_fun_args = sopt_params.get("controller_init_fun_args", {})
+        if ctrl_init_fun_module not in sys.modules:
+            importlib.import_module(ctrl_init_fun_module)
+        if ctrl_init_fun_name is not None:
+            ctrl_init_fun = eval(
+                ctrl_init_fun_name, sys.modules[ctrl_init_fun_module].__dict__
+            )
+            ctrl_init_fun(**ctrl_init_fun_args)
 
     sopt_params["obj_fun"] = objfun
     reducefun_module = sopt_params.get("reduce_fun_module", "__main__")
@@ -1428,6 +1440,20 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
     if reducefun_name is not None:
         reducefun = eval(reducefun_name, sys.modules[reducefun_module].__dict__)
         sopt_params["reduce_fun"] = reducefun
+    else:
+        # If using MPI with 1 process per worker, then each worker
+        # will always return a list containing one element, and
+        # therefore we can apply a reduce function that returns the
+        # first element of the list.
+        if distwq.is_controller and distwq.workers_available:
+            if nprocs_per_worker == 1:
+                reducefun = lambda xs: xs[0]
+                sopt_params["reduce_fun"] = reducefun
+            elif nprocs_per_worker > 1:
+                raise RuntimeError(
+                    f"When nprocs_per_workers > 1, a reduce function must be specified."
+                )
+
     sopt = DistOptimizer(**sopt_params, verbose=verbose)
     if init_strategy:
         sopt.init_strategy()
@@ -1435,13 +1461,18 @@ def sopt_init(sopt_params, worker=None, verbose=False, init_strategy=False):
     return sopt
 
 
-def sopt_ctrl(controller, sopt_params, verbose=True):
+def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
     """Controller for distributed surrogate optimization."""
     logger = logging.getLogger(sopt_params["opt_id"])
     logger.info(f"Initializing optimization controller...")
     if verbose:
         logger.setLevel(logging.INFO)
-    sopt = sopt_init(sopt_params, verbose=verbose, init_strategy=True)
+    sopt = sopt_init(
+        sopt_params,
+        nprocs_per_worker=nprocs_per_worker,
+        verbose=verbose,
+        init_strategy=True,
+    )
     logger.info(f"Optimizing for {sopt.n_epochs} epochs...")
     start_epoch = sopt.start_epoch
     epoch_count = 0
@@ -1688,9 +1719,10 @@ def run(
             verbose=verbose,
             args=(
                 sopt_params,
+                nprocs_per_worker,
                 verbose,
             ),
-            spawn_workers=spawn_workers,
+            worker_grouping_method="spawn" if spawn_workers else "split",
             sequential_spawn=sequential_spawn,
             spawn_startup_wait=spawn_startup_wait,
             spawn_executable=spawn_executable,
@@ -1716,13 +1748,14 @@ def run(
             module_name="dmosopt.dmosopt",
             broker_fun_name=sopt_params.get("broker_fun_name", None),
             broker_module_name=sopt_params.get("broker_module_name", None),
+            broker_is_worker=True,
             verbose=verbose,
             args=(
                 sopt_params,
                 verbose,
                 worker_debug,
             ),
-            spawn_workers=spawn_workers,
+            worker_grouping_method="spawn" if spawn_workers else "split",
             sequential_spawn=sequential_spawn,
             spawn_startup_wait=spawn_startup_wait,
             spawn_executable=spawn_executable,

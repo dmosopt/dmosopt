@@ -310,8 +310,8 @@ def find_corner_solutions(front):
     # let's define the axes of the n-dimensional spaces
     W = 1e-6 + np.eye(n)
     r = W.shape[0]
-    indexes = np.zeros(n, dtype=np.intp)
-    selected = np.zeros(m, dtype=np.bool)
+    indexes = np.zeros(n, dtype=int)
+    selected = np.zeros(m, dtype=bool)
     for i in range(r):
         dists = point_2_line_distance(front, np.zeros(n), W[i, :])
         dists[selected] = np.inf  # prevent already selected to be reselected
@@ -390,7 +390,7 @@ def environmental_selection(
 ):
 
     # get max int value
-    max_int = np.iinfo(np.int).max
+    max_int = np.iinfo(np.int32).max
 
     xs, ys, rank = sortMO(population_parm, population_obj)
     rmax = int(np.max(rank[rank != max_int]))
@@ -398,7 +398,7 @@ def environmental_selection(
 
     yn = np.zeros_like(ys)
     crowd_dist = np.zeros_like(rank).astype(np.float32)
-    selected = np.zeros_like(rank).astype(np.bool)
+    selected = np.zeros_like(rank).astype(bool)
 
     # get the first front for normalization
     front_1 = np.argwhere(rank == 0).ravel()

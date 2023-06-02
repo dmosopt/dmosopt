@@ -257,7 +257,7 @@ class ParamSpacePoints:
         consprm_dt = np.dtype(
             [
                 ("param", "U64"),
-                ("abs", np.bool),
+                ("abs", bool),
                 ("absbnds", float, 2),
                 ("lbprms", np.ndarray),
                 ("lbrels", np.ndarray),

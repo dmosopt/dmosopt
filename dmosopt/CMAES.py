@@ -312,14 +312,14 @@ class CMAES:
     def _select(self, candidates_x, candidates_y, candidates_ps, candidates_inds):
 
         if candidates_x.shape[0] <= self.mu:
-            return np.ones_like(candidates_inds, dtype=np.bool_), np.zeros_like(
-                candidates_inds, dtype=np.bool_
+            return np.ones_like(candidates_inds, dtype=bool_), np.zeros_like(
+                candidates_inds, dtype=bool
             )
 
         rank = sortMO(candidates_x, candidates_y)
 
-        chosen = np.zeros_like(candidates_inds, dtype=np.bool_)
-        not_chosen = np.zeros_like(candidates_inds, dtype=np.bool_)
+        chosen = np.zeros_like(candidates_inds, dtype=bool)
+        not_chosen = np.zeros_like(candidates_inds, dtype=bool)
         mid_front = None
 
         # Fill the next population (chosen) with the fronts until there is not enough space
@@ -384,8 +384,8 @@ class CMAES:
         candidates_y = np.vstack((y, self.parents_y))
         candidates_offspring = np.concatenate(
             (
-                np.asarray([True] * C, dtype=np.bool_),
-                np.asarray([False] * P, dtype=np.bool_),
+                np.asarray([True] * C, dtype=bool),
+                np.asarray([False] * P, dtype=bool),
             )
         )
         candidates_pidxs = np.concatenate((p_idxs, parent_pidxs))

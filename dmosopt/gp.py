@@ -1899,6 +1899,192 @@ class SIV_Matern:
         return self.predict(x)
 
 
+class SPV_Matern:
+    def __init__(
+        self,
+        xin,
+        yin,
+        nInput,
+        nOutput,
+        xlb,
+        xub,
+        seed=None,
+        batch_size=50,
+        inducing_fraction=0.2,
+        min_inducing=100,
+        gp_lengthscale_bounds=(1e-6, 100.0),
+        gp_likelihood_sigma=1.0e-4,
+        natgrad_gamma=0.1,
+        adam_lr=0.01,
+        n_iter=30000,
+        min_elbo_pct_change=1.0,
+        num_latent_gps=None,
+        logger=None,
+    ):
+        if not _has_gpflow:
+            raise RuntimeError(
+                "SPV_Matern requires the GPflow library to be installed."
+            )
+
+        self.nInput = nInput
+        self.nOutput = nOutput
+        self.xlb = xlb
+        self.xub = xub
+        self.xrng = np.where(
+            np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
+        )
+
+        self.logger = logger
+
+        N = xin.shape[0]
+        D = xin.shape[1]
+        xn = np.zeros_like(xin)
+        for i in range(N):
+            xn[i, :] = (xin[i, :] - self.xlb) / self.xrng
+        if nOutput == 1:
+            yin = yin.reshape((yin.shape[0], 1))
+        if num_latent_gps is None:
+            num_latent_gps = nOutput
+
+        self.y_train_mean = np.asarray(
+            [np.mean(yin[:, i]) for i in range(yin.shape[1])], dtype=np.float32
+        )
+        self.y_train_std = np.asarray(
+            [
+                handle_zeros_in_scale(np.std(yin[:, i], axis=0), copy=False)
+                for i in range(yin.shape[1])
+            ],
+            dtype=np.float32,
+        )
+
+        # Remove mean and make unit variance
+        yn = np.column_stack(
+            tuple(
+                (yin[:, i] - self.y_train_mean[i]) / self.y_train_std[i]
+                for i in range(yin.shape[1])
+            )
+        )
+
+        adam_opt = tf.optimizers.Adam(adam_lr)
+        natgrad_opt = NaturalGradient(gamma=natgrad_gamma)
+        autotune = tf.data.experimental.AUTOTUNE
+
+        if logger is not None:
+            logger.info(f"SPV_Matern: creating regressor for output...")
+            for i in range(nOutput):
+                logger.info(
+                    f"SPV_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                )
+
+        data = (np.asarray(xn, dtype=np.float64), yn.astype(np.float64))
+
+        M = int(round(inducing_fraction * N))
+
+        if M < min_inducing:
+            M = xn.shape[0]
+            Zinit = xn.copy()
+        else:
+            Zinit = xn[
+                np.random.choice(N, size=M, replace=False), :
+            ].copy()  # Initialize inducing locations to M random inputs
+        Zs = [Zinit.copy() for _ in range(nOutput)]
+        iv = gpflow.inducing_variables.SeparateIndependentInducingVariables(
+            [gpflow.inducing_variables.InducingPoints(Z) for Z in Zs]
+        )
+        kernel_list = [gpflow.kernels.Matern52() for _ in range(nOutput)]
+        gp_kernel = gpflow.kernels.SeparateIndependent(kernel_list)
+        gp_likelihood = gpflow.likelihoods.Gaussian(variance=gp_likelihood_sigma)
+        gp_model = gpflow.models.SVGP(
+            inducing_variable=iv,
+            kernel=gp_kernel,
+            likelihood=gp_likelihood,
+            num_data=N,
+            num_latent_gps=num_latent_gps,
+        )
+
+        for kernel in gp_model.kernel.kernels:
+            kernel.lengthscales = bounded_parameter(
+                np.asarray([gp_lengthscale_bounds[0]] * nInput, dtype=np.float64),
+                np.asarray([gp_lengthscale_bounds[1]] * nInput, dtype=np.float64),
+                np.ones(nInput, dtype=np.float64),
+                trainable=True,
+                name="lengthscales",
+            )
+
+        gpflow.set_trainable(gp_model.q_mu, False)
+        gpflow.set_trainable(gp_model.q_sqrt, False)
+        gpflow.set_trainable(gp_model.inducing_variable, False)
+
+        if logger is not None:
+            logger.info(f"SPV_Matern: optimizing regressor...")
+
+        variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
+
+        data_minibatch = (
+            tf.data.Dataset.from_tensor_slices(data)
+            .prefetch(autotune)
+            .repeat()
+            .shuffle(N)
+            .batch(batch_size)
+        )
+        data_minibatch_it = iter(data_minibatch)
+        svgp_natgrad_loss = gp_model.training_loss_closure(
+            data_minibatch_it, compile=True
+        )
+
+        @tf.function
+        def optim_step():
+            natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
+            adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
+
+        iterations = n_iter
+        elbo_log = []
+        diff_kernel = np.array([1, -1])
+        for it in range(iterations):
+            optim_step()
+            if it % 10 == 0:
+                likelihood = -svgp_natgrad_loss().numpy()
+                elbo_log.append(likelihood)
+            if it % 1000 == 0:
+                logger.info(f"SPV_Matern: iteration {it} likelihood: {likelihood:.04f}")
+            if it >= 2000:
+                elbo_change = np.convolve(elbo_log, diff_kernel, "same")[1:]
+                elbo_pct_change = (elbo_change / np.abs(elbo_log[1:])) * 100
+                mean_elbo_pct_change = np.mean(elbo_pct_change[-100:])
+                if it % 1000 == 0:
+                    logger.info(
+                        f"SPV_Matern: iteration {it} mean elbo pct change: {mean_elbo_pct_change:.04f}"
+                    )
+                if mean_elbo_pct_change < min_elbo_pct_change:
+                    logger.info(
+                        f"SPV_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent"
+                    )
+                    break
+        print_summary(gp_model)
+        self.sm = gp_model.posterior()
+
+    def predict(self, xin):
+        x = np.zeros_like(xin, dtype=np.float64)
+        if len(x.shape) == 1:
+            x = x.reshape((1, self.nInput))
+            xin = xin.reshape((1, self.nInput))
+        N = x.shape[0]
+        y = np.zeros((N, self.nOutput), dtype=np.float32)
+        for i in range(N):
+            x[i, :] = (xin[i, :] - self.xlb) / self.xrng
+
+        mean, var = self.sm.predict_f(x)
+        # undo normalization
+        y_mean = self.y_train_std * mean + self.y_train_mean
+        y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y[:] = y_mean
+
+        return y
+
+    def evaluate(self, x):
+        return self.predict(x)
+
+
 class SVGP_Matern:
     def __init__(
         self,
