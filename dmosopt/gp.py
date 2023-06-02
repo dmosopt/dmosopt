@@ -188,7 +188,7 @@ try:
             output = self.last_layer(hidden_rep1)
             return output
 
-        def predict(self, loader):
+        def predict(self, x):
             self.eval()
             self.likelihood.eval()
             with torch.no_grad():
@@ -198,7 +198,7 @@ try:
                 # To compute the marginal predictive NLL of each data point,
                 # we will call `to_data_independent_dist`,
                 # which removes the data cross-covariance terms from the distribution.
-                preds = self.likelihood(self(test_x)).to_data_independent_dist()
+                preds = self.likelihood(self(x)).to_data_independent_dist()
 
             return preds.mean.mean(0), preds.variance.mean(0)
 
@@ -216,7 +216,7 @@ try:
         def __init__(
             self,
             input_dims,
-            output_dims,
+            output_dims=None,
             num_inducing=128,
             linear_mean=True,
             ard_num_dims=None,
@@ -224,8 +224,12 @@ try:
             n_devices=1,
         ):
 
-            inducing_points = torch.randn(output_dims, num_inducing, input_dims)
-            batch_shape = torch.Size([output_dims])
+            if output_dims is None:
+                inducing_points = torch.randn(num_inducing, input_dims)
+                batch_shape = torch.Size([])
+            else:
+                inducing_points = torch.randn(output_dims, num_inducing, input_dims)
+                batch_shape = torch.Size([output_dims])
 
             lengthscale_constraint = None
             if lengthscale_bounds is not None:
@@ -247,9 +251,9 @@ try:
 
             super().__init__(variational_strategy, input_dims, output_dims)
             self.mean_module = (
-                gpytorch.means.ConstantMean()
+                gpytorch.means.ConstantMean(batch_shape=batch_shape)
                 if linear_mean
-                else gpytorch.means.LinearMean(input_dims)
+                else gpytorch.means.LinearMean(input_dims, batch_shape=batch_shape)
             )
             self.covar_module = gpytorch.kernels.ScaleKernel(
                 gpytorch.kernels.MaternKernel(
@@ -280,38 +284,38 @@ try:
             num_hidden_dims,
             num_inducing=128,
             lengthscale_bounds=None,
+            batch_size=None,
         ):
 
             super().__init__()
 
-            hidden_layer = GPyTorchDGPMaternLayer(
+            self.num_tasks = num_tasks
+            self.batch_size = batch_size
+
+            # We're going to use a multitask likelihood instead of the standard GaussianLikelihood
+            self.likelihood = likelihood
+
+            self.hidden_layer = GPyTorchDGPMaternLayer(
                 input_dims=train_x_shape[-1],
                 output_dims=num_hidden_dims,
                 lengthscale_bounds=lengthscale_bounds,
                 num_inducing=num_inducing,
                 linear_mean=True,
             )
-            last_layer = GPyTorchDGPMaternLayer(
-                input_dims=hidden_layer.output_dims,
+            self.last_layer = GPyTorchDGPMaternLayer(
+                input_dims=self.hidden_layer.output_dims,
                 output_dims=num_tasks,
                 lengthscale_bounds=lengthscale_bounds,
                 num_inducing=num_inducing,
                 linear_mean=False,
             )
 
-            self.num_tasks = num_tasks
-            self.hidden_layer = hidden_layer
-            self.last_layer = last_layer
-
-            # We're going to use a multitask likelihood instead of the standard GaussianLikelihood
-            self.likelihood = likelihood
-
         def forward(self, inputs):
             hidden_rep1 = self.hidden_layer(inputs)
             output = self.last_layer(hidden_rep1)
             return output
 
-        def predict(self, test_x):
+        def predict(self, x):
             self.eval()
             self.likelihood.eval()
             with torch.no_grad():
@@ -321,7 +325,7 @@ try:
                 # To compute the marginal predictive NLL of each data point,
                 # we will call `to_data_independent_dist`,
                 # which removes the data cross-covariance terms from the distribution.
-                preds = self.likelihood(self(test_x)).to_data_independent_dist()
+                preds = self.likelihood(self(x)).to_data_independent_dist()
 
             return preds.mean.mean(0), preds.variance.mean(0)
 
@@ -349,9 +353,9 @@ try:
                 batch_shape = torch.Size([batch_size])
             input_dims = train_x.shape[1]
             self.mean_module = (
-                gpytorch.means.ConstantMean()
+                gpytorch.means.ConstantMean(batch_shape=batch_shape)
                 if linear_mean
-                else gpytorch.means.LinearMean(input_dims)
+                else gpytorch.means.LinearMean(input_dims, batch_shape=batch_shape)
             )
             self.covar_module = gpytorch.kernels.ScaleKernel(
                 gpytorch.kernels.MaternKernel(
@@ -398,21 +402,21 @@ try:
             super().__init__(train_x, train_y, likelihood)
             input_dims = train_x.shape[1]
             self.num_tasks = num_tasks
-            self.mean_module = gpytorch.means.MultitaskMean(
-                gpytorch.means.ConstantMean()
-                if linear_mean
-                else gpytorch.means.LinearMean(input_dims),
-                num_tasks=num_tasks,
-            )
+            self.batch_size = batch_size
+            batch_shape = torch.Size()
+            if batch_size is not None:
+                batch_shape = torch.Size([batch_size])
             lengthscale_constraint = None
             if lengthscale_bounds is not None:
                 lengthscale_constraint = gpytorch.constraints.Interval(
                     lengthscale_bounds[0], lengthscale_bounds[1]
                 )
-            self.batch_size = batch_size
-            batch_shape = torch.Size()
-            if batch_size is not None:
-                batch_shape = torch.Size([batch_size])
+            self.mean_module = gpytorch.means.MultitaskMean(
+                gpytorch.means.ConstantMean(batch_shape=batch_shape)
+                if linear_mean
+                else gpytorch.means.LinearMean(input_dims, batch_shape=batch_shape),
+                num_tasks=num_tasks,
+            )
             self.covar_module = gpytorch.kernels.MultitaskKernel(
                 gpytorch.kernels.MaternKernel(
                     ard_num_dims=ard_num_dims,
@@ -435,7 +439,7 @@ try:
             if self.batch_size is not None:
                 mmvn = (
                     gpytorch.distributions.MultitaskMultivariateNormal.from_batch_mvn(
-                        mvn, task_dim=self.num_tasks
+                        mvn, task_dim=-1
                     )
                 )
                 return mmvn
@@ -617,6 +621,9 @@ class MDSPP_Matern:
             optimizer = torch.optim.Adam(
                 gp_model.parameters(), lr=adam_lr
             )  # Includes GaussianLikelihood parameters
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min"
+            )
 
             if logger is not None:
                 logger.info(f"MDSPP_Matern: optimizing regressor...")
@@ -647,30 +654,31 @@ class MDSPP_Matern:
                             loss = -mll(output, train_y).sum()
                         loss.backward()
                         loss_log.append(loss.item())
-                        if it % 100 == 0:
+                        optimizer.step()
+                    scheduler.step(loss)
+                    if it % 100 == 0:
+                        if logger is not None:
+                            logger.info(
+                                "MDSPP_Matern: iter %d/%d - Loss: %.3f  noise: %.3f"
+                                % (
+                                    it,
+                                    n_iter,
+                                    loss.item(),
+                                    gp_model.likelihood.noise.item(),
+                                )
+                            )
+                    if it >= 1000:
+                        loss_change = np.convolve(loss_log, diff_kernel, "same")[1:]
+                        loss_pct_change = (
+                            np.abs(loss_change) / np.abs(loss_log[1:])
+                        ) * 100
+                        mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
+                        if mean_loss_pct_change < min_loss_pct_change:
                             if logger is not None:
                                 logger.info(
-                                    "MDSPP_Matern: iter %d/%d - Loss: %.3f  noise: %.3f"
-                                    % (
-                                        it,
-                                        n_iter,
-                                        loss.item(),
-                                        gp_model.likelihood.noise.item(),
-                                    )
+                                    f"MDSPP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent"
                                 )
-                        optimizer.step()
-                        if it >= 1000:
-                            loss_change = np.convolve(loss_log, diff_kernel, "same")[1:]
-                            loss_pct_change = (
-                                np.abs(loss_change) / np.abs(loss_log[1:])
-                            ) * 100
-                            mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
-                            if mean_loss_pct_change < min_loss_pct_change:
-                                if logger is not None:
-                                    logger.info(
-                                        f"MDSPP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent"
-                                    )
-                                break
+                            break
 
             return gp_model
 
@@ -756,7 +764,7 @@ class MDGP_Matern:
         preconditioner_size=100,
         adam_lr=0.1,
         fast_pred_var=False,
-        n_iter=5000,
+        n_iter=2000,
         min_loss_pct_change=0.1,
         batch_size=None,
         cuda=False,
@@ -830,6 +838,10 @@ class MDGP_Matern:
                 loc=0.0, scale=gp_likelihood_sigma
             )
 
+        batch_shape = torch.Size()
+        if batch_size is not None:
+            batch_shape = torch.Size([batch_size])
+
         def train(
             nInput,
             nOutput,
@@ -840,6 +852,13 @@ class MDGP_Matern:
             gp_noise_prior=None,
             preconditioner_size=None,
         ):
+            from torch.utils.data import TensorDataset, DataLoader
+
+            batch_size = self.batch_size
+            train_dataset = TensorDataset(train_x, train_y)
+            train_loader = DataLoader(
+                train_dataset, batch_size=batch_size, shuffle=True, pin_memory=self.cuda
+            )
 
             gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
                 num_tasks=nOutput, noise_prior=gp_noise_prior, batch_shape=batch_shape
@@ -852,11 +871,10 @@ class MDGP_Matern:
                 num_inducing=num_inducing,
                 likelihood=gp_likelihood,
                 lengthscale_bounds=gp_lengthscale_bounds,
+                batch_size=batch_size,
             )
 
             if self.cuda:
-                train_x = train_x.cuda()
-                train_y = train_y.cuda()
                 gp_model = gp_model.cuda()
                 gp_likelihood = gp_likelihood.cuda()
 
@@ -867,6 +885,9 @@ class MDGP_Matern:
             optimizer = torch.optim.Adam(
                 gp_model.parameters(), lr=adam_lr
             )  # Includes GaussianLikelihood parameters
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min"
+            )
 
             if logger is not None:
                 logger.info(f"MDGP_Matern: optimizing regressor...")
@@ -877,7 +898,7 @@ class MDGP_Matern:
                     gp_model.likelihood, gp_model, num_data=train_y.size(0)
                 )
             )
-            loss_log = []
+            batch_loss_log = []
             diff_kernel = np.array([1, -1])
 
             with ExitStack() as stack:
@@ -888,16 +909,23 @@ class MDGP_Matern:
 
                 for it in range(n_iter):
                     # Zero gradients from previous iteration
-                    optimizer.zero_grad()
-                    # Output from model
-                    output = gp_model(train_x)
-                    # Calculate loss and backprop gradients
-                    if batch_size is not None:
-                        loss = -mll(output, train_y)
-                    else:
-                        loss = -mll(output, train_y).sum()
-                    loss.backward()
-                    loss_log.append(loss.item())
+                    loss_log = []
+                    for x_batch, y_batch in train_loader:
+                        with gpytorch.settings.num_likelihood_samples(batch_size):
+                            optimizer.zero_grad()
+                            if self.cuda:
+                                x_batch = x_batch.cuda()
+                                y_batch = y_batch.cuda()
+                            output = gp_model(x_batch)
+
+                            # Calculate loss and backprop gradients
+                            loss = -mll(output, y_batch)
+                            loss.backward()
+                            loss_log.append(loss.item())
+                            optimizer.step()
+                    mean_loss = np.mean(loss_log)
+                    batch_loss_log.append(mean_loss)
+                    scheduler.step(mean_loss)
                     if it % 100 == 0:
                         if logger is not None:
                             logger.info(
@@ -905,11 +933,10 @@ class MDGP_Matern:
                                 % (
                                     it,
                                     n_iter,
-                                    loss.item(),
-                                    gp_model.likelihood.noise.item(),
+                                    mean_loss,
+                                    gp_model.likelihood.noise.mean(0),
                                 )
                             )
-                    optimizer.step()
                     if it >= 1000:
                         loss_change = np.convolve(loss_log, diff_kernel, "same")[1:]
                         loss_pct_change = (
@@ -942,6 +969,12 @@ class MDGP_Matern:
         self.sm = gp_model
 
     def predict(self, xin):
+        from torch.utils.data import TensorDataset, DataLoader
+
+        batch_size = self.batch_size
+        if self.batch_size is None:
+            batch_size = xin.shape[0]
+
         x = np.zeros_like(xin, dtype=np.float32)
         if len(x.shape) == 1:
             x = x.reshape((1, self.nInput))
@@ -951,20 +984,26 @@ class MDGP_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         x = torch.from_numpy(x)
-        if self.cuda:
-            x = x.cuda()
         with ExitStack() as stack:
             stack.enter_context(torch.no_grad())
             if self.fast_pred_var:
                 stack.enter_context(gpytorch.settings.fast_pred_var())
-            mean, var = self.sm.predict(x)
+            means = []
+            in_loader = DataLoader(
+                x, batch_size=batch_size, shuffle=False, pin_memory=self.cuda
+            )
+            for x_batch in in_loader:
+                if self.cuda:
+                    x_batch = x_batch.cuda()
+                mean, var = self.sm.predict(x_batch)
+                means.append(mean)
+            means = torch.cat(means)
             # undo normalization
             if self.cuda:
-                mean = mean.cpu()
-            y_mean = self.y_train_std * mean.numpy() + self.y_train_mean
+                means = means.cpu()
+            y_mean = self.y_train_std * means.numpy() + self.y_train_mean
             y[:] = y_mean
-            del mean
-            del var
+            del means
         return y
 
     def evaluate(self, x):
@@ -999,6 +1038,7 @@ class MEGP_Matern:
                 "MEGP_Matern requires the GPyTorch library to be installed."
             )
 
+        self.batch_size = batch_size
         self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
         self.checkpoint_size = None
@@ -1060,10 +1100,6 @@ class MEGP_Matern:
                 loc=0.0, scale=gp_likelihood_sigma
             )
 
-        batch_shape = torch.Size()
-        if batch_size is not None:
-            batch_shape = torch.Size([batch_size])
-
         def train(
             nInput,
             nOutput,
@@ -1077,7 +1113,7 @@ class MEGP_Matern:
         ):
 
             gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
-                num_tasks=nOutput, noise_prior=gp_noise_prior, batch_shape=batch_shape
+                num_tasks=nOutput, noise_prior=gp_noise_prior
             )
 
             gp_model = GPyTorchMultitaskExactGPModelMatern(
@@ -1087,7 +1123,6 @@ class MEGP_Matern:
                 ard_num_dims=nInput,
                 likelihood=gp_likelihood,
                 lengthscale_bounds=gp_lengthscale_bounds,
-                batch_size=batch_size,
             )
 
             if self.cuda:
@@ -1123,16 +1158,15 @@ class MEGP_Matern:
                     )
 
                 for it in range(n_iter):
+                    it_loss_log = []
                     # Zero gradients from previous iteration
                     optimizer.zero_grad()
                     # Output from model
                     output = gp_model(train_x)
                     # Calculate loss and backprop gradients
-                    if batch_size is not None:
-                        loss = -mll(output, train_y)
-                    else:
-                        loss = -mll(output, train_y).sum()
+                    loss = -mll(output, train_y)
                     loss.backward()
+                    optimizer.step()
                     loss_log.append(loss.item())
                     if it % 100 == 0:
                         if logger is not None:
@@ -1145,7 +1179,6 @@ class MEGP_Matern:
                                     gp_model.likelihood.noise.item(),
                                 )
                             )
-                    optimizer.step()
                     if it >= 1000:
                         loss_change = np.convolve(loss_log, diff_kernel, "same")[1:]
                         loss_pct_change = (
@@ -1203,6 +1236,13 @@ class MEGP_Matern:
         self.sm = gp_model
 
     def predict(self, xin):
+
+        from torch.utils.data import TensorDataset, DataLoader
+
+        batch_size = self.batch_size
+        if self.batch_size is None:
+            batch_size = xin.shape[0]
+
         x = np.zeros_like(xin, dtype=np.float32)
         if len(x.shape) == 1:
             x = x.reshape((1, self.nInput))
@@ -1212,8 +1252,6 @@ class MEGP_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         x = torch.from_numpy(x)
-        if self.cuda:
-            x = x.cuda()
         with ExitStack() as stack:
             stack.enter_context(torch.no_grad())
             if self.fast_pred_var:
@@ -1224,15 +1262,24 @@ class MEGP_Matern:
                 )
             self.sm.eval()
             self.sm.likelihood.eval()
-            f_preds = self.sm.likelihood(self.sm(x))
-            mean, var = f_preds.mean, f_preds.variance
+
+            means = []
+            in_loader = DataLoader(
+                x, batch_size=batch_size, shuffle=False, pin_memory=self.cuda
+            )
+            for x_batch in in_loader:
+                if self.cuda:
+                    x_batch = x_batch.cuda()
+                f_preds = self.sm.likelihood(self.sm(x_batch))
+                mean, var = f_preds.mean, f_preds.variance
+                means.append(mean)
+            means = torch.cat(means)
             # undo normalization
             if self.cuda:
-                mean = mean.cpu()
-            y_mean = self.y_train_std * mean.numpy() + self.y_train_mean
+                means = means.cpu()
+            y_mean = self.y_train_std * means.numpy() + self.y_train_mean
             y[:] = y_mean
-            del mean
-            del var
+            del means
         return y
 
     def evaluate(self, x):
@@ -1390,6 +1437,7 @@ class EGP_Matern:
                         loss = -mll(output, train_y).sum()
                     loss.backward()
                     loss_log.append(loss.item())
+                    optimizer.step()
                     if it % 100 == 0:
                         logger.info(
                             "EGP_Matern: iter %d/%d - Loss: %.3f   lengthscale min/max: %.3f / %.3f   noise: %.3f"
@@ -1402,7 +1450,6 @@ class EGP_Matern:
                                 gp_model.likelihood.noise.item(),
                             )
                         )
-                    optimizer.step()
                     if it >= 1000:
                         loss_change = np.convolve(loss_log, diff_kernel, "same")[1:]
                         loss_pct_change = (

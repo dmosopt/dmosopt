@@ -513,6 +513,7 @@ def train(
         egp_n_iter = surrogate_options.get("n_iter", 5000)
         egp_cuda = surrogate_options.get("cuda", False)
         egp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
+        megp_batch_size = surrogate_options.get("batch_size", None)
         sm = gp.EGP_Matern(
             x,
             y,
@@ -526,6 +527,7 @@ def train(
             adam_lr=egp_adam_lr,
             n_iter=egp_n_iter,
             fast_pred_var=egp_fast_pred_var,
+            batch_size=egp_batch_size,
             cuda=egp_cuda,
             logger=logger,
         )
@@ -536,6 +538,7 @@ def train(
         megp_n_iter = surrogate_options.get("n_iter", 5000)
         megp_cuda = surrogate_options.get("cuda", False)
         megp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
+        megp_batch_size = surrogate_options.get("batch_size", None)
         sm = gp.MEGP_Matern(
             x,
             y,
@@ -548,6 +551,7 @@ def train(
             adam_lr=megp_adam_lr,
             n_iter=megp_n_iter,
             fast_pred_var=megp_fast_pred_var,
+            batch_size=megp_batch_size,
             cuda=megp_cuda,
             logger=logger,
         )
@@ -583,9 +587,10 @@ def train(
         mdgp_lengthscale_bounds = surrogate_options.get("lengthscale_bounds", None)
         mdgp_likelihood_sigma = surrogate_options.get("likelihood_sigma", 1.0e-4)
         mdgp_adam_lr = surrogate_options.get("adam_lr", 0.01)
-        mdgp_n_iter = surrogate_options.get("n_iter", 5000)
+        mdgp_n_iter = surrogate_options.get("n_iter", 2000)
         mdgp_cuda = surrogate_options.get("cuda", False)
         mdgp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
+        mdgp_batch_size = surrogate_options.get("batch_size", None)
         sm = gp.MDGP_Matern(
             x,
             y,
@@ -600,6 +605,7 @@ def train(
             adam_lr=mdgp_adam_lr,
             n_iter=mdgp_n_iter,
             fast_pred_var=mdgp_fast_pred_var,
+            batch_size=mdgp_batch_size,
             cuda=mdgp_cuda,
             logger=logger,
         )
