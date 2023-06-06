@@ -557,14 +557,14 @@ def train(
         )
     elif surrogate_method == "mdgp":
         mdgp_num_hidden_dims = surrogate_options.get("num_hidden_dims", 3)
-        mdgp_num_inducing = surrogate_options.get("num_inducing", 128)
+        mdgp_num_inducing_points = surrogate_options.get("num_inducing_points", 128)
         mdgp_lengthscale_bounds = surrogate_options.get("lengthscale_bounds", None)
         mdgp_likelihood_sigma = surrogate_options.get("likelihood_sigma", 1.0e-4)
         mdgp_adam_lr = surrogate_options.get("adam_lr", 0.01)
         mdgp_n_iter = surrogate_options.get("n_iter", 2000)
         mdgp_cuda = surrogate_options.get("cuda", False)
         mdgp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
-        mdgp_batch_size = surrogate_options.get("batch_size", None)
+        mdgp_batch_size = surrogate_options.get("batch_size", 10)
         sm = gp.MDGP_Matern(
             x,
             y,
@@ -573,7 +573,7 @@ def train(
             xlb,
             xub,
             num_hidden_dims=mdgp_num_hidden_dims,
-            num_inducing=mdgp_num_inducing,
+            num_inducing_points=mdgp_num_inducing_points,
             gp_lengthscale_bounds=mdgp_lengthscale_bounds,
             gp_likelihood_sigma=mdgp_likelihood_sigma,
             adam_lr=mdgp_adam_lr,

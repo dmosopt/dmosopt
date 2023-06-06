@@ -5,6 +5,7 @@ import numpy as np
 from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteKernel
+from scipy.cluster.vq import kmeans2
 
 try:
     import gpflow
@@ -93,19 +94,28 @@ try:
             self,
             input_dims,
             output_dims=None,
-            num_inducing=128,
+            num_inducing_points=128,
+            inducing_points=None,
             linear_mean=True,
             ard_num_dims=None,
             lengthscale_bounds=None,
+            cuda=False,
             n_devices=1,
         ):
 
             if output_dims is None:
-                inducing_points = torch.randn(num_inducing, input_dims)
+                if inducing_points is None:
+                    inducing_points = torch.randn(num_inducing_points, input_dims)
                 batch_shape = torch.Size([])
             else:
-                inducing_points = torch.randn(output_dims, num_inducing, input_dims)
+                if inducing_points is None:
+                    inducing_points = torch.randn(
+                        output_dims, num_inducing_points, input_dims
+                    )
                 batch_shape = torch.Size([output_dims])
+
+            if cuda:
+                inducing_points = inducing_points.cuda()
 
             lengthscale_constraint = None
             if lengthscale_bounds is not None:
@@ -115,7 +125,7 @@ try:
 
             variational_distribution = (
                 gpytorch.variational.CholeskyVariationalDistribution(
-                    num_inducing_points=num_inducing, batch_shape=batch_shape
+                    num_inducing_points=num_inducing_points, batch_shape=batch_shape
                 )
             )
             variational_strategy = gpytorch.variational.VariationalStrategy(
@@ -127,9 +137,9 @@ try:
 
             super().__init__(variational_strategy, input_dims, output_dims)
             self.mean_module = (
-                gpytorch.means.ConstantMean(batch_shape=batch_shape)
+                gpytorch.means.ConstantMean()
                 if linear_mean
-                else gpytorch.means.LinearMean(input_dims, batch_shape=batch_shape)
+                else gpytorch.means.LinearMean(input_dims)
             )
             self.covar_module = gpytorch.kernels.ScaleKernel(
                 gpytorch.kernels.MaternKernel(
@@ -141,7 +151,7 @@ try:
                 batch_shape=batch_shape,
                 ard_num_dims=None,
             )
-            if n_devices > 1:
+            if n_devices is not None and n_devices > 1:
                 self.covar_module = gpytorch.kernels.MultiDeviceKernel(
                     self.covar_module, device_ids=range(n_devices)
                 )
@@ -154,13 +164,15 @@ try:
     class GPyTorchMultitaskDeepGPMatern(gpytorch.models.deep_gps.DeepGP):
         def __init__(
             self,
-            train_x_shape,
+            train_x,
             likelihood,
             num_tasks,
             num_hidden_dims,
-            num_inducing=128,
+            num_inducing_points=128,
             lengthscale_bounds=None,
             batch_size=None,
+            cuda=False,
+            n_devices=1,
         ):
 
             super().__init__()
@@ -171,19 +183,36 @@ try:
             # We're going to use a multitask likelihood instead of the standard GaussianLikelihood
             self.likelihood = likelihood
 
+            # Use K-means to initialize inducing points (only helpful for the first layer)
+            if num_inducing_points > train_x.shape[0]:
+                num_inducing_points = train_x.shape[0]
+            inducing_points = train_x[
+                torch.randperm(train_x.shape[0])[0:num_inducing_points]
+            ]
+            inducing_points = inducing_points.clone().data.cpu().numpy()
+            inducing_points = torch.tensor(
+                kmeans2(train_x.data.cpu().numpy(), inducing_points, minit="matrix")[0]
+            )
+
             self.hidden_layer = GPyTorchDGPMaternLayer(
-                input_dims=train_x_shape[-1],
+                input_dims=train_x.shape[-1],
                 output_dims=num_hidden_dims,
                 lengthscale_bounds=lengthscale_bounds,
-                num_inducing=num_inducing,
+                num_inducing_points=num_inducing_points,
+                inducing_points=inducing_points,
                 linear_mean=True,
+                cuda=cuda,
+                n_devices=n_devices,
             )
             self.last_layer = GPyTorchDGPMaternLayer(
                 input_dims=self.hidden_layer.output_dims,
                 output_dims=num_tasks,
                 lengthscale_bounds=lengthscale_bounds,
-                num_inducing=num_inducing,
+                num_inducing_points=num_inducing_points,
+                inducing_points=None,
                 linear_mean=False,
+                cuda=cuda,
+                n_devices=n_devices,
             )
 
         def forward(self, inputs):
@@ -241,7 +270,7 @@ try:
                 ),
                 batch_shape=batch_shape,
             )
-            if n_devices > 1:
+            if n_devices is not None and n_devices > 1:
                 self.covar_module = gpytorch.kernels.MultiDeviceKernel(
                     self.covar_module, device_ids=range(n_devices)
                 )
@@ -303,7 +332,7 @@ try:
                 num_tasks=num_tasks,
                 rank=rank,
             )
-            if n_devices > 1:
+            if n_devices is not None and n_devices > 1:
                 self.covar_module = gpytorch.kernels.MultiDeviceKernel(
                     self.covar_module, device_ids=range(n_devices)
                 )
@@ -369,7 +398,7 @@ class MDGP_Matern:
         xlb,
         xub,
         num_hidden_dims=3,
-        num_inducing=128,
+        num_inducing_points=None,
         seed=None,
         gp_lengthscale_bounds=None,
         gp_likelihood_sigma=None,
@@ -379,7 +408,7 @@ class MDGP_Matern:
         fast_pred_var=False,
         n_iter=2000,
         min_loss_pct_change=0.1,
-        batch_size=None,
+        batch_size=10,
         cuda=False,
         logger=None,
     ):
@@ -474,17 +503,19 @@ class MDGP_Matern:
             )
 
             gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
-                num_tasks=nOutput, noise_prior=gp_noise_prior, batch_shape=batch_shape
+                num_tasks=nOutput, noise_prior=gp_noise_prior
             )
 
             gp_model = GPyTorchMultitaskDeepGPMatern(
-                train_x_shape=train_x.shape,
+                train_x=train_x,
                 num_tasks=nOutput,
                 num_hidden_dims=num_hidden_dims,
-                num_inducing=num_inducing,
+                num_inducing_points=num_inducing_points,
                 likelihood=gp_likelihood,
                 lengthscale_bounds=gp_lengthscale_bounds,
                 batch_size=batch_size,
+                cuda=cuda,
+                n_devices=n_devices,
             )
 
             if self.cuda:
@@ -736,6 +767,7 @@ class MEGP_Matern:
                 ard_num_dims=nInput,
                 likelihood=gp_likelihood,
                 lengthscale_bounds=gp_lengthscale_bounds,
+                n_devices=n_devices,
             )
 
             if self.cuda:
