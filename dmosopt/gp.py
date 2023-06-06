@@ -492,14 +492,19 @@ class MDGP_Matern:
             n_iter,
             gp_lengthscale_bounds=None,
             gp_noise_prior=None,
+            checkpoint_size=None,
             preconditioner_size=None,
         ):
             from torch.utils.data import TensorDataset, DataLoader
 
+            if self.cuda:
+                train_x = train_x.cuda()
+                train_y = train_y.cuda()
+
             batch_size = self.batch_size
             train_dataset = TensorDataset(train_x, train_y)
             train_loader = DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, pin_memory=self.cuda
+                train_dataset, batch_size=batch_size, shuffle=True
             )
 
             gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
@@ -546,6 +551,11 @@ class MDGP_Matern:
             diff_kernel = np.array([1, -1])
 
             with ExitStack() as stack:
+                if checkpoint_size is not None:
+                    stack.enter_context(
+                        gpytorch.beta_features.checkpoint_kernel(checkpoint_size)
+                    )
+
                 if preconditioner_size is not None:
                     stack.enter_context(
                         gpytorch.settings.max_preconditioner_size(preconditioner_size)
@@ -596,15 +606,39 @@ class MDGP_Matern:
 
             return gp_model
 
-        gp_model = train(
-            nInput,
-            nOutput,
-            train_x,
-            train_y,
-            n_iter=n_iter,
-            gp_lengthscale_bounds=gp_lengthscale_bounds,
-            gp_noise_prior=gp_noise_prior,
-        )
+        if n_devices is not None and n_devices >= 1:
+            # Set a large enough preconditioner size to reduce the number of CG iterations run
+            self.checkpoint_size = find_best_gpu_setting(
+                nInput,
+                nOutput,
+                train,
+                train_x,
+                train_y,
+                n_devices=n_devices,
+                preconditioner_size=self.preconditioner_size,
+                logger=logger,
+            )
+            gp_model = train(
+                nInput,
+                nOutput,
+                train_x,
+                train_y,
+                n_iter=n_iter,
+                gp_lengthscale_bounds=gp_lengthscale_bounds,
+                gp_noise_prior=gp_noise_prior,
+                checkpoint_size=self.checkpoint_size,
+                preconditioner_size=self.preconditioner_size,
+            )
+        else:
+            gp_model = train(
+                nInput,
+                nOutput,
+                train_x,
+                train_y,
+                n_iter=n_iter,
+                gp_lengthscale_bounds=gp_lengthscale_bounds,
+                gp_noise_prior=gp_noise_prior,
+            )
 
         del train_x
         del train_y
@@ -634,7 +668,7 @@ class MDGP_Matern:
                 stack.enter_context(gpytorch.settings.fast_pred_var())
             means = []
             in_loader = DataLoader(
-                x, batch_size=batch_size, shuffle=False, pin_memory=self.cuda
+                x, batch_size=batch_size, shuffle=False
             )
             for x_batch in in_loader:
                 if self.cuda:
@@ -756,6 +790,10 @@ class MEGP_Matern:
             preconditioner_size=None,
         ):
 
+            if self.cuda:
+                train_x = train_x.cuda()
+                train_y = train_y.cuda()
+
             gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
                 num_tasks=nOutput, noise_prior=gp_noise_prior
             )
@@ -771,8 +809,6 @@ class MEGP_Matern:
             )
 
             if self.cuda:
-                train_x = train_x.cuda()
-                train_y = train_y.cuda()
                 gp_model = gp_model.cuda()
                 gp_likelihood = gp_likelihood.cuda()
 
@@ -910,7 +946,7 @@ class MEGP_Matern:
 
             means = []
             in_loader = DataLoader(
-                x, batch_size=batch_size, shuffle=False, pin_memory=self.cuda
+                x, batch_size=batch_size, shuffle=False
             )
             for x_batch in in_loader:
                 if self.cuda:
