@@ -11,7 +11,7 @@ import gc, itertools, math
 from functools import partial
 import numpy as np
 from numpy.random import default_rng
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Union, Dict, List, Tuple, Optional
 from dmosopt import sampling
 from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
@@ -39,6 +39,7 @@ def optimization(
     gen=100,
     pop=100,
     sigma=0.01,
+    di_mutation=1.0,
     mu=None,
     sampling_method=None,
     termination=None,
@@ -125,6 +126,7 @@ def optimization(
         y=population_obj,
         sigma=sigma,
         mu=mu,
+        di_mutation=di_mutation,
         bounds=bounds,
         local_random=local_random,
         **kwargs,
@@ -234,6 +236,7 @@ class CMAES:
         y: np.ndarray,
         bounds: np.ndarray,
         sigma: float,
+        di_mutation: Union[float, np.ndarray],
         mu: Optional[int],
         local_random: Optional[np.random.Generator] = None,
         **params,
@@ -255,9 +258,13 @@ class CMAES:
         self.dim = nInput
         self.bounds = bounds
 
+        self.di_mutation = di_mutation
+        if np.isscalar(di_mutation):
+            self.di_mutation = np.asarray([di_mutation] * self.dim)
+
         # Selection
         if mu is None:
-            mu = population_size
+            mu = population_size // 2
         self.mu = mu
         self.lambda_ = params.get("lambda_", nInput)
 
@@ -272,7 +279,9 @@ class CMAES:
         self.pthresh = params.get("pthresh", 0.44)
 
         # Internal parameters associated to the mu parent
-        self.sigmas = np.asarray([sigma] * population_size)
+        self.sigmas = np.asarray(
+            [sigma * (1.0 / (self.di_mutation + 1.0))] * population_size
+        )
 
         # Lower Cholesky matrix (Sampling matrix)
         self.A = np.stack([np.identity(self.dim) for _ in range(population_size)])
@@ -287,12 +296,13 @@ class CMAES:
         Generates a population of :math:`\lambda` individuals.
         :returns: A list of individuals.
         """
+
         arz = self.local_random.normal(size=(self.lambda_, self.dim))
         individuals = None
 
         # Each parent produces an offspring
         if self.lambda_ == self.mu:
-            individuals = self.parents_x + self.sigmas.reshape((-1, 1)) * np.einsum(
+            individuals = self.parents_x + self.sigmas * np.einsum(
                 "ijk,ik->ij", self.A, arz
             )
             p_idx_array = np.asarray(range(self.lambda_), dtype=np.int_)
@@ -304,7 +314,7 @@ class CMAES:
             p_idx_array = front_1[js]
             individuals = self.parents_x[p_idx_array] + self.sigmas[
                 p_idx_array
-            ].reshape((-1, 1)) * np.einsum("ijk,ik->ij", self.A[p_idx_array], arz)
+            ] * np.einsum("ijk,ik->ij", self.A[p_idx_array], arz)
 
         x_new = np.clip(individuals, self.bounds[:, 0], self.bounds[:, 1])
         return x_new, p_idx_array
@@ -398,8 +408,12 @@ class CMAES:
 
         # Make copies for chosen offspring only
         chosen_offspring = np.logical_and(chosen, candidates_offspring)
-        last_steps = np.where(chosen_offspring, self.sigmas[candidates_pidxs], np.nan)
-        sigmas = np.where(chosen_offspring, self.sigmas[candidates_pidxs], np.nan)
+        sigmas = np.where(
+            chosen_offspring.reshape((-1, 1)),
+            self.sigmas[candidates_pidxs],
+            np.full((candidates_pidxs.shape[0], self.dim), np.nan),
+        )
+        last_steps = sigmas.copy()
         Ainv = np.where(
             chosen_offspring.reshape((-1, 1, 1)), self.Ainv[candidates_pidxs], np.nan
         )
@@ -457,7 +471,7 @@ class CMAES:
         self.parents_y = candidates_y[chosen]
 
         self.sigmas = np.where(
-            candidates_offspring[chosen],
+            candidates_offspring[chosen].reshape((-1, 1)),
             sigmas[chosen],
             self.sigmas[candidates_pidxs[chosen]],
         )
