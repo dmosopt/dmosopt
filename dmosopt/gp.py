@@ -34,6 +34,13 @@ else:
     _has_gpflow = True
 
 try:
+    import pykeops
+except:
+    _has_pykeops = False
+else:
+    _has_pykeops = True
+
+try:
     import torch
     import gpytorch
     from torch.nn import Linear
@@ -143,6 +150,13 @@ try:
             )
             self.covar_module = gpytorch.kernels.ScaleKernel(
                 gpytorch.kernels.MaternKernel(
+                    nu=2.5,
+                    batch_shape=batch_shape,
+                    ard_num_dims=ard_num_dims,
+                    lengthscale_constraint=lengthscale_constraint,
+                )
+                if not _has_pykeops
+                else gpytorch.kernels.keops.MaternKernel(
                     nu=2.5,
                     batch_shape=batch_shape,
                     ard_num_dims=ard_num_dims,
@@ -407,7 +421,7 @@ class MDGP_Matern:
         adam_lr=0.1,
         fast_pred_var=False,
         n_iter=2000,
-        min_loss_pct_change=0.1,
+        min_loss_pct_change=1.0,
         batch_size=10,
         cuda=False,
         logger=None,
@@ -667,9 +681,7 @@ class MDGP_Matern:
             if self.fast_pred_var:
                 stack.enter_context(gpytorch.settings.fast_pred_var())
             means = []
-            in_loader = DataLoader(
-                x, batch_size=batch_size, shuffle=False
-            )
+            in_loader = DataLoader(x, batch_size=batch_size, shuffle=False)
             for x_batch in in_loader:
                 if self.cuda:
                     x_batch = x_batch.cuda()
@@ -945,9 +957,7 @@ class MEGP_Matern:
             self.sm.likelihood.eval()
 
             means = []
-            in_loader = DataLoader(
-                x, batch_size=batch_size, shuffle=False
-            )
+            in_loader = DataLoader(x, batch_size=batch_size, shuffle=False)
             for x_batch in in_loader:
                 if self.cuda:
                     x_batch = x_batch.cuda()
