@@ -863,8 +863,6 @@ class MDSPP_Matern:
         self.sm = gp_model
 
     def predict(self, xin):
-        from torch.utils.data import TensorDataset, DataLoader
-
         batch_size = self.batch_size
         if self.batch_size is None:
             batch_size = xin.shape[0]
@@ -1154,8 +1152,6 @@ class MDGP_Matern:
         self.sm = gp_model
 
     def predict(self, xin):
-        from torch.utils.data import TensorDataset, DataLoader
-
         batch_size = self.batch_size
         if self.batch_size is None:
             batch_size = xin.shape[0]
