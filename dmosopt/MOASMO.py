@@ -528,7 +528,7 @@ def train(
             n_iter=egp_n_iter,
             fast_pred_var=egp_fast_pred_var,
             batch_size=egp_batch_size,
-            cuda=egp_cuda,
+            use_cuda=egp_cuda,
             logger=logger,
         )
     elif surrogate_method == "megp":
@@ -552,7 +552,7 @@ def train(
             n_iter=megp_n_iter,
             fast_pred_var=megp_fast_pred_var,
             batch_size=megp_batch_size,
-            cuda=megp_cuda,
+            use_cuda=megp_cuda,
             logger=logger,
         )
     elif surrogate_method == "mdgp":
@@ -580,7 +580,35 @@ def train(
             n_iter=mdgp_n_iter,
             fast_pred_var=mdgp_fast_pred_var,
             batch_size=mdgp_batch_size,
-            cuda=mdgp_cuda,
+            use_cuda=mdgp_cuda,
+            logger=logger,
+        )
+    elif surrogate_method == "mdspp":
+        mdspp_num_hidden_dims = surrogate_options.get("num_hidden_dims", 3)
+        mdspp_num_inducing_points = surrogate_options.get("num_inducing_points", 128)
+        mdspp_lengthscale_bounds = surrogate_options.get("lengthscale_bounds", None)
+        mdspp_likelihood_sigma = surrogate_options.get("likelihood_sigma", 1.0e-4)
+        mdspp_adam_lr = surrogate_options.get("adam_lr", 0.1)
+        mdspp_n_iter = surrogate_options.get("n_iter", 2000)
+        mdspp_cuda = surrogate_options.get("cuda", False)
+        mdspp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
+        mdspp_batch_size = surrogate_options.get("batch_size", 10)
+        sm = gp.MDSPP_Matern(
+            x,
+            y,
+            nInput,
+            nOutput,
+            xlb,
+            xub,
+            num_hidden_dims=mdspp_num_hidden_dims,
+            num_inducing_points=mdspp_num_inducing_points,
+            gp_lengthscale_bounds=mdspp_lengthscale_bounds,
+            gp_likelihood_sigma=mdspp_likelihood_sigma,
+            adam_lr=mdspp_adam_lr,
+            n_iter=mdspp_n_iter,
+            fast_pred_var=mdspp_fast_pred_var,
+            batch_size=mdspp_batch_size,
+            use_cuda=mdspp_cuda,
             logger=logger,
         )
     elif surrogate_method == "vgp":
