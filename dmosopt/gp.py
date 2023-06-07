@@ -106,7 +106,7 @@ try:
             linear_mean=True,
             ard_num_dims=None,
             lengthscale_bounds=None,
-            cuda=False,
+            use_cuda=False,
             n_devices=1,
         ):
 
@@ -121,7 +121,7 @@ try:
                     )
                 batch_shape = torch.Size([output_dims])
 
-            if cuda:
+            if use_cuda:
                 inducing_points = inducing_points.cuda()
 
             batch_shape = torch.Size([output_dims])
@@ -189,7 +189,7 @@ try:
             num_inducing_points=128,
             lengthscale_bounds=None,
             batch_size=None,
-            cuda=False,
+            use_cuda=False,
             n_devices=1,
         ):
 
@@ -198,6 +198,7 @@ try:
             self.num_tasks = num_tasks
             self.batch_size = batch_size
             self.likelihood = likelihood
+            self.use_cuda = use_cuda
 
             # Use K-means to initialize inducing points (only helpful for the first layer)
             if num_inducing_points > train_x.shape[0]:
@@ -210,6 +211,9 @@ try:
                 kmeans2(train_x.data.cpu().numpy(), inducing_points, minit="matrix")[0]
             )
 
+            if self.use_cuda:
+                inducing_points = inducing_points.cuda()
+
             hidden_layer = GPyTorchDSPPMaternLayer(
                 input_dims=train_x.shape[-1],
                 output_dims=num_hidden_dims,
@@ -217,7 +221,7 @@ try:
                 num_inducing_points=num_inducing_points,
                 inducing_points=inducing_points,
                 linear_mean=True,
-                cuda=cuda,
+                use_cuda=self.use_cuda,
                 n_devices=n_devices,
             )
             last_layer = GPyTorchDSPPMaternLayer(
@@ -227,7 +231,7 @@ try:
                 num_inducing_points=num_inducing_points,
                 inducing_points=None,
                 linear_mean=False,
-                cuda=cuda,
+                use_cuda=self.use_cuda,
                 n_devices=n_devices,
             )
 
@@ -248,6 +252,7 @@ try:
                 batch_size = xin.shape[0]
 
             x = torch.from_numpy(xin)
+
             in_loader = DataLoader(x, batch_size=batch_size, shuffle=False)
 
             self.eval()
@@ -257,6 +262,8 @@ try:
             ), torch.no_grad():
                 means, variances = [], []
                 for x_batch in in_loader:
+                    if self.use_cuda:
+                        x_batch = x_batch.cuda()
                     batch_preds = self.likelihood(self(x_batch, mean_input=x_batch))
                     batch_mean = batch_preds.mean.mean(0)
                     batch_var = batch_preds.variance.mean(0)
@@ -276,7 +283,7 @@ try:
             linear_mean=True,
             ard_num_dims=None,
             lengthscale_bounds=None,
-            cuda=False,
+            use_cuda=False,
             n_devices=1,
         ):
 
@@ -291,7 +298,7 @@ try:
                     )
                 batch_shape = torch.Size([output_dims])
 
-            if cuda:
+            if use_cuda:
                 inducing_points = inducing_points.cuda()
 
             lengthscale_constraint = None
@@ -355,7 +362,7 @@ try:
             num_inducing_points=128,
             lengthscale_bounds=None,
             batch_size=None,
-            cuda=False,
+            use_cuda=False,
             n_devices=1,
         ):
 
@@ -363,6 +370,7 @@ try:
 
             self.num_tasks = num_tasks
             self.batch_size = batch_size
+            self.use_cuda = use_cuda
 
             # We're going to use a multitask likelihood instead of the standard GaussianLikelihood
             self.likelihood = likelihood
@@ -385,7 +393,7 @@ try:
                 num_inducing_points=num_inducing_points,
                 inducing_points=inducing_points,
                 linear_mean=True,
-                cuda=cuda,
+                use_cuda=use_cuda,
                 n_devices=n_devices,
             )
             self.last_layer = GPyTorchDGPMaternLayer(
@@ -395,7 +403,7 @@ try:
                 num_inducing_points=num_inducing_points,
                 inducing_points=None,
                 linear_mean=False,
-                cuda=cuda,
+                use_cuda=use_cuda,
                 n_devices=n_devices,
             )
 
@@ -423,6 +431,8 @@ try:
             ), torch.no_grad():
                 means, variances = [], []
                 for x_batch in in_loader:
+                    if self.use_cuda:
+                        x_batch = x_batch.cuda()
                     # The output of the model is a multitask MVN, where both the data points
                     # and the tasks are jointly distributed
                     # To compute the marginal predictive NLL of each data point,
@@ -615,7 +625,7 @@ class MDSPP_Matern:
         n_iter=2000,
         min_loss_pct_change=1.0,
         batch_size=10,
-        cuda=False,
+        use_cuda=False,
         logger=None,
     ):
 
@@ -628,7 +638,7 @@ class MDSPP_Matern:
         self.linear_mean = linear_mean
         self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
-        self.cuda = cuda
+        self.use_cuda = use_cuda
         self.nInput = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -639,7 +649,7 @@ class MDSPP_Matern:
         self.logger = logger
 
         n_devices = None
-        if self.cuda:
+        if self.use_cuda:
             n_devices = torch.cuda.device_count()
             if logger is not None:
                 logger.info(f"MDSPP_Matern: using {n_devices} GPU devices.")
@@ -703,7 +713,7 @@ class MDSPP_Matern:
         ):
             from torch.utils.data import TensorDataset, DataLoader
 
-            if self.cuda:
+            if self.use_cuda:
                 train_x = train_x.cuda()
                 train_y = train_y.cuda()
 
@@ -712,7 +722,6 @@ class MDSPP_Matern:
             train_loader = DataLoader(
                 train_dataset, batch_size=batch_size, shuffle=True
             )
-
             gp_likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
                 num_tasks=nOutput, noise_prior=gp_noise_prior
             )
@@ -726,11 +735,11 @@ class MDSPP_Matern:
                 likelihood=gp_likelihood,
                 lengthscale_bounds=gp_lengthscale_bounds,
                 batch_size=batch_size,
-                cuda=cuda,
+                use_cuda=use_cuda,
                 n_devices=n_devices,
             )
 
-            if self.cuda:
+            if self.use_cuda:
                 gp_model = gp_model.cuda()
                 gp_likelihood = gp_likelihood.cuda()
 
@@ -774,7 +783,7 @@ class MDSPP_Matern:
                     for x_batch, y_batch in train_loader:
                         with gpytorch.settings.num_likelihood_samples(batch_size):
                             optimizer.zero_grad()
-                            if self.cuda:
+                            if self.use_cuda:
                                 x_batch = x_batch.cuda()
                                 y_batch = y_batch.cuda()
                             output = gp_model(x_batch)
@@ -849,7 +858,7 @@ class MDSPP_Matern:
 
         del train_x
         del train_y
-        if cuda:
+        if use_cuda:
             torch.cuda.empty_cache()
         self.sm = gp_model
 
@@ -874,7 +883,7 @@ class MDSPP_Matern:
                 stack.enter_context(gpytorch.settings.fast_pred_var())
             means, variances = self.sm.predict(x)
             # undo normalization
-            if self.cuda:
+            if self.use_cuda:
                 means = means.cpu()
             y_mean = self.y_train_std * means.numpy() + self.y_train_mean
             y[:] = y_mean
@@ -907,7 +916,7 @@ class MDGP_Matern:
         n_iter=2000,
         min_loss_pct_change=1.0,
         batch_size=10,
-        cuda=False,
+        use_cuda=False,
         logger=None,
     ):
 
@@ -920,7 +929,7 @@ class MDGP_Matern:
         self.linear_mean = linear_mean
         self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
-        self.cuda = cuda
+        self.use_cuda = use_cuda
         self.nInput = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -931,7 +940,7 @@ class MDGP_Matern:
         self.logger = logger
 
         n_devices = None
-        if self.cuda:
+        if self.use_cuda:
             n_devices = torch.cuda.device_count()
             if logger is not None:
                 logger.info(f"MDGP_Matern: using {n_devices} GPU devices.")
@@ -995,7 +1004,7 @@ class MDGP_Matern:
         ):
             from torch.utils.data import TensorDataset, DataLoader
 
-            if self.cuda:
+            if self.use_cuda:
                 train_x = train_x.cuda()
                 train_y = train_y.cuda()
 
@@ -1017,11 +1026,11 @@ class MDGP_Matern:
                 likelihood=gp_likelihood,
                 lengthscale_bounds=gp_lengthscale_bounds,
                 batch_size=batch_size,
-                cuda=cuda,
+                use_cuda=use_cuda,
                 n_devices=n_devices,
             )
 
-            if self.cuda:
+            if self.use_cuda:
                 gp_model = gp_model.cuda()
                 gp_likelihood = gp_likelihood.cuda()
 
@@ -1065,7 +1074,7 @@ class MDGP_Matern:
                     for x_batch, y_batch in train_loader:
                         with gpytorch.settings.num_likelihood_samples(batch_size):
                             optimizer.zero_grad()
-                            if self.cuda:
+                            if self.use_cuda:
                                 x_batch = x_batch.cuda()
                                 y_batch = y_batch.cuda()
                             output = gp_model(x_batch)
@@ -1140,7 +1149,7 @@ class MDGP_Matern:
 
         del train_x
         del train_y
-        if cuda:
+        if use_cuda:
             torch.cuda.empty_cache()
         self.sm = gp_model
 
@@ -1165,9 +1174,9 @@ class MDGP_Matern:
                 stack.enter_context(gpytorch.settings.fast_pred_var())
             means, variances = self.sm.predict(x)
             # undo normalization
-            if self.cuda:
+            if self.use_cuda:
                 means = means.cpu()
-                variances = variances.cpy()
+                variances = variances.cpu()
             y_mean = self.y_train_std * means.numpy() + self.y_train_mean
             y[:] = y_mean
             del means, variances
@@ -1196,7 +1205,7 @@ class MEGP_Matern:
         fast_pred_var=False,
         n_iter=5000,
         min_loss_pct_change=0.1,
-        cuda=False,
+        use_cuda=False,
         logger=None,
     ):
 
@@ -1209,7 +1218,7 @@ class MEGP_Matern:
         self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
         self.checkpoint_size = None
-        self.cuda = cuda
+        self.use_cuda = use_cuda
         self.nInput = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -1220,7 +1229,7 @@ class MEGP_Matern:
         self.logger = logger
 
         n_devices = None
-        if self.cuda:
+        if self.use_cuda:
             n_devices = torch.cuda.device_count()
             if logger is not None:
                 logger.info(f"MEGP_Matern: using {n_devices} GPU devices.")
@@ -1279,7 +1288,7 @@ class MEGP_Matern:
             preconditioner_size=None,
         ):
 
-            if self.cuda:
+            if self.use_cuda:
                 train_x = train_x.cuda()
                 train_y = train_y.cuda()
 
@@ -1297,7 +1306,7 @@ class MEGP_Matern:
                 n_devices=n_devices,
             )
 
-            if self.cuda:
+            if self.use_cuda:
                 gp_model = gp_model.cuda()
                 gp_likelihood = gp_likelihood.cuda()
 
@@ -1401,7 +1410,7 @@ class MEGP_Matern:
 
         del train_x
         del train_y
-        if cuda:
+        if use_cuda:
             torch.cuda.empty_cache()
         self.sm = gp_model
 
@@ -1436,14 +1445,14 @@ class MEGP_Matern:
             means = []
             in_loader = DataLoader(x, batch_size=batch_size, shuffle=False)
             for x_batch in in_loader:
-                if self.cuda:
+                if self.use_cuda:
                     x_batch = x_batch.cuda()
                 f_preds = self.sm.likelihood(self.sm(x_batch))
                 mean, var = f_preds.mean, f_preds.variance
                 means.append(mean)
             means = torch.cat(means)
             # undo normalization
-            if self.cuda:
+            if self.use_cuda:
                 means = means.cpu()
             y_mean = self.y_train_std * means.numpy() + self.y_train_mean
             y[:] = y_mean
@@ -1473,7 +1482,7 @@ class EGP_Matern:
         n_iter=5000,
         min_loss_pct_change=0.1,
         batch_size=None,
-        cuda=False,
+        use_cuda=False,
         logger=None,
     ):
 
@@ -1485,7 +1494,7 @@ class EGP_Matern:
         self.fast_pred_var = fast_pred_var
         self.preconditioner_size = preconditioner_size
         self.checkpoint_size = None
-        self.cuda = cuda
+        self.use_cuda = use_cuda
         self.nInput = nInput
         self.nOutput = nOutput
         self.xlb = xlb
@@ -1497,7 +1506,7 @@ class EGP_Matern:
         self.logger = logger
 
         n_devices = None
-        if self.cuda:
+        if self.use_cuda:
             n_devices = torch.cuda.device_count()
             if logger is not None:
                 logger.info(f"EGP_Matern: using {n_devices} GPU devices.")
@@ -1565,7 +1574,7 @@ class EGP_Matern:
                 batch_size=batch_size,
             )
 
-            if self.cuda:
+            if self.use_cuda:
                 train_x = train_x.cuda()
                 train_y = train_y.cuda()
                 gp_model = gp_model.cuda()
@@ -1688,7 +1697,7 @@ class EGP_Matern:
 
         del train_x
 
-        if cuda:
+        if use_cuda:
             torch.cuda.empty_cache()
         self.smlist = smlist
 
@@ -1702,7 +1711,7 @@ class EGP_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         x = torch.from_numpy(x)
-        if self.cuda:
+        if self.use_cuda:
             x = x.cuda()
 
         with ExitStack() as stack:
@@ -1719,7 +1728,7 @@ class EGP_Matern:
                 f_preds = self.smlist[i].likelihood(self.smlist[i](x))
                 mean, var = f_preds.mean, f_preds.variance
                 # undo normalization
-                if self.cuda:
+                if self.use_cuda:
                     mean = mean.cpu()
                 y_mean = (
                     self.y_train_std[i] * np.reshape(mean.numpy(), [-1])

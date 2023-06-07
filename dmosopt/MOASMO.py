@@ -528,7 +528,7 @@ def train(
             n_iter=egp_n_iter,
             fast_pred_var=egp_fast_pred_var,
             batch_size=egp_batch_size,
-            cuda=egp_cuda,
+            use_cuda=egp_cuda,
             logger=logger,
         )
     elif surrogate_method == "megp":
@@ -552,7 +552,7 @@ def train(
             n_iter=megp_n_iter,
             fast_pred_var=megp_fast_pred_var,
             batch_size=megp_batch_size,
-            cuda=megp_cuda,
+            use_cuda=megp_cuda,
             logger=logger,
         )
     elif surrogate_method == "mdgp":
@@ -580,7 +580,7 @@ def train(
             n_iter=mdgp_n_iter,
             fast_pred_var=mdgp_fast_pred_var,
             batch_size=mdgp_batch_size,
-            cuda=mdgp_cuda,
+            use_cuda=mdgp_cuda,
             logger=logger,
         )
     elif surrogate_method == "mdspp":
@@ -592,7 +592,7 @@ def train(
         mdspp_n_iter = surrogate_options.get("n_iter", 2000)
         mdspp_cuda = surrogate_options.get("cuda", False)
         mdspp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
-        mdspp_batch_size = surrogate_options.get("batch_size", None)
+        mdspp_batch_size = surrogate_options.get("batch_size", 10)
         sm = gp.MDSPP_Matern(
             x,
             y,
@@ -608,7 +608,7 @@ def train(
             n_iter=mdspp_n_iter,
             fast_pred_var=mdspp_fast_pred_var,
             batch_size=mdspp_batch_size,
-            cuda=mdspp_cuda,
+            use_cuda=mdspp_cuda,
             logger=logger,
         )
     elif surrogate_method == "vgp":
