@@ -1,5 +1,4 @@
 import gc
-import timeit
 import copy
 import numpy as np
 from functools import partial
@@ -873,6 +872,7 @@ class MDSPP_Matern:
             xin = xin.reshape((1, self.nInput))
         N = x.shape[0]
         y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y_var = np.zeros((N, self.nOutput), dtype=np.float32)
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         with ExitStack() as stack:
@@ -883,14 +883,17 @@ class MDSPP_Matern:
             # undo normalization
             if self.use_cuda:
                 means = means.cpu()
+                variances = variances.cpu()
             y_mean = self.y_train_std * means.numpy() + self.y_train_mean
+            y_var[:] = np.multiply(variances, self.y_train_std**2)
             y[:] = y_mean
             del means, variances
-        return y
+        return y, y_var
 
     def evaluate(self, x):
 
-        return self.predict(x)
+        mean, var = self.predict(x)
+        return mean
 
 
 class MDGP_Matern:
@@ -1169,18 +1172,20 @@ class MDGP_Matern:
             if self.fast_pred_var:
                 stack.enter_context(gpytorch.settings.fast_pred_var())
             means, variances = self.sm.predict(x)
-            # undo normalization
             if self.use_cuda:
                 means = means.cpu()
                 variances = variances.cpu()
+            # undo normalization
             y_mean = self.y_train_std * means.numpy() + self.y_train_mean
+            y_var = np.multiply(variances, self.y_train_std**2)
             y[:] = y_mean
             del means, variances
-        return y
+        return y, y_var
 
     def evaluate(self, x):
 
-        return self.predict(x)
+        mean, var = self.predict(x)
+        return mean
 
 
 class MEGP_Matern:
@@ -1439,6 +1444,7 @@ class MEGP_Matern:
             self.sm.likelihood.eval()
 
             means = []
+            variances = []
             in_loader = DataLoader(x, batch_size=batch_size, shuffle=False)
             for x_batch in in_loader:
                 if self.use_cuda:
@@ -1446,18 +1452,21 @@ class MEGP_Matern:
                 f_preds = self.sm.likelihood(self.sm(x_batch))
                 mean, var = f_preds.mean, f_preds.variance
                 means.append(mean)
+                variances.append(var)
             means = torch.cat(means)
             # undo normalization
             if self.use_cuda:
                 means = means.cpu()
             y_mean = self.y_train_std * means.numpy() + self.y_train_mean
+            y_var = np.multiply(variances, self.y_train_std**2)
             y[:] = y_mean
-            del means
-        return y
+            del means, variances
+        return y, y_var
 
     def evaluate(self, x):
 
-        return self.predict(x)
+        mean, var = self.predict(x)
+        return mean
 
 
 class EGP_Matern:
@@ -1704,6 +1713,7 @@ class EGP_Matern:
             xin = xin.reshape((1, self.nInput))
         N = x.shape[0]
         y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y_vars = np.zeros((N, self.nOutput), dtype=np.float32)
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         x = torch.from_numpy(x)
@@ -1726,18 +1736,22 @@ class EGP_Matern:
                 # undo normalization
                 if self.use_cuda:
                     mean = mean.cpu()
+                    var = var.cpu()
                 y_mean = (
                     self.y_train_std[i] * np.reshape(mean.numpy(), [-1])
                     + self.y_train_mean[i]
                 )
+                y_var = np.multiply(var, self.y_train_std[i] ** 2)
                 y[:, i] = y_mean
+                y_vars[:, i] = y_var
                 del mean
                 del var
-        return y
+        return y, y_vars
 
     def evaluate(self, x):
 
-        return self.predict(x)
+        mean, var = self.predict(x)
+        return mean
 
 
 class CRV_Matern:
@@ -1926,13 +1940,16 @@ class CRV_Matern:
         mean, var = self.sm.predict_f(x)
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
-        y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y_var = np.multiply(var, self.y_train_std**2)
+
         y[:] = y_mean
 
-        return y
+        return y, y_var
 
     def evaluate(self, x):
-        return self.predict(x)
+
+        mean, var = self.predict(x)
+        return mean
 
 
 class SIV_Matern:
@@ -2110,13 +2127,16 @@ class SIV_Matern:
         mean, var = self.sm.predict_f(x)
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
+        y_var = np.multiply(variances, self.y_train_std**2)
         y = np.zeros((N, self.nOutput), dtype=np.float32)
         y[:] = y_mean
 
-        return y
+        return y, y_var
 
     def evaluate(self, x):
-        return self.predict(x)
+
+        mean, var = self.predict(x)
+        return mean
 
 
 class SPV_Matern:
@@ -2297,12 +2317,16 @@ class SPV_Matern:
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
         y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y_var = np.multiply(variances, self.y_train_std**2)
+
         y[:] = y_mean
 
-        return y
+        return y, y_var
 
     def evaluate(self, x):
-        return self.predict(x)
+
+        mean, var = self.predict(x)
+        return mean
 
 
 class SVGP_Matern:
@@ -2478,17 +2502,22 @@ class SVGP_Matern:
             xin = xin.reshape((1, self.nInput))
         N = x.shape[0]
         y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y_vars = np.zeros((N, self.nOutput), dtype=np.float32)
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         for i in range(self.nOutput):
             mean, var = self.smlist[i].predict_f(x)
             # undo normalization
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
+            y_var = tf.tensordot(var, self.y_train_std[i] ** 2, axes=0)
             y[:, i] = tf.cast(y_mean, tf.float32)
-        return y
+            y_vars[:, i] = tf.cast(y_var, tf.float32)
+        return y, y_vars
 
     def evaluate(self, x):
-        return self.predict(x)
+
+        mean, var = self.predict(x)
+        return mean
 
 
 class VGP_Matern:
@@ -2632,17 +2661,22 @@ class VGP_Matern:
             xin = xin.reshape((1, self.nInput))
         N = x.shape[0]
         y = np.zeros((N, self.nOutput), dtype=np.float32)
+        y_vars = np.zeros((N, self.nOutput), dtype=np.float32)
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         for i in range(self.nOutput):
             mean, var = self.smlist[i].predict_f(x)
             # undo normalization
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
+            y_var = tf.tensordot(var, self.y_train_std[i] ** 2, axes=0)
             y[:, i] = tf.cast(y_mean, tf.float32)
-        return y
+            y_vars[:, i] = tf.cast(y_var, tf.float32)
+        return y, y_vars
 
     def evaluate(self, x):
-        return self.predict(x)
+
+        mean, var = self.predict(x)
+        return mean
 
 
 class GPR_Matern:
@@ -2712,14 +2746,19 @@ class GPR_Matern:
             xin = xin.reshape((1, self.nInput))
         N = x.shape[0]
         y = np.zeros((N, self.nOutput))
+        y_vars = np.zeros((N, self.nOutput))
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrg
         for i in range(self.nOutput):
-            y[:, i] = self.smlist[i].predict(x)
-        return y
+            yp, ypstd = self.smlist[i].predict(x, return_std=True)
+            y[:, i] = yp
+            y_vars[:, i] = ypstd**2
+        return y, y_vars
 
     def evaluate(self, x):
-        return self.predict(x)
+
+        mean, var = self.predict(x)
+        return mean
 
 
 class GPR_RBF:
@@ -2789,14 +2828,18 @@ class GPR_RBF:
             xin = xin.reshape((1, self.nInput))
         N = x.shape[0]
         y = np.zeros((N, self.nOutput))
+        y_vars = np.zeros((N, self.nOutput))
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrg
         for i in range(self.nOutput):
-            y[:, i] = self.smlist[i].predict(x)
-        return y
+            yp, ypstd = self.smlist[i].predict(x, return_std=True)
+            y[:, i] = yp
+            y_vars[:, i] = ypstd**2
+        return y, y_vars
 
     def evaluate(self, x):
-        return self.predict(x)
+        mean, var = self.predict(x)
+        return mean
 
 
 def dlib_optimizer(logger, obj_func, initial_theta, bounds):
