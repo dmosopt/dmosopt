@@ -257,6 +257,8 @@ class CMAES:
 
         self.dim = nInput
         self.bounds = bounds
+        self.xlb = self.bounds[:, 0]
+        self.xub = self.bounds[:, 1]
 
         self.di_mutation = di_mutation
         if np.isscalar(di_mutation):
@@ -266,12 +268,12 @@ class CMAES:
         if mu is None:
             mu = population_size // 2
         self.mu = mu
-        self.lambda_ = params.get("lambda_", nInput)
+        self.lambda_ = params.get("lambda_", self.dim)
 
         # Step size control
-        self.d = params.get("d", 1.0 + self.dim / 2.0)
+        self.d = params.get("d", 1.0 + nOutput / 2.0)
         self.ptarg = params.get("ptarg", 1.0 / (5.0 + 0.5))
-        self.cp = params.get("cp", self.ptarg / (2.0 + self.ptarg))
+        self.cp = params.get("cp", self.ptarg / (1.0 + self.ptarg))
 
         # Covariance matrix adaptation
         self.cc = params.get("cc", 2.0 / (self.dim + 2.0))
@@ -423,7 +425,15 @@ class CMAES:
         pc = np.where(
             chosen_offspring.reshape((-1, 1)), self.pc[candidates_pidxs], np.nan
         )
-        psucc = np.where(chosen_offspring, self.psucc[candidates_pidxs], np.nan)
+        psucc = np.where(
+            chosen_offspring,
+            np.where(
+                self.psucc[candidates_pidxs] > self.ptarg,
+                self.psucc[candidates_pidxs],
+                self.ptarg,
+            ),
+            np.nan,
+        )
 
         # Update the internal parameters for successful offspring
         for ind in np.nonzero(chosen)[0]:
@@ -435,24 +445,23 @@ class CMAES:
             if is_offspring:
                 # Update (Success = 1 since it is chosen)
                 psucc[ind] = (1.0 - cp) * psucc[ind] + cp
-                sigmas[ind] = sigmas[ind] * np.exp(
-                    (psucc[ind] - ptarg) / (d * (1.0 - ptarg))
-                )
+                sigma_factors = np.exp((psucc[ind] - ptarg) / (d * (1.0 - ptarg)))
+                sigmas[ind] = sigmas[ind] * sigma_factors
 
                 xp = candidates_x[ind]
                 x = self.parents_x[p_idx]
-                z = (xp - x) / last_steps[ind]
+                z = np.divide(xp - x, self.xub - self.xlb) / last_steps[ind]
                 A[ind], Ainv[ind], pc[ind] = updateCholesky(
                     A[ind], Ainv[ind], z, psucc[ind], pc[ind], cc, ccov, pthresh
                 )
 
                 self.psucc[p_idx] = (1.0 - cp) * self.psucc[p_idx] + cp
-                self.sigmas[p_idx] = self.sigmas[p_idx] * np.exp(
+                psigma_factors = np.exp(
                     (self.psucc[p_idx] - ptarg) / (d * (1.0 - ptarg))
                 )
+                self.sigmas[p_idx] = self.sigmas[p_idx] * psigma_factors
 
-        # It is unnecessary to update the entire parameter set for not chosen individuals
-        # Their parameters will not make it to the next generation
+        # Update the entire parameter set for not chosen individuals
         for ind in np.nonzero(not_chosen)[0]:
 
             is_offspring = candidates_offspring[ind]

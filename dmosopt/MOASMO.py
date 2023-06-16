@@ -3,8 +3,17 @@
 import sys, pprint
 import numpy as np
 from numpy.random import default_rng
-from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, gp, sa, sampling
+from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, model, sa, sampling
 from dmosopt.feasibility import LogisticFeasibilityModel
+
+default_optimizer_kwargs = {
+    "gen": 100,
+    "crossover_prob": 0.9,
+    "mutation_prob": 0.1,
+    "sampling_method": None,
+    "di_crossover": 1.0,
+    "di_mutation": 20.0,
+}
 
 
 def optimization(
@@ -25,14 +34,7 @@ def optimization(
     surrogate_method="gpr",
     surrogate_options={"anisotropic": False, "optimizer": "sceua"},
     optimizer="nsga2",
-    optimizer_kwargs={
-        "gen": 100,
-        "crossover_prob": 0.9,
-        "mutation_prob": 0.1,
-        "sampling_method": None,
-        "di_crossover": 1.0,
-        "di_mutation": 20.0,
-    },
+    optimizer_kwargs={},
     sensitivity_method=None,
     sensitivity_options={},
     termination=None,
@@ -56,6 +58,10 @@ def optimization(
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
+
+    optimizer_kwargs_ = default_optimizer_kwargs
+    optimizer_kwargs_.update(optimizer_kwargs)
+
     nInput = len(param_names)
     nOutput = len(objective_names)
     N_resample = int(pop * pct)
@@ -123,8 +129,8 @@ def optimization(
                     sensitivity_options=sensitivity_options,
                     logger=logger,
                 )
-                optimizer_kwargs["di_mutation"] = di_dict["di_mutation"]
-                optimizer_kwargs["di_crossover"] = di_dict["di_crossover"]
+                optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
+                optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
 
         if optimizer == "nsga2":
             bestx_sm, besty_sm, gen_index, x_sm, y_sm = NSGA2.optimization(
@@ -138,7 +144,7 @@ def optimization(
                 pop=pop,
                 local_random=local_random,
                 termination=termination,
-                **optimizer_kwargs,
+                **optimizer_kwargs_,
             )
         elif optimizer == "age":
             bestx_sm, besty_sm, gen_index, x_sm, y_sm = AGEMOEA.optimization(
@@ -152,7 +158,7 @@ def optimization(
                 pop=pop,
                 local_random=local_random,
                 termination=termination,
-                **optimizer_kwargs,
+                **optimizer_kwargs_,
             )
         elif optimizer == "smpso":
             bestx_sm, besty_sm, x_sm, y_sm = SMPSO.optimization(
@@ -166,7 +172,7 @@ def optimization(
                 pop=pop,
                 local_random=local_random,
                 termination=termination,
-                **optimizer_kwargs,
+                **optimizer_kwargs_,
             )
         elif optimizer == "cmaes":
             bestx_sm, besty_sm, x_sm, y_sm = CMAES.optimization(
@@ -179,7 +185,7 @@ def optimization(
                 pop=pop,
                 local_random=local_random,
                 termination=termination,
-                **optimizer_kwargs,
+                **optimizer_kwargs_,
             )
         else:
             raise RuntimeError(f"Unknown optimizer {optimizer}")
@@ -298,14 +304,7 @@ def onestep(
     pop=100,
     feasibility_model=False,
     optimizer="nsga2",
-    optimizer_kwargs={
-        "gen": 100,
-        "crossover_prob": 0.9,
-        "mutation_prob": 0.1,
-        "sampling_method": None,
-        "di_crossover": 1.0,
-        "di_mutation": 20.0,
-    },
+    optimizer_kwargs={},
     surrogate_method="gpr",
     surrogate_options={"anisotropic": False, "optimizer": "sceua"},
     sensitivity_method=None,
@@ -332,6 +331,8 @@ def onestep(
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
+    optimizer_kwargs_ = default_optimizer_kwargs
+    optimizer_kwargs_.update(optimizer_kwargs)
 
     nInput = len(param_names)
     nOutput = len(objective_names)
@@ -376,8 +377,8 @@ def onestep(
             sensitivity_options=sensitivity_options,
             logger=logger,
         )
-        optimizer_kwargs["di_mutation"] = di_dict["di_mutation"]
-        optimizer_kwargs["di_crossover"] = di_dict["di_crossover"]
+        optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
+        optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
 
     if optimizer == "nsga2":
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = NSGA2.optimization(
@@ -392,7 +393,7 @@ def onestep(
             pop=pop,
             local_random=local_random,
             termination=termination,
-            **optimizer_kwargs,
+            **optimizer_kwargs_,
         )
     elif optimizer == "age":
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = AGEMOEA.optimization(
@@ -407,7 +408,7 @@ def onestep(
             pop=pop,
             local_random=local_random,
             termination=termination,
-            **optimizer_kwargs,
+            **optimizer_kwargs_,
         )
     elif optimizer == "smpso":
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = SMPSO.optimization(
@@ -422,7 +423,7 @@ def onestep(
             pop=pop,
             local_random=local_random,
             termination=termination,
-            **optimizer_kwargs,
+            **optimizer_kwargs_,
         )
     elif optimizer == "cmaes":
         bestx_sm, besty_sm, gen_index, x_sm, y_sm = CMAES.optimization(
@@ -436,7 +437,7 @@ def onestep(
             pop=pop,
             local_random=local_random,
             termination=termination,
-            **optimizer_kwargs,
+            **optimizer_kwargs_,
         )
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer}")
@@ -494,7 +495,7 @@ def train(
         gpr_lengthscale_bounds = surrogate_options.get(
             "lengthscale_bounds", (1e-3, 100.0)
         )
-        sm = gp.GPR_Matern(
+        sm = model.GPR_Matern(
             x,
             y,
             nInput,
@@ -514,7 +515,7 @@ def train(
         egp_cuda = surrogate_options.get("cuda", False)
         egp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         megp_batch_size = surrogate_options.get("batch_size", None)
-        sm = gp.EGP_Matern(
+        sm = model.EGP_Matern(
             x,
             y,
             nInput,
@@ -539,7 +540,7 @@ def train(
         megp_cuda = surrogate_options.get("cuda", False)
         megp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         megp_batch_size = surrogate_options.get("batch_size", None)
-        sm = gp.MEGP_Matern(
+        sm = model.MEGP_Matern(
             x,
             y,
             nInput,
@@ -565,7 +566,7 @@ def train(
         mdgp_cuda = surrogate_options.get("cuda", False)
         mdgp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         mdgp_batch_size = surrogate_options.get("batch_size", 10)
-        sm = gp.MDGP_Matern(
+        sm = model.MDGP_Matern(
             x,
             y,
             nInput,
@@ -593,7 +594,7 @@ def train(
         mdspp_cuda = surrogate_options.get("cuda", False)
         mdspp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         mdspp_batch_size = surrogate_options.get("batch_size", 10)
-        sm = gp.MDSPP_Matern(
+        sm = model.MDSPP_Matern(
             x,
             y,
             nInput,
@@ -619,7 +620,7 @@ def train(
         vgp_natgrad_gamma = surrogate_options.get("natgrad_gamma", 1.0)
         vgp_adam_lr = surrogate_options.get("adam_lr", 0.01)
         vgp_n_iter = surrogate_options.get("n_iter", 3000)
-        sm = gp.VGP_Matern(
+        sm = model.VGP_Matern(
             x,
             y,
             nInput,
@@ -643,7 +644,7 @@ def train(
         svgp_natgrad_gamma = surrogate_options.get("natgrad_gamma", 0.1)
         svgp_adam_lr = surrogate_options.get("adam_lr", 0.01)
         svgp_n_iter = surrogate_options.get("n_iter", 30000)
-        sm = gp.SVGP_Matern(
+        sm = model.SVGP_Matern(
             x,
             y,
             nInput,
@@ -669,7 +670,7 @@ def train(
         spv_adam_lr = surrogate_options.get("adam_lr", 0.01)
         spv_n_iter = surrogate_options.get("n_iter", 30000)
         spv_num_latent_gps = surrogate_options.get("num_latent_gps", None)
-        sm = gp.SPV_Matern(
+        sm = model.SPV_Matern(
             x,
             y,
             nInput,
@@ -696,7 +697,7 @@ def train(
         siv_adam_lr = surrogate_options.get("adam_lr", 0.01)
         siv_n_iter = surrogate_options.get("n_iter", 30000)
         siv_num_latent_gps = surrogate_options.get("num_latent_gps", None)
-        sm = gp.SIV_Matern(
+        sm = model.SIV_Matern(
             x,
             y,
             nInput,
@@ -723,7 +724,7 @@ def train(
         crv_adam_lr = surrogate_options.get("adam_lr", 0.01)
         crv_n_iter = surrogate_options.get("n_iter", 30000)
         crv_num_latent_gps = surrogate_options.get("num_latent_gps", None)
-        sm = gp.CRV_Matern(
+        sm = model.CRV_Matern(
             x,
             y,
             nInput,
@@ -740,8 +741,6 @@ def train(
             num_latent_gps=crv_num_latent_gps,
             logger=logger,
         )
-    elif surrogate_method == "pod":
-        sm = pod.POD_RBF(x, y, nInput, nOutput, xlb, xub, logger=logger)
     else:
         raise RuntimeError(f"Unknown surrogate method {surrogate_method}")
 
