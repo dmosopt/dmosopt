@@ -215,6 +215,7 @@ def sortMO(
     y_distance_functions = [crowding_distance]
     if y_distance_metrics is not None:
         y_distance_functions = []
+        assert len(y_distance_metrics) > 0
         for distance_metric in y_distance_metrics:
             if distance_metric == None:
                 y_distance_functions.append(crowding_distance)
