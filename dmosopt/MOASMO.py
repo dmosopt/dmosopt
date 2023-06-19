@@ -92,9 +92,9 @@ def optimization(
                 break
         if logger is not None:
             if termination is not None:
-                logger.info(f"MOASMO: generation {i}...")
+                logger.info(f"{optimizer.name}: generation {i}...")
             else:
-                logger.info(f"MOASMO: generation {i} of {gen}...")
+                logger.info(f"{optimizer.name}: generation {i} of {gen}...")
 
         ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()
@@ -286,6 +286,8 @@ def epoch(
             nInput=nInput,
             nOutput=nOutput,
             popsize=pop,
+            feasibility_model=fsbm,
+            distance_metric=None,
             **optimizer_kwargs_,
         )
     elif optimizer_name == "smpso":

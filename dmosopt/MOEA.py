@@ -46,8 +46,10 @@ class Struct(object):
 
 
 class MOEA(object):
-    def __init__(self, popsize: int, nInput: int, nOutput: int, **kwargs):
+    def __init__(self, name: str, popsize: int, nInput: int, nOutput: int, **kwargs):
         """Base Class for a Multi-Objective Evolutionary Algorithm."""
+
+        self.name = name
         self.popsize = popsize
         self.nInput = nInput
         self.nOutput = nOutput

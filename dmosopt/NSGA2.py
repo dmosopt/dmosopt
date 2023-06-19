@@ -36,6 +36,7 @@ class NSGA2(MOEA):
         A multi-objective optimization algorithm."""
 
         super().__init__(
+            name="NSGA2",
             popsize=popsize,
             nInput=nInput,
             nOutput=nOutput,
@@ -118,7 +119,7 @@ class NSGA2(MOEA):
         )
 
         return state
-
+    
     def generate_strategy(self, **params):
 
         popsize = self.popsize
