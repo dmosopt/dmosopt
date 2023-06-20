@@ -5,7 +5,9 @@
 import numpy as np
 from functools import reduce
 from dmosopt.dda import dda_non_dominated_sort
+from dmosopt import sampling
 from scipy.spatial.distance import cdist
+from typing import Any, Union, Dict, List, Tuple, Optional
 
 # function sharedmoea(selfunc,μ,λ)
 #  \selfunc, selection function to be used.
@@ -16,6 +18,168 @@ from scipy.spatial.distance import cdist
 # Pt+1 ←selfunc(Pt ∪Poff,μ).
 # t ←t +1.
 # return nondomset(Pt+1), final non-dominated set
+
+
+class Struct(object):
+    def __init__(self, **items):
+        self.__dict__.update(items)
+
+    def update(self, items):
+        self.__dict__.update(items)
+
+    def __call__(self):
+        return self.__dict__
+
+    def __getitem__(self, key):
+        return self.__dict__[key]
+
+    def __setitem__(self, key, val):
+        self.__dict__[key] = val
+
+    def __contains__(self, k):
+        return True if k in self.__dict__ else False
+
+    def __repr__(self):
+        return f"Struct({self.__dict__})"
+
+    def __str__(self):
+        return f"<Struct>"
+
+
+class MOEA(object):
+    def __init__(self, name: str, popsize: int, nInput: int, nOutput: int, **kwargs):
+        """Base Class for a Multi-Objective Evolutionary Algorithm."""
+
+        self.name = name
+        self.popsize = popsize
+        self.nInput = nInput
+        self.nOutput = nOutput
+        self.opt_params = Struct(**self.default_parameters)
+        self.opt_params.update(
+            {
+                "popsize": popsize,
+                "nInput": nInput,
+                "nOutput": nOutput,
+                "initial_size": popsize,
+                "initial_sampling_method": None,
+                "initial_sampling_method_params": None,
+            }
+        )
+        for k, v in kwargs.items():
+            if k not in self.opt_params:
+                self.opt_params[k] = v
+            elif v is not None:
+                self.opt_params[k] = v
+        self.local_random = None
+        self.state = None
+
+    @property
+    def default_parameters(self) -> Dict[str, Any]:
+        """Return default hyper parameters of algorithm."""
+        return {}
+
+    @property
+    def opt_parameters(self) -> Dict[str, Any]:
+        """Return current hyper parameters of algorithm."""
+        params = self.opt_params()
+        return params
+
+    @property
+    def population_objectives(self) -> Tuple[np.ndarray, np.ndarray]:
+        return self.get_population_strategy()
+
+    def get_population_strategy(self) -> Tuple[np.ndarray, np.ndarray]:
+        raise NotImplementedError
+
+    def initialize_strategy(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        bounds: np.ndarray,
+        local_random: Optional[np.random.Generator] = None,
+        **params,
+    ):
+        """Initialize the evolutionary algorithm."""
+
+        self.bounds = bounds
+        self.local_random = local_random
+
+        # Initialize strategy based on strategy-specific initialize method
+        self.state = self.initialize_state(x, y, bounds, local_random)
+
+        return self.state
+
+    def generate_initial(self, bounds, local_random):
+        """Generate an initial set of parameters to initialize strategy."""
+
+        xlb = bounds[:, 0]
+        xub = bounds[:, 1]
+
+        nInput = self.nInput
+        initial_size = self.opt_params.initial_size
+        sampling_method = self.opt_params.initial_sampling_method
+        sampling_method_params = self.opt_params.initial_sampling_method_params
+
+        if sampling_method is None:
+            x = sampling.lh(initial_size, nInput, local_random)
+            x = x * (xub - xlb) + xlb
+        elif sampling_method == "sobol":
+            x = sampling.sobol(initial_size, nInput, local_random)
+            x = x * (xub - xlb) + xlb
+        elif callable(sampling_method):
+            if sampling_method_params is None:
+                x = sampling_method(local_random, initial_size, nInput, xlb, xub)
+            else:
+                x = sampling_method(local_random, **sampling_method_params)
+        else:
+            raise RuntimeError(f"Unknown sampling method {sampling_method}")
+
+        return x
+
+    def generate(
+        self,
+        **params,
+    ):
+        """Generate new parameter candidates to evaluate next."""
+
+        # Generate parameters to be evaluated based on strategy-specific method
+        x, state = self.generate_strategy(**params)
+
+        # Clip proposal candidates into allowed range
+        x_clipped = np.clip(x, self.bounds[:, 0], self.bounds[:, 1])
+
+        return x_clipped, state
+
+    def update(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        state: Dict[Any, Any],
+        **params,
+    ):
+        """Update objective information for given set of parameters and update algorithm statex."""
+
+        # Update the search state based on strategy-specific update
+        self.update_strategy(x, y, state, **params)
+        return self.state
+
+    def initialize_state(self, **params):
+        """Search-specific initialization method. Returns initial state."""
+        raise NotImplementedError
+
+    def generate_strategy(self, **params):
+        """Search-specific parameter generation. Returns new parameters & updated state."""
+        raise NotImplementedError
+
+    def update_strategy(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        state: Dict[Any, Any],
+        **params,
+    ):
+        """Search-specific objectives update. Returns updated state."""
+        raise NotImplementedError
 
 
 def mutation(
@@ -88,6 +252,7 @@ def sortMO(
     y_distance_functions = [crowding_distance]
     if y_distance_metrics is not None:
         y_distance_functions = []
+        assert len(y_distance_metrics) > 0
         for distance_metric in y_distance_metrics:
             if distance_metric == None:
                 y_distance_functions.append(crowding_distance)

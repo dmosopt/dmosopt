@@ -46,8 +46,6 @@ class SOptStrategy:
         optimizer_options={
             "crossover_prob": 0.9,
             "mutation_prob": 0.1,
-            "di_crossover": 1.0,
-            "di_mutation": 20.0,
         },
         feasibility_model=False,
         termination_conditions=None,
@@ -139,7 +137,7 @@ class SOptStrategy:
         self.completed.append(entry)
         return entry
 
-    def step(self, return_sm=False):
+    def epoch(self, return_sm=False):
         if len(self.completed) > 0:
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
@@ -172,7 +170,7 @@ class SOptStrategy:
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
             self.completed = []
-        optimizer_kwargs = {"gen": self.num_generations}
+        optimizer_kwargs = {}
         if self.optimizer_options is not None:
             optimizer_kwargs.update(self.optimizer_options)
         if self.distance_metric is not None:
@@ -183,7 +181,8 @@ class SOptStrategy:
         x_sm = None
         y_sm = None
         x_resample = None
-        res = opt.onestep(
+        res = opt.epoch(
+            self.num_generations,
             self.prob.param_names,
             self.prob.objective_names,
             self.prob.lb,
@@ -193,7 +192,7 @@ class SOptStrategy:
             self.y,
             self.c,
             pop=self.population_size,
-            optimizer=self.optimizer,
+            optimizer_name=self.optimizer,
             optimizer_kwargs=optimizer_kwargs,
             surrogate_method=self.surrogate_method,
             surrogate_options=self.surrogate_options,
@@ -293,8 +292,6 @@ class DistOptimizer:
         optimizer_options={
             "mutation_prob": 0.1,
             "crossover_prob": 0.9,
-            "di_crossover": 1.0,
-            "di_mutation": 20.0,
         },
         sensitivity_method=None,
         sensitivity_options={},
@@ -445,12 +442,12 @@ class DistOptimizer:
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
-        di_crossover = self.optimizer_options.get("di_crossover", 1.0)
+        di_crossover = self.optimizer_options.get("di_crossover", None)
         if isinstance(di_crossover, dict):
             di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
             self.optimizer_options["di_crossover"] = di_crossover
 
-        di_mutation = self.optimizer_options.get("di_mutation", 20.0)
+        di_mutation = self.optimizer_options.get("di_mutation", None)
         if isinstance(di_mutation, dict):
             di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
             self.optimizer_options["di_mutation"] = di_mutation
@@ -1657,23 +1654,23 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                                 )
                             )
                         logger.info(
-                            f"surrogate accuracy at step {epoch_count} for problem {problem_id} was {mae}"
+                            f"surrogate accuracy at epoch {epoch_count} for problem {problem_id} was {mae}"
                         )
                 logger.info(
-                    f"performing optimization step {epoch_count+1} for problem {problem_id} ..."
+                    f"performing optimization epoch {epoch_count+1} for problem {problem_id} ..."
                 )
                 x_sm, y_sm = None, None
                 if sopt.save and sopt.save_surrogate_eval:
-                    _, _, gen_index, x_sm, y_sm = sopt.optimizer_dict[problem_id].step(
+                    _, _, gen_index, x_sm, y_sm = sopt.optimizer_dict[problem_id].epoch(
                         return_sm=True
                     )
                     sopt.save_surrogate_evals(
                         problem_id, epoch + 1, gen_index, x_sm, y_sm
                     )
                 else:
-                    sopt.optimizer_dict[problem_id].step()
+                    sopt.optimizer_dict[problem_id].epoch()
                 logger.info(
-                    f"completed optimization step {epoch_count+1} for problem {problem_id} ..."
+                    f"completed optimization epoch {epoch_count+1} for problem {problem_id} ..."
                 )
             controller.info()
             sys.stdout.flush()

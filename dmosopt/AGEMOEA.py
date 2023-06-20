@@ -12,134 +12,144 @@
 #
 
 import numpy as np
-import gc, itertools
 from functools import reduce
-from dmosopt import sampling
-from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import (
+    Struct,
+    MOEA,
     crossover_sbx,
     mutation,
     tournament_selection,
     remove_duplicates,
 )
+from typing import Any, Union, Dict, List, Tuple, Optional
 
 
-def optimization(
-    model,
-    nInput,
-    nOutput,
-    xlb,
-    xub,
-    initial=None,
-    feasibility_model=None,
-    termination=None,
-    pop=100,
-    gen=100,
-    crossover_prob=0.9,
-    mutation_prob=0.1,
-    mutation_rate=None,
-    nchildren=1,
-    di_crossover=1.0,
-    di_mutation=20.0,
-    sampling_method=None,
-    local_random=None,
-    logger=None,
-    **kwargs,
-):
-    """AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
-    model: the evaluated model function
-    nInput: number of model input
-    nOutput: number of output objectives
-    xlb: lower bound of input
-    xub: upper bound of input
-    pop: number of population
-    gen: number of generation
-    crossover_prob: probability of crossover in each generation
-    mutation_prob: probability of mutation in each generation
-    di_crossover: distribution index for crossover
-    di_mutation: distribution index for mutation
-    """
+class AGEMOEA(MOEA):
+    def __init__(
+        self,
+        popsize: int,
+        nInput: int,
+        nOutput: int,
+        crossover_prob: Optional[float],
+        mutation_prob: Optional[float],
+        mutation_rate: Optional[float],
+        nchildren: Optional[int],
+        feasibility_model: Optional[Any],
+        **kwargs,
+    ):
+        """AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry."""
 
-    if local_random is None:
-        local_random = default_rng()
+        super().__init__(
+            name="AGEMOEA",
+            popsize=popsize,
+            nInput=nInput,
+            nOutput=nOutput,
+            crossover_prob=crossover_prob,
+            mutation_prob=mutation_prob,
+            mutation_rate=mutation_rate,
+            nchildren=nchildren,
+            **kwargs,
+        )
 
-    if np.isscalar(di_crossover):
-        di_crossover = np.asarray([di_crossover] * nInput)
-    if np.isscalar(di_mutation):
-        di_mutation = np.asarray([di_mutation] * nInput)
+        self.logger = None
 
-    poolsize = int(round(pop / 2.0))
-    # size of mating pool;
+        self.feasibility_model = feasibility_model
 
-    if mutation_rate is None:
-        mutation_rate = 1.0 / float(nInput)
+        self.x_distance_metrics = None
+        if self.feasibility_model is not None:
+            self.x_distance_metrics = [self.feasibility_model.rank]
 
-    x_initial, y_initial = None, None
-    if initial is not None:
-        x_initial, y_initial = initial
+        di_crossover = self.opt_params.di_crossover
+        if np.isscalar(di_crossover):
+            self.opt_params.di_crossover = np.asarray([di_crossover] * nInput)
 
-    if sampling_method is None:
-        x = sampling.lh(pop, nInput, local_random)
-        x = x * (xub - xlb) + xlb
-    elif sampling_method == "sobol":
-        x = sampling.sobol(pop, nInput, local_random)
-        x = x * (xub - xlb) + xlb
-    elif callable(sampling_method):
-        sampling_method_params = kwargs.get("sampling_method_params", None)
-        if sampling_method_params is None:
-            x = sampling_method(local_random, pop, nInput, xlb, xub)
-        else:
-            x = sampling_method(local_random, **sampling_method_params)
-    else:
-        raise RuntimeError(f"Unknown sampling method {sampling_method}")
+        di_mutation = self.opt_params.di_mutation
+        if np.isscalar(di_mutation):
+            self.opt_params.di_mutation = np.asarray([di_mutation] * nInput)
+        mutation_rate = self.opt_params.mutation_rate
+        if mutation_rate is None:
+            self.opt_params.mutation_rate = 1.0 / float(nInput)
 
-    y = model.evaluate(x).astype(np.float32)
+        self.opt_params.poolsize = int(round(popsize / 2.0))
 
-    if x_initial is not None:
-        x = np.vstack((x_initial.astype(np.float32), x))
-    if y_initial is not None:
-        y = np.vstack((y_initial.astype(np.float32), y))
+    @property
+    def default_parameters(self) -> Dict[str, Any]:
+        """Returns default parameters of AGE-MOEA strategy."""
+        params = {
+            "crossover_prob": 0.9,
+            "mutation_prob": 0.1,
+            "mutation_rate": None,
+            "nchildren": 1,
+            "di_crossover": 1.0,
+            "di_mutation": 20.0,
+        }
 
-    gen_indexes = []
-    gen_indexes.append(np.zeros((x.shape[0],), dtype=np.int32))
+        return params
 
-    population_parm = x[:pop]
-    population_obj = y[:pop]
-    population_parm, population_obj, rank, crowd_dist = environmental_selection(
-        local_random,
-        population_parm,
-        population_obj,
-        pop,
-        nInput,
-        nOutput,
-        logger=logger,
-    )
+    def initialize_state(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        bounds: np.ndarray,
+        local_random: Optional[np.random.Generator] = None,
+        **params,
+    ):
 
-    x_new = []
-    y_new = []
+        population_parm, population_obj, rank, crowd_dist = environmental_selection(
+            local_random,
+            x,
+            y,
+            self.popsize,
+            self.nInput,
+            self.nOutput,
+            logger=self.logger,
+        )
 
-    n_eval = 0
-    it = range(1, gen + 1)
-    if termination is not None:
-        it = itertools.count(1)
-    for i in it:
-        if termination is not None:
-            opt = OptHistory(i, n_eval, population_parm, population_obj, None)
-            if termination.has_terminated(opt):
-                break
-        if logger is not None:
-            if termination is not None:
-                logger.info(f"AGE-MOEA: generation {i}...")
-            else:
-                logger.info(f"AGE-MOEA: generation {i} of {gen}...")
+        population_parm = x[: self.popsize]
+        population_obj = y[: self.popsize]
+        rank = rank[: self.popsize]
+        crowd_dist = crowd_dist[: self.popsize]
 
-        pool_idxs = tournament_selection(local_random, pop, poolsize, -crowd_dist, rank)
+        state = Struct(
+            bounds=bounds,
+            population_parm=population_parm,
+            population_obj=population_obj,
+            rank=rank,
+            crowd_dist=crowd_dist,
+        )
+
+        return state
+
+    def generate_strategy(self, **params):
+
+        popsize = self.popsize
+        poolsize = self.opt_params.poolsize
+        crossover_prob = self.opt_params.crossover_prob
+        mutation_prob = self.opt_params.mutation_prob
+        mutation_rate = self.opt_params.mutation_rate
+        nchildren = self.opt_params.nchildren
+        di_crossover = self.opt_params.di_crossover
+        di_mutation = self.opt_params.di_mutation
+
+        local_random = self.local_random
+        xlb = self.state.bounds[:, 0]
+        xub = self.state.bounds[:, 1]
+
+        population_parm = self.state.population_parm
+        population_obj = self.state.population_obj
+        rank = self.state.rank
+        crowd_dist = self.state.crowd_dist
+
+        pool_idxs = tournament_selection(
+            local_random, popsize, poolsize, -crowd_dist, rank
+        )
         pool = population_parm[pool_idxs, :]
 
         count = 0
         xs_gen = []
-        while count < pop - 1:
+
+        while count < popsize - 1:
             if local_random.random() < crossover_prob:
                 parentidx = local_random.choice(poolsize, 2, replace=False)
                 parent1 = pool[parentidx[0], :]
@@ -172,37 +182,53 @@ def optimization(
                 child = children[0]
                 xs_gen.append(child)
                 count += 1
+
         x_gen = np.vstack(xs_gen)
-        y_gen = model.evaluate(x_gen)
-        x_new.append(x_gen)
-        y_new.append(y_gen)
-        gen_indexes.append(np.ones((x_gen.shape[0],), dtype=np.uint32) * i)
+        return x_gen, {}
+
+    def update_strategy(
+        self,
+        x_gen: np.ndarray,
+        y_gen: np.ndarray,
+        state: Dict[Any, Any],
+        **params,
+    ):
+        population_parm = self.state.population_parm
+        population_obj = self.state.population_obj
+        rank = self.state.rank
+
+        popsize = self.popsize
+        nInput = self.nInput
+        nOutput = self.nOutput
+        local_random = self.local_random
 
         population_parm = np.vstack((population_parm, x_gen))
         population_obj = np.vstack((population_obj, y_gen))
         population_parm, population_obj = remove_duplicates(
             population_parm, population_obj
         )
+
         population_parm, population_obj, rank, crowd_dist = environmental_selection(
             local_random,
             population_parm,
             population_obj,
-            pop,
+            popsize,
             nInput,
             nOutput,
-            logger=logger,
+            logger=self.logger,
         )
-        gc.collect()
-        n_eval += count
 
-    bestx = population_parm.copy()
-    besty = population_obj.copy()
+        self.state.population_parm[:] = population_parm
+        self.state.population_obj[:] = population_obj
+        self.state.rank[:] = rank
+        self.state.crowd_dist[:] = crowd_dist
 
-    gen_index = np.concatenate(gen_indexes)
-    x = np.vstack([x] + x_new)
-    y = np.vstack([y] + y_new)
+    def get_population_strategy(self):
 
-    return bestx, besty, gen_index, x, y
+        pop_x = self.state.population_parm.copy()
+        pop_y = self.state.population_obj.copy()
+
+        return pop_x, pop_y
 
 
 def sortMO(x, y):

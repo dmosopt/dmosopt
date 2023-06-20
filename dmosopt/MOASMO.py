@@ -1,45 +1,28 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
 
-import sys, pprint
+import sys, itertools
 import numpy as np
 from numpy.random import default_rng
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, model, sa, sampling
 from dmosopt.feasibility import LogisticFeasibilityModel
-
-default_optimizer_kwargs = {
-    "gen": 100,
-    "crossover_prob": 0.9,
-    "mutation_prob": 0.1,
-    "sampling_method": None,
-    "di_crossover": 1.0,
-    "di_mutation": 20.0,
-}
+from dmosopt.datatypes import OptHistory
 
 
 def optimization(
+    gen,
+    optimizer,
     model,
-    param_names,
-    objective_names,
+    nInput,
+    nOutput,
     xlb,
     xub,
-    n_epochs,
-    pct,
-    Xinit=None,
-    Yinit=None,
-    nConstraints=None,
-    pop=100,
-    initial_maxiter=5,
-    initial_method="slh",
+    popsize=100,
+    initial=None,
     feasibility_model=False,
-    surrogate_method="gpr",
-    surrogate_options={"anisotropic": False, "optimizer": "sceua"},
-    optimizer="nsga2",
-    optimizer_kwargs={},
-    sensitivity_method=None,
-    sensitivity_options={},
     termination=None,
     local_random=None,
     logger=None,
+    **kwargs,
 ):
     """
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -51,179 +34,70 @@ def optimization(
     n_epochs: number of epochs
     pct: percentage of resampled points in each iteration
     Xinit and Yinit: initial samplers for surrogate model construction
-    ### options for the embedded NSGA-II optimizer:
-        pop: number of population
-        gen: number of generation
-        crossover_prob: probability of crossover in each generation
-        di_crossover: distribution index for crossover
-        di_mutation: distribution index for mutation
     """
 
-    optimizer_kwargs_ = default_optimizer_kwargs
-    optimizer_kwargs_.update(optimizer_kwargs)
+    optimizer_kwargs = {}
+    optimizer_kwargs.update(kwargs)
 
-    nInput = len(param_names)
-    nOutput = len(objective_names)
-    N_resample = int(pop * pct)
-    if (surrogate_method is not None) and (Xinit is None and Yinit is None):
-        Ninit = nInput * 10
-        Xinit = xinit(
-            Ninit,
-            param_names,
-            method=initial_method,
-            maxiter=initial_maxiter,
-            logger=logger,
-        )
-        Yinit = np.zeros((Ninit, nOutput))
-        C = None
-        if nConstraints is not None:
-            C = np.zeros((Ninit, nConstraints))
-            for i in range(Ninit):
-                Yinit[i, :], C[i, :] = model.evaluate(Xinit[i, :])
-        else:
-            for i in range(Ninit):
-                Yinit[i, :] = model.evaluate(Xinit[i, :])
-    else:
-        Ninit = Xinit.shape[0]
+    if local_random is None:
+        local_random = default_rng()
 
-    c = None
-    fsbm = None
-    if C is not None:
-        feasible = np.argwhere(np.all(C > 0.0, axis=1))
-        if feasibility_model:
-            fsbm = LogisticFeasibilityModel(Xinit, C)
-        if len(feasible) > 0:
-            feasible = feasible.ravel()
-            x = Xinit[feasible, :].copy()
-            y = Yinit[feasible, :].copy()
-            c = C[feasible, :].copy()
-        c = c.copy()
-    else:
-        x = Xinit.copy()
-        y = Yinit.copy()
+    bounds = np.column_stack((xlb, xub))
 
-    for i in range(n_epochs):
+    x = optimizer.generate_initial(bounds, local_random)
+    y = model.evaluate(x).astype(np.float32)
 
-        sm = model
-        if surrogate_method is not None:
-            sm = train(
-                nInput,
-                nOutput,
-                xlb,
-                xub,
-                x,
-                y,
-                c,
-                surrogate_method=surrogate_method,
-                surrogate_options=surrogate_options,
-                logger=logger,
-            )
-            if sensitivity_method is not None:
-                di_dict = analyze_sensitivity(
-                    sm,
-                    xlb,
-                    xub,
-                    param_names,
-                    objective_names,
-                    sensitivity_method=sensitivity_method,
-                    sensitivity_options=sensitivity_options,
-                    logger=logger,
-                )
-                optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
-                optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
+    x_initial = None
+    y_initial = None
+    if initial is not None:
+        x_initial, y_initial = initial
 
-        if optimizer == "nsga2":
-            bestx_sm, besty_sm, gen_index, x_sm, y_sm = NSGA2.optimization(
-                sm,
-                nInput,
-                nOutput,
-                xlb,
-                xub,
-                feasibility_model=fsbm,
-                logger=logger,
-                pop=pop,
-                local_random=local_random,
-                termination=termination,
-                **optimizer_kwargs_,
-            )
-        elif optimizer == "age":
-            bestx_sm, besty_sm, gen_index, x_sm, y_sm = AGEMOEA.optimization(
-                sm,
-                nInput,
-                nOutput,
-                xlb,
-                xub,
-                feasibility_model=fsbm,
-                logger=logger,
-                pop=pop,
-                local_random=local_random,
-                termination=termination,
-                **optimizer_kwargs_,
-            )
-        elif optimizer == "smpso":
-            bestx_sm, besty_sm, x_sm, y_sm = SMPSO.optimization(
-                sm,
-                nInput,
-                nOutput,
-                xlb,
-                xub,
-                feasibility_model=fsbm,
-                logger=logger,
-                pop=pop,
-                local_random=local_random,
-                termination=termination,
-                **optimizer_kwargs_,
-            )
-        elif optimizer == "cmaes":
-            bestx_sm, besty_sm, x_sm, y_sm = CMAES.optimization(
-                sm,
-                nInput,
-                nOutput,
-                xlb,
-                xub,
-                logger=logger,
-                pop=pop,
-                local_random=local_random,
-                termination=termination,
-                **optimizer_kwargs_,
-            )
-        else:
-            raise RuntimeError(f"Unknown optimizer {optimizer}")
+    if x_initial is not None:
+        x = np.vstack((x_initial.astype(np.float32), x))
+    if y_initial is not None:
+        y = np.vstack((y_initial.astype(np.float32), y))
 
-        if surrogate_method is not None:
-            D = MOEA.crowding_distance(besty_sm)
-            idxr = D.argsort()[::-1][:N_resample]
-            x_resample = bestx_sm[idxr, :]
-            y_resample = np.zeros((N_resample, nOutput))
-            c_resample = None
-            if C is not None:
-                fsbm = LogisticFeasibilityModel(x_sm, C)
-                c_resample = np.zeros((N_resample, nConstraints))
-                for j in range(N_resample):
-                    y_resample[j, :], c_resample[j, :] = model.evaluate(
-                        x_resample[j, :]
-                    )
-                feasible = np.argwhere(np.all(c_resample > 0.0, axis=1))
-                if len(feasible) > 0:
-                    feasible = feasible.ravel()
-                    x_resample = x_resample[feasible, :]
-                    y_resample = y_resample[feasible, :]
+    optimizer.initialize_strategy(x, y, bounds, local_random, **optimizer_kwargs)
+
+    gen_indexes = []
+    gen_indexes.append(np.zeros((x.shape[0],), dtype=np.uint32))
+
+    x_new = []
+    y_new = []
+
+    n_eval = 0
+    it = range(1, gen + 1)
+    if termination is not None:
+        it = itertools.count(1)
+    for i in it:
+        if termination is not None:
+            pop_x, pop_y = optimizer.population_objectives
+            opt = OptHistory(i, n_eval, pop_x, pop_y, None)
+            if termination.has_terminated(opt):
+                break
+        if logger is not None:
+            if termination is not None:
+                logger.info(f"{optimizer.name}: generation {i}...")
             else:
-                for j in range(N_resample):
-                    y_resample[j, :] = model.evaluate(x_resample[j, :])
-            x = np.vstack((x, x_resample))
-            y = np.vstack((y, y_resample))
-            if c_resample is not None:
-                c = np.vstack((c, c_resample))
+                logger.info(f"{optimizer.name}: generation {i} of {gen}...")
 
-    xtmp = x.copy()
-    ytmp = y.copy()
-    xtmp, ytmp, rank, _ = MOEA.sortMO(xtmp, ytmp, nInput, nOutput)
-    idxp = rank == 0
-    bestx = xtmp[idxp, :]
-    besty = ytmp[idxp, :]
+        ## optimizer generate-update
+        x_gen, state_gen = optimizer.generate()
+        y_gen = model.evaluate(x_gen)
+        optimizer.update(x_gen, y_gen, state_gen)
+        count = x_gen.shape[0]
+        n_eval += count
 
-    return bestx, besty, x, y
+        x_new.append(x_gen)
+        y_new.append(y_gen)
+        gen_indexes.append(np.ones((x_gen.shape[0],), dtype=np.uint32) * i)
+
+    gen_index = np.concatenate(gen_indexes)
+    x = np.vstack([x] + x_new)
+    y = np.vstack([y] + y_new)
+    bestx, besty = optimizer.population_objectives
+
+    return bestx, besty, gen_index, x, y
 
 
 def xinit(
@@ -292,7 +166,8 @@ def xinit(
     return Xinit
 
 
-def onestep(
+def epoch(
+    gen,
     param_names,
     objective_names,
     xlb,
@@ -302,8 +177,9 @@ def onestep(
     Yinit,
     C,
     pop=100,
+    sampling_method=None,
     feasibility_model=False,
-    optimizer="nsga2",
+    optimizer_name="nsga2",
     optimizer_kwargs={},
     surrogate_method="gpr",
     surrogate_options={"anisotropic": False, "optimizer": "sceua"},
@@ -316,7 +192,7 @@ def onestep(
 ):
     """
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
-    One-step mode for offline optimization.
+    Performs one epoch of optimization.
 
 
     xlb: lower bound of input
@@ -331,8 +207,6 @@ def onestep(
         di_crossover: distribution index for crossover
         di_mutation: distribution index for mutation
     """
-    optimizer_kwargs_ = default_optimizer_kwargs
-    optimizer_kwargs_.update(optimizer_kwargs)
 
     nInput = len(param_names)
     nOutput = len(objective_names)
@@ -347,6 +221,7 @@ def onestep(
             feasible = feasible.ravel()
             try:
                 if feasibility_model:
+                    logger.info(f"Constructing feasibility model...")
                     fsbm = LogisticFeasibilityModel(Xinit, C)
                 x = x[feasible, :]
                 y = y[feasible, :]
@@ -366,6 +241,13 @@ def onestep(
         logger=logger,
     )
 
+    optimizer_kwargs_ = {
+        "sampling_method": "slh",
+        "mutation_rate": None,
+        "nchildren": 1,
+    }
+    optimizer_kwargs_.update(optimizer_kwargs)
+
     if sensitivity_method is not None:
         di_dict = analyze_sensitivity(
             sm,
@@ -380,67 +262,59 @@ def onestep(
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
 
-    if optimizer == "nsga2":
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = NSGA2.optimization(
-            sm,
-            nInput,
-            nOutput,
-            xlb,
-            xub,
-            initial=(x, y),
+    if optimizer_name == "nsga2":
+        optimizer = NSGA2.NSGA2(
+            nInput=nInput,
+            nOutput=nOutput,
+            popsize=pop,
             feasibility_model=fsbm,
-            logger=logger,
-            pop=pop,
-            local_random=local_random,
-            termination=termination,
+            distance_metric=None,
             **optimizer_kwargs_,
         )
-    elif optimizer == "age":
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = AGEMOEA.optimization(
-            sm,
-            nInput,
-            nOutput,
-            xlb,
-            xub,
-            initial=(x, y),
+    elif optimizer_name == "age":
+        optimizer = AGEMOEA.AGEMOEA(
+            nInput=nInput,
+            nOutput=nOutput,
+            popsize=pop,
             feasibility_model=fsbm,
-            logger=logger,
-            pop=pop,
-            local_random=local_random,
-            termination=termination,
             **optimizer_kwargs_,
         )
-    elif optimizer == "smpso":
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = SMPSO.optimization(
-            sm,
-            nInput,
-            nOutput,
-            xlb,
-            xub,
-            initial=(x, y),
+    elif optimizer_name == "smpso":
+        optimizer = SMPSO.SMPSO(
+            nInput=nInput,
+            nOutput=nOutput,
+            popsize=pop,
             feasibility_model=fsbm,
-            logger=logger,
-            pop=pop,
-            local_random=local_random,
-            termination=termination,
+            distance_metric=None,
             **optimizer_kwargs_,
         )
-    elif optimizer == "cmaes":
-        bestx_sm, besty_sm, gen_index, x_sm, y_sm = CMAES.optimization(
-            sm,
-            nInput,
-            nOutput,
-            xlb,
-            xub,
-            initial=(x, y),
-            logger=logger,
-            pop=pop,
-            local_random=local_random,
-            termination=termination,
+    elif optimizer_name == "cmaes":
+        optimizer = CMAES.CMAES(
+            nInput=nInput,
+            nOutput=nOutput,
+            popsize=pop,
+            feasibility_model=fsbm,
             **optimizer_kwargs_,
         )
     else:
-        raise RuntimeError(f"Unknown optimizer {optimizer}")
+        raise RuntimeError(f"Unknown optimizer {optimizer_name}")
+
+    bestx_sm, besty_sm, gen_index, x_sm, y_sm = optimization(
+        gen,
+        optimizer,
+        sm,
+        nInput,
+        nOutput,
+        xlb,
+        xub,
+        initial=(x, y),
+        feasibility_model=fsbm,
+        logger=logger,
+        popsize=pop,
+        local_random=local_random,
+        termination=termination,
+        **optimizer_kwargs_,
+    )
 
     D = MOEA.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
