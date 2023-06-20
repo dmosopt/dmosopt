@@ -46,8 +46,6 @@ class SOptStrategy:
         optimizer_options={
             "crossover_prob": 0.9,
             "mutation_prob": 0.1,
-            "di_crossover": 1.0,
-            "di_mutation": 20.0,
         },
         feasibility_model=False,
         termination_conditions=None,
@@ -294,8 +292,6 @@ class DistOptimizer:
         optimizer_options={
             "mutation_prob": 0.1,
             "crossover_prob": 0.9,
-            "di_crossover": 1.0,
-            "di_mutation": 20.0,
         },
         sensitivity_method=None,
         sensitivity_options={},
@@ -446,12 +442,12 @@ class DistOptimizer:
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
-        di_crossover = self.optimizer_options.get("di_crossover", 1.0)
+        di_crossover = self.optimizer_options.get("di_crossover", None)
         if isinstance(di_crossover, dict):
             di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
             self.optimizer_options["di_crossover"] = di_crossover
 
-        di_mutation = self.optimizer_options.get("di_mutation", 20.0)
+        di_mutation = self.optimizer_options.get("di_mutation", None)
         if isinstance(di_mutation, dict):
             di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
             self.optimizer_options["di_mutation"] = di_mutation

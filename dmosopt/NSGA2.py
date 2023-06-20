@@ -26,8 +26,6 @@ class NSGA2(MOEA):
         mutation_prob: Optional[float],
         mutation_rate: Optional[float],
         nchildren: Optional[int],
-        di_crossover: Optional[Union[float, np.ndarray]],
-        di_mutation: Optional[Union[float, np.ndarray]],
         feasibility_model: Optional[Any],
         distance_metric: Optional[Any],
         **kwargs,
@@ -44,8 +42,6 @@ class NSGA2(MOEA):
             mutation_prob=mutation_prob,
             mutation_rate=mutation_rate,
             nchildren=nchildren,
-            di_crossover=di_crossover,
-            di_mutation=di_mutation,
             **kwargs,
         )
 

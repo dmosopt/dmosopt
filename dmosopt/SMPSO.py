@@ -24,7 +24,6 @@ class SMPSO(MOEA):
         nOutput: int,
         mutation_rate: Optional[float],
         nchildren: Optional[int],
-        di_mutation: Optional[Union[float, np.ndarray]],
         feasibility_model: Optional[Any],
         distance_metric: Optional[Any],
         **kwargs,
@@ -43,7 +42,6 @@ class SMPSO(MOEA):
             nOutput=nOutput,
             mutation_rate=mutation_rate,
             nchildren=nchildren,
-            di_mutation=di_mutation,
             **kwargs,
         )
 
@@ -73,7 +71,6 @@ class SMPSO(MOEA):
     def default_parameters(self) -> Dict[str, Any]:
         """Returns default parameters of SMPSO strategy."""
         params = {
-            "crossover_prob": 0.9,
             "mutation_rate": None,
             "nchildren": 1,
             "swarm_size": 5,

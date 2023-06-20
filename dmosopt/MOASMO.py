@@ -293,6 +293,7 @@ def epoch(
             nInput=nInput,
             nOutput=nOutput,
             popsize=pop,
+            feasibility_model=fsbm,
             **optimizer_kwargs_,
         )
     else:
