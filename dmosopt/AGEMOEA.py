@@ -24,8 +24,8 @@ from dmosopt.MOEA import (
 )
 from typing import Any, Union, Dict, List, Tuple, Optional
 
+
 class AGEMOEA(MOEA):
-    
     def __init__(
         self,
         popsize: int,
@@ -38,11 +38,9 @@ class AGEMOEA(MOEA):
         di_crossover: Optional[Union[float, np.ndarray]],
         di_mutation: Optional[Union[float, np.ndarray]],
         feasibility_model: Optional[Any],
-        distance_metric: Optional[Any],
         **kwargs,
     ):
-        """AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry.
-        """
+        """AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry."""
 
         super().__init__(
             name="AGEMOEA",
@@ -59,21 +57,12 @@ class AGEMOEA(MOEA):
         )
 
         self.logger = None
-        
-        self.crossover_prob = crossover_prob
-        self.mutation_prob = mutation_prob
-        self.nchildren = nchildren
 
         self.feasibility_model = feasibility_model
-        self.distance_metric = distance_metric
 
-        self.y_distance_metrics = None
-        if distance_metric is not None:
-            self.y_distance_metrics = []
-            self.y_distance_metrics.append(distance_metric)
         self.x_distance_metrics = None
         if self.feasibility_model is not None:
-            x_distance_metrics = [self.feasibility_model.rank]
+            self.x_distance_metrics = [self.feasibility_model.rank]
 
         di_crossover = self.opt_params.di_crossover
         if np.isscalar(di_crossover):
@@ -90,7 +79,7 @@ class AGEMOEA(MOEA):
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
-        """Returns default parameters of NSGA-II strategy."""
+        """Returns default parameters of AGE-MOEA strategy."""
         params = {
             "crossover_prob": 0.9,
             "mutation_prob": 0.1,
@@ -101,7 +90,6 @@ class AGEMOEA(MOEA):
         }
 
         return params
-
 
     def initialize_state(
         self,
@@ -138,7 +126,7 @@ class AGEMOEA(MOEA):
         return state
 
     def generate_strategy(self, **params):
-            
+
         popsize = self.popsize
         poolsize = self.opt_params.poolsize
         crossover_prob = self.opt_params.crossover_prob
@@ -147,23 +135,25 @@ class AGEMOEA(MOEA):
         nchildren = self.opt_params.nchildren
         di_crossover = self.opt_params.di_crossover
         di_mutation = self.opt_params.di_mutation
-        
+
         local_random = self.local_random
         xlb = self.state.bounds[:, 0]
         xub = self.state.bounds[:, 1]
-        
+
         population_parm = self.state.population_parm
         population_obj = self.state.population_obj
         rank = self.state.rank
         crowd_dist = self.state.crowd_dist
-        
-        pool_idxs = tournament_selection(local_random, popsize, poolsize, -crowd_dist, rank)
+
+        pool_idxs = tournament_selection(
+            local_random, popsize, poolsize, -crowd_dist, rank
+        )
         pool = population_parm[pool_idxs, :]
-        
+
         count = 0
         xs_gen = []
-        
-        while count < popsize- 1:
+
+        while count < popsize - 1:
             if local_random.random() < crossover_prob:
                 parentidx = local_random.choice(poolsize, 2, replace=False)
                 parent1 = pool[parentidx[0], :]
@@ -196,11 +186,10 @@ class AGEMOEA(MOEA):
                 child = children[0]
                 xs_gen.append(child)
                 count += 1
-                    
+
         x_gen = np.vstack(xs_gen)
         return x_gen, {}
-    
-        
+
     def update_strategy(
         self,
         x_gen: np.ndarray,
@@ -244,7 +233,6 @@ class AGEMOEA(MOEA):
         pop_y = self.state.population_obj.copy()
 
         return pop_x, pop_y
-
 
 
 def sortMO(x, y):

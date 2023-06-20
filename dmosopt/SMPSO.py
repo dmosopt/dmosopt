@@ -2,154 +2,171 @@
 ## SMPSO: A New PSO Metaheuristic for Multi-objective Optimization
 ##
 
-import gc, itertools
 import numpy as np
-from numpy.random import default_rng
-from dmosopt import sampling
-from dmosopt.datatypes import OptHistory
 from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import (
+    Struct,
+    MOEA,
     mutation,
     sortMO,
     crowding_distance,
     remove_worst,
     remove_duplicates,
 )
+from typing import Any, Union, Dict, List, Tuple, Optional
 
 
-def optimization(
-    model,
-    nInput,
-    nOutput,
-    xlb,
-    xub,
-    initial=None,
-    feasibility_model=None,
-    termination=None,
-    distance_metric=None,
-    pop=100,
-    gen=100,
-    nchildren=1,
-    mutation_rate=None,
-    di_mutation=20.0,
-    swarm_size=5,
-    sampling_method=None,
-    local_random=None,
-    logger=None,
-    **kwargs,
-):
-    """
-    Speed-constrained multiobjective particle swarm optimization.
+class SMPSO(MOEA):
+    def __init__(
+        self,
+        popsize: int,
+        nInput: int,
+        nOutput: int,
+        mutation_rate: Optional[float],
+        nchildren: Optional[int],
+        di_mutation: Optional[Union[float, np.ndarray]],
+        feasibility_model: Optional[Any],
+        distance_metric: Optional[Any],
+        **kwargs,
+    ):
+        """
+        SMPSO: Speed-constrained multiobjective particle swarm optimization.
+        """
 
-    model: the evaluated model function
-    nInput: number of model input
-    nOutput: number of output objectives
-    xlb: lower bound of input
-    xub: upper bound of input
-    pop: number of population
-    gen: number of generation
-    di_mutation: distribution index for mutation
-    """
+        swarm_size = kwargs.get("swarm_size", self.default_parameters["swarm_size"])
 
-    if local_random is None:
-        local_random = default_rng()
-
-    if mutation_rate is None:
-        mutation_rate = 1.0 / float(nInput)
-
-    y_distance_metrics = []
-    y_distance_metrics.append(distance_metric)
-    x_distance_metrics = None
-    if feasibility_model is not None:
-        x_distance_metrics = [feasibility_model.rank]
-
-    if np.isscalar(di_mutation):
-        di_mutation = np.asarray([di_mutation] * nInput)
-
-    pop_slices = list([range(p * pop, (p + 1) * pop) for p in range(swarm_size)])
-
-    x_initial, y_initial = None, None
-    if initial is not None:
-        x_initial, y_initial = initial
-
-    xs = []
-    ys = []
-    for sl in pop_slices:
-        if sampling_method is None:
-            x = sampling.lh(pop, nInput, local_random)
-            x_s = x * (xub - xlb) + xlb
-        elif sampling_method == "sobol":
-            x = sampling.sobol(pop, nInput, local_random)
-            x_s = x * (xub - xlb) + xlb
-        elif callable(sampling_method):
-            sampling_method_params = kwargs.get("sampling_method_params", None)
-            if sampling_method_params is None:
-                x_s = sampling_method(local_random, pop, nInput, xlb, xub)
-            else:
-                x_s = sampling_method(local_random, **sampling_method_params)
-        else:
-            raise RuntimeError(f"Unknown sampling method {sampling_method}")
-        x_s = x_s.astype(np.float32)
-        y_s = model.evaluate(x_s).astype(np.float32)
-        if x_initial is not None:
-            x_s = np.vstack((x_initial.astype(np.float32), x_s))
-        if y_initial is not None:
-            y_s = np.vstack((y_initial.astype(np.float32), y_s))
-        xs.append(x_s)
-        ys.append(y_s)
-
-    population_parm = np.zeros((swarm_size * pop, nInput), dtype=np.float32)
-    population_obj = np.zeros((swarm_size * pop, nOutput), dtype=np.float32)
-
-    velocity = local_random.uniform(size=(swarm_size * pop, nInput)) * (xub - xlb) + xlb
-
-    ranks = []
-    for p, sl in enumerate(pop_slices):
-        xs[p], ys[p], rank_p, _ = sortMO(
-            xs[p],
-            ys[p],
-            nInput,
-            nOutput,
-            x_distance_metrics=x_distance_metrics,
-            y_distance_metrics=y_distance_metrics,
+        kwargs["initial_size"] = popsize * swarm_size
+        super().__init__(
+            name="SMPSO",
+            popsize=popsize,
+            nInput=nInput,
+            nOutput=nOutput,
+            mutation_rate=mutation_rate,
+            nchildren=nchildren,
+            di_mutation=di_mutation,
+            **kwargs,
         )
-        population_parm[sl] = xs[p][:pop]
-        population_obj[sl] = ys[p][:pop]
-        ranks.append(rank_p)
 
-    x = population_parm.copy()
-    y = population_obj.copy()
+        self.pop_slices = list(
+            [range(p * popsize, (p + 1) * popsize) for p in range(swarm_size)]
+        )
 
-    gen_indexes = []
-    gen_indexes.append(np.zeros((x.shape[0],), dtype=np.uint32))
+        self.feasibility_model = feasibility_model
+        self.distance_metric = distance_metric
 
-    x_new = []
-    y_new = []
+        self.y_distance_metrics = None
+        if distance_metric is not None:
+            self.y_distance_metrics = []
+            self.y_distance_metrics.append(distance_metric)
+        self.x_distance_metrics = None
+        if self.feasibility_model is not None:
+            x_distance_metrics = [self.feasibility_model.rank]
 
-    n_eval = 0
-    it = range(gen)
-    if termination is not None:
-        it = itertools.count()
-    for i in it:
-        if termination is not None:
-            opt = OptHistory(i, n_eval, population_parm, population_obj, None)
-            if termination.has_terminated(opt):
-                break
-        if logger is not None:
-            if termination is not None:
-                logger.info(f"SMPSO: generation {i+1}...")
-            else:
-                logger.info(f"SMPSO: generation {i+1} of {gen}...")
+        di_mutation = self.opt_params.di_mutation
+        if np.isscalar(di_mutation):
+            self.opt_params.di_mutation = np.asarray([di_mutation] * nInput)
+        mutation_rate = self.opt_params.mutation_rate
+        if mutation_rate is None:
+            self.opt_params.mutation_rate = 1.0 / float(nInput)
 
-        count = 0
+    @property
+    def default_parameters(self) -> Dict[str, Any]:
+        """Returns default parameters of SMPSO strategy."""
+        params = {
+            "crossover_prob": 0.9,
+            "mutation_rate": None,
+            "nchildren": 1,
+            "swarm_size": 5,
+            "di_mutation": 20.0,
+        }
+
+        return params
+
+    def initialize_state(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        bounds: np.ndarray,
+        local_random: Optional[np.random.Generator] = None,
+        **params,
+    ):
+
+        nInput = self.nInput
+        nOutput = self.nOutput
+        popsize = self.popsize
+        swarm_size = self.opt_params.swarm_size
+        pop_slices = self.pop_slices
+
+        xlb = bounds[:, 0]
+        xub = bounds[:, 1]
+
+        xs = []
+        ys = []
+        for sl in pop_slices:
+            x_s = x[sl].astype(np.float32)
+            y_s = y[sl].astype(np.float32)
+            xs.append(x_s)
+            ys.append(y_s)
+
+        population_parm = np.zeros((swarm_size * popsize, nInput), dtype=np.float32)
+        population_obj = np.zeros((swarm_size * popsize, nOutput), dtype=np.float32)
+
+        velocity = (
+            local_random.uniform(size=(swarm_size * popsize, nInput)) * (xub - xlb)
+            + xlb
+        )
+
+        ranks = []
+        for p, sl in enumerate(pop_slices):
+            xs[p], ys[p], rank_p, _ = sortMO(
+                xs[p],
+                ys[p],
+                nInput,
+                nOutput,
+                x_distance_metrics=self.x_distance_metrics,
+                y_distance_metrics=self.y_distance_metrics,
+            )
+            population_parm[sl] = xs[p][:popsize]
+            population_obj[sl] = ys[p][:popsize]
+            ranks.append(rank_p)
+
+        state = Struct(
+            bounds=bounds,
+            population_parm=population_parm,
+            population_obj=population_obj,
+            ranks=ranks,
+            velocity=velocity,
+        )
+
+        return state
+
+    def generate_strategy(self, **params):
+
+        popsize = self.popsize
+        swarm_size = self.opt_params.swarm_size
+        mutation_rate = self.opt_params.mutation_rate
+        nchildren = self.opt_params.nchildren
+        di_mutation = self.opt_params.di_mutation
+
+        local_random = self.local_random
+        xlb = self.state.bounds[:, 0]
+        xub = self.state.bounds[:, 1]
+
+        population_parm = self.state.population_parm
+        population_obj = self.state.population_obj
+        ranks = self.state.ranks
+        velocity = self.state.velocity
+
+        pop_slices = self.pop_slices
         xs_gens = [[] for _ in range(swarm_size)]
+        count = 0
 
         for p, sl in enumerate(pop_slices):
             xs_updated = update_position(population_parm[sl], velocity[sl], xlb, xub)
             xs_gens[p].append(xs_updated)
 
-        while count < pop:
-            parentidx = local_random.integers(low=0, high=pop, size=(swarm_size, 1))
+        while count < popsize:
+            parentidx = local_random.integers(low=0, high=popsize, size=(swarm_size, 1))
             for p, sl in enumerate(pop_slices):
                 parent = population_parm[sl][parentidx[p, 0], :]
                 children = mutation(
@@ -165,54 +182,77 @@ def optimization(
                 xs_gens[p].append(child)
             count += 1
 
-        x_gens = np.vstack([np.vstack(x) for x in xs_gens]).astype(np.float32)
-        y_gens = model.evaluate(x_gens)
-        x_new.append(x_gens)
-        y_new.append(y_gens)
-        gen_indexes.append(np.ones((x_gens.shape[0],), dtype=np.uint32) * i)
+        x_gen = np.vstack([np.vstack(x) for x in xs_gens]).astype(np.float32)
+        return x_gen, {}
+
+    def update_strategy(
+        self,
+        x_gen: np.ndarray,
+        y_gen: np.ndarray,
+        state: Dict[Any, Any],
+        **params,
+    ):
+
+        local_random = self.local_random
+
+        population_parm = self.state.population_parm
+        population_obj = self.state.population_obj
+        ranks = self.state.ranks
+        velocity = self.state.velocity
+
+        xlb = self.state.bounds[:, 0]
+        xub = self.state.bounds[:, 1]
+
+        swarm_size = self.opt_params.swarm_size
+        popsize = self.popsize
+        nInput = self.nInput
+        nOutput = self.nOutput
+
+        pop_slices = self.pop_slices
 
         for sl in pop_slices:
-            D = crowding_distance(y_gens[sl])
-            mean_velocity_before = np.mean(velocity[sl])
+            D = crowding_distance(y_gen[sl])
             velocity[sl] = velocity_vector(
-                local_random, population_parm[sl], velocity[sl], x_gens[sl], D, xlb, xub
+                local_random, population_parm[sl], velocity[sl], x_gen[sl], D, xlb, xub
             )
 
         for p, sl in enumerate(pop_slices):
-            population_parm_p = np.vstack((population_parm[sl], x_gens[sl]))
-            population_obj_p = np.vstack((population_obj[sl], y_gens[sl]))
+            population_parm_p = np.vstack((population_parm[sl], x_gen[sl]))
+            population_obj_p = np.vstack((population_obj[sl], y_gen[sl]))
             population_parm_p, population_obj_p = remove_duplicates(
                 population_parm_p, population_obj_p
             )
             population_parm[sl], population_obj[sl], ranks[p] = remove_worst(
                 population_parm_p,
                 population_obj_p,
-                pop,
+                popsize,
                 nInput,
                 nOutput,
-                x_distance_metrics=x_distance_metrics,
-                y_distance_metrics=y_distance_metrics,
+                x_distance_metrics=self.x_distance_metrics,
+                y_distance_metrics=self.y_distance_metrics,
             )
-        gc.collect()
-        n_eval += count
 
-    population_parm, population_obj = remove_duplicates(population_parm, population_obj)
-    bestx, besty, _ = remove_worst(
-        population_parm,
-        population_obj,
-        pop,
-        nInput,
-        nOutput,
-        x_distance_metrics=x_distance_metrics,
-        y_distance_metrics=y_distance_metrics,
-    )
+    def get_population_strategy(self):
 
-    gen_index = np.concatenate(gen_indexes)
+        popsize = self.popsize
+        nInput = self.nInput
+        nOutput = self.nOutput
 
-    x = np.vstack([x] + x_new)
-    y = np.vstack([y] + y_new)
+        pop_parm = self.state.population_parm.copy()
+        pop_obj = self.state.population_obj.copy()
 
-    return bestx, besty, gen_index, x, y
+        pop_parm, pop_obj = remove_duplicates(pop_parm, pop_obj)
+        bestx, besty, _ = remove_worst(
+            pop_parm,
+            pop_obj,
+            popsize,
+            nInput,
+            nOutput,
+            x_distance_metrics=self.x_distance_metrics,
+            y_distance_metrics=self.y_distance_metrics,
+        )
+
+        return pop_parm, pop_obj
 
 
 def update_position(parameters, velocity, xlb, xub):

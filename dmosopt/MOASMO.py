@@ -18,7 +18,6 @@ def optimization(
     xub,
     popsize=100,
     initial=None,
-    sampling_method="slh",
     feasibility_model=False,
     termination=None,
     local_random=None,
@@ -43,29 +42,15 @@ def optimization(
     if local_random is None:
         local_random = default_rng()
 
-    if sampling_method is None:
-        x = sampling.lh(popsize, nInput, local_random)
-        x = x * (xub - xlb) + xlb
-    elif sampling_method == "sobol":
-        x = sampling.sobol(popsize, nInput, local_random)
-        x = x * (xub - xlb) + xlb
-    elif callable(sampling_method):
-        sampling_method_params = kwargs.get("sampling_method_params", None)
-        if sampling_method_params is None:
-            x = sampling_method(local_random, popsize, nInput, xlb, xub)
-        else:
-            x = sampling_method(local_random, **sampling_method_params)
-    else:
-        raise RuntimeError(f"Unknown sampling method {sampling_method}")
-
     bounds = np.column_stack((xlb, xub))
+
+    x = optimizer.generate_initial(bounds, local_random)
+    y = model.evaluate(x).astype(np.float32)
 
     x_initial = None
     y_initial = None
     if initial is not None:
         x_initial, y_initial = initial
-
-    y = model.evaluate(x).astype(np.float32)
 
     if x_initial is not None:
         x = np.vstack((x_initial.astype(np.float32), x))
@@ -256,6 +241,13 @@ def epoch(
         logger=logger,
     )
 
+    optimizer_kwargs_ = {
+        "sampling_method": "slh",
+        "mutation_rate": None,
+        "nchildren": 1,
+    }
+    optimizer_kwargs_.update(optimizer_kwargs)
+
     if sensitivity_method is not None:
         di_dict = analyze_sensitivity(
             sm,
@@ -270,8 +262,6 @@ def epoch(
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
 
-    optimizer_kwargs_ = {"mutation_rate": None, "nchildren": 1}
-    optimizer_kwargs_.update(optimizer_kwargs)
     if optimizer_name == "nsga2":
         optimizer = NSGA2.NSGA2(
             nInput=nInput,
@@ -287,7 +277,6 @@ def epoch(
             nOutput=nOutput,
             popsize=pop,
             feasibility_model=fsbm,
-            distance_metric=None,
             **optimizer_kwargs_,
         )
     elif optimizer_name == "smpso":
@@ -295,6 +284,8 @@ def epoch(
             nInput=nInput,
             nOutput=nOutput,
             popsize=pop,
+            feasibility_model=fsbm,
+            distance_metric=None,
             **optimizer_kwargs_,
         )
     elif optimizer_name == "cmaes":
@@ -321,7 +312,6 @@ def epoch(
         popsize=pop,
         local_random=local_random,
         termination=termination,
-        sampling_method=sampling_method,
         **optimizer_kwargs_,
     )
 

@@ -49,10 +49,6 @@ class NSGA2(MOEA):
             **kwargs,
         )
 
-        self.crossover_prob = crossover_prob
-        self.mutation_prob = mutation_prob
-        self.nchildren = nchildren
-
         self.feasibility_model = feasibility_model
         self.distance_metric = distance_metric
 
@@ -62,7 +58,7 @@ class NSGA2(MOEA):
             self.y_distance_metrics.append(distance_metric)
         self.x_distance_metrics = None
         if self.feasibility_model is not None:
-            x_distance_metrics = [self.feasibility_model.rank]
+            self.x_distance_metrics = [self.feasibility_model.rank]
 
         di_crossover = self.opt_params.di_crossover
         if np.isscalar(di_crossover):
@@ -119,7 +115,7 @@ class NSGA2(MOEA):
         )
 
         return state
-    
+
     def generate_strategy(self, **params):
 
         popsize = self.popsize

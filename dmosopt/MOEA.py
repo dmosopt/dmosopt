@@ -5,6 +5,7 @@
 import numpy as np
 from functools import reduce
 from dmosopt.dda import dda_non_dominated_sort
+from dmosopt import sampling
 from scipy.spatial.distance import cdist
 from typing import Any, Union, Dict, List, Tuple, Optional
 
@@ -55,7 +56,14 @@ class MOEA(object):
         self.nOutput = nOutput
         self.opt_params = Struct(**self.default_parameters)
         self.opt_params.update(
-            {"popsize": popsize, "nInput": nInput, "nOutput": nOutput}
+            {
+                "popsize": popsize,
+                "nInput": nInput,
+                "nOutput": nOutput,
+                "initial_size": popsize,
+                "initial_sampling_method": None,
+                "initial_sampling_method_params": None,
+            }
         )
         for k, v in kwargs.items():
             if k not in self.opt_params:
@@ -100,6 +108,33 @@ class MOEA(object):
         self.state = self.initialize_state(x, y, bounds, local_random)
 
         return self.state
+
+    def generate_initial(self, bounds, local_random):
+        """Generate an initial set of parameters to initialize strategy."""
+
+        xlb = bounds[:, 0]
+        xub = bounds[:, 1]
+
+        nInput = self.nInput
+        initial_size = self.opt_params.initial_size
+        sampling_method = self.opt_params.initial_sampling_method
+        sampling_method_params = self.opt_params.initial_sampling_method_params
+
+        if sampling_method is None:
+            x = sampling.lh(initial_size, nInput, local_random)
+            x = x * (xub - xlb) + xlb
+        elif sampling_method == "sobol":
+            x = sampling.sobol(initial_size, nInput, local_random)
+            x = x * (xub - xlb) + xlb
+        elif callable(sampling_method):
+            if sampling_method_params is None:
+                x = sampling_method(local_random, initial_size, nInput, xlb, xub)
+            else:
+                x = sampling_method(local_random, **sampling_method_params)
+        else:
+            raise RuntimeError(f"Unknown sampling method {sampling_method}")
+
+        return x
 
     def generate(
         self,
