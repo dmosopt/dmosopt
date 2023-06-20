@@ -1,4 +1,4 @@
-import os, sys, importlib, logging, pprint, copy
+import os, sys, importlib, logging, pprint, copy, time
 from functools import partial
 from collections import namedtuple
 from collections.abc import Iterable, Iterator
@@ -1482,6 +1482,11 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
         epoch = epoch_count + start_epoch
         controller.process()
 
+        if (controller.time_limit is not None) and (
+            time.time() - controller.start_time
+        ) >= controller.time_limit:
+            break
+
         if len(task_ids) > 0:
             rets = controller.probe_all_next_results()
             for ret in rets:
@@ -1589,6 +1594,11 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
             sopt.save_evals()
             saved_eval_count = eval_count
 
+        if (controller.time_limit is not None) and (
+            time.time() - controller.start_time
+        ) >= controller.time_limit:
+            break
+
         task_args = []
         task_reqs = []
         while not next_epoch:
@@ -1613,6 +1623,11 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                     )
                 )
                 task_reqs.append(eval_req_dict)
+
+        if (controller.time_limit is not None) and (
+            time.time() - controller.start_time
+        ) >= controller.time_limit:
+            break
 
         if len(task_args) > 0:
             new_task_ids = controller.submit_multiple(
@@ -1696,6 +1711,7 @@ def eval_fun(opt_id, *args):
 
 def run(
     sopt_params,
+    time_limit=None,
     feasible=True,
     return_features=False,
     return_constraints=False,
@@ -1726,6 +1742,7 @@ def run(
             spawn_args=spawn_args,
             nprocs_per_worker=nprocs_per_worker,
             collective_mode=collective_mode,
+            time_limit=time_limit,
         )
         opt_id = sopt_params["opt_id"]
         sopt = sopt_dict[opt_id]
@@ -1759,5 +1776,6 @@ def run(
             spawn_args=spawn_args,
             nprocs_per_worker=nprocs_per_worker,
             collective_mode=collective_mode,
+            time_limit=time_limit,
         )
         return None
