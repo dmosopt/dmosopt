@@ -27,6 +27,9 @@ class Struct(object):
     def update(self, items):
         self.__dict__.update(items)
 
+    def items(self):
+        return self.__dict__.items()
+
     def __call__(self):
         return self.__dict__
 
