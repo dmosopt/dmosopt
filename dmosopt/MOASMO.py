@@ -58,6 +58,10 @@ def optimization(
         y = np.vstack((y_initial.astype(np.float32), y))
 
     optimizer.initialize_strategy(x, y, bounds, local_random, **optimizer_kwargs)
+    if logger is not None:
+        logger.info(
+            f"{optimizer.name}: optimizer parameters are {repr(optimizer.opt_params)}"
+        )
 
     gen_indexes = []
     gen_indexes.append(np.zeros((x.shape[0],), dtype=np.uint32))
@@ -97,7 +101,9 @@ def optimization(
     y = np.vstack([y] + y_new)
     bestx, besty = optimizer.population_objectives
 
-    return bestx, besty, gen_index, x, y
+    results = (bestx, besty, gen_index, x, y)
+
+    return results
 
 
 def xinit(
@@ -187,7 +193,6 @@ def epoch(
     sensitivity_options={},
     termination=None,
     local_random=None,
-    return_sm=False,
     logger=None,
 ):
     """
@@ -320,10 +325,16 @@ def epoch(
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr, :]
     y_pred = besty_sm[idxr, :]
-    if return_sm:
-        return x_resample, y_pred, gen_index, x_sm, y_sm
-    else:
-        return x_resample, y_pred
+    return_dict = {
+        "x_resample": x_resample,
+        "y_pred": y_pred,
+        "gen_index": gen_index,
+        "x_sm": x_sm,
+        "y_sm": y_sm,
+        "optimizer": optimizer,
+    }
+
+    return return_dict
 
 
 def train(

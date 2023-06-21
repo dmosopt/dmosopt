@@ -137,7 +137,7 @@ class SOptStrategy:
         self.completed.append(entry)
         return entry
 
-    def epoch(self, return_sm=False):
+    def epoch(self):
         if len(self.completed) > 0:
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
@@ -202,22 +202,18 @@ class SOptStrategy:
             termination=self.termination,
             local_random=self.local_random,
             logger=self.logger,
-            return_sm=return_sm,
         )
 
-        if return_sm:
-            x_resample, y_pred, gen_index, x_sm, y_sm = res
-        else:
-            x_resample, y_pred = res
+        x_resample = res["x_resample"]
+        y_pred = res["y_pred"]
+        gen_index = res["gen_index"]
+        x_sm, y_sm = res["x_sm"], res["y_sm"]
 
         self.reqs = []
         for i in range(x_resample.shape[0]):
             self.reqs.append(EvalRequest(x_resample[i, :], y_pred[i, :]))
 
-        if return_sm:
-            return x_resample, y_pred, gen_index, x_sm, y_sm
-        else:
-            return x_resample, y_pred
+        return res
 
     def get_best_evals(self, feasible=True):
         if self.x is not None:
@@ -284,7 +280,8 @@ class DistOptimizer:
         save_eval=10,
         file_path=None,
         save=False,
-        save_surrogate_eval=False,
+        save_surrogate_evals=False,
+        save_optimizer_params=True,
         metadata=None,
         surrogate_method="gpr",
         surrogate_options={"anisotropic": False, "optimizer": "sceua"},
@@ -458,7 +455,8 @@ class DistOptimizer:
 
         self.n_epochs = n_epochs
         self.save_eval = save_eval
-        self.save_surrogate_eval = save_surrogate_eval
+        self.save_surrogate_evals_ = save_surrogate_evals
+        self.save_optimizer_params_ = save_optimizer_params
 
         self.obj_fun_args = obj_fun_args
         if has_problem_ids:
@@ -638,6 +636,20 @@ class DistOptimizer:
                 self.file_path,
                 self.logger,
             )
+
+    def save_optimizer_params(
+        self, problem_id, epoch, optimizer_name, optimizer_params
+    ):
+        """Store optimizer hyper-parameters to file."""
+        save_optimizer_params_to_h5(
+            self.opt_id,
+            problem_id,
+            epoch,
+            optimizer_name,
+            optimizer_params,
+            self.file_path,
+            self.logger,
+        )
 
     def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
@@ -1261,6 +1273,40 @@ def save_to_h5(
     f.close()
 
 
+def save_optimizer_params_to_h5(
+    opt_id,
+    problem_id,
+    epoch,
+    optimizer_name,
+    optimizer_params,
+    fpath,
+    logger,
+):
+    """
+    Save optimizer hyper-parameters to an HDF5 file 'fpath'.
+    """
+
+    f = h5py.File(fpath, "a")
+
+    opt_grp = h5_get_group(f, opt_id)
+
+    opt_params_grp = h5_get_group(opt_grp, "optimizer_params")
+    opt_params_epoch_grp = h5_get_group(opt_params_grp, f"{epoch}")
+
+    if logger is not None:
+        logger.info(
+            f"Saving optimizer hyper-parameters for problem id {problem_id} epoch {epoch} to {fpath}."
+        )
+
+    opt_params_epoch_grp["optimizer_name"] = optimizer_name
+    for k, v in optimizer_params.items():
+        logger.info(f"k = {k} v = {v}")
+        if v is not None:
+            opt_params_epoch_grp[k] = v
+
+    f.close()
+
+
 def save_surrogate_evals_to_h5(
     opt_id,
     problem_id,
@@ -1675,15 +1721,18 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                     f"performing optimization epoch {epoch_count+1} for problem {problem_id} ..."
                 )
                 x_sm, y_sm = None, None
-                if sopt.save and sopt.save_surrogate_eval:
-                    _, _, gen_index, x_sm, y_sm = sopt.optimizer_dict[problem_id].epoch(
-                        return_sm=True
-                    )
+                res = sopt.optimizer_dict[problem_id].epoch()
+                if sopt.save and sopt.save_surrogate_evals_:
+                    gen_index = res["gen_index"]
+                    x_sm, y_sm = res["x_sm"], res["y_sm"]
                     sopt.save_surrogate_evals(
                         problem_id, epoch + 1, gen_index, x_sm, y_sm
                     )
-                else:
-                    sopt.optimizer_dict[problem_id].epoch()
+                if sopt.save and sopt.save_optimizer_params_:
+                    optimizer = res["optimizer"]
+                    sopt.save_optimizer_params(
+                        problem_id, epoch + 1, optimizer.name, optimizer.opt_params
+                    )
                 logger.info(
                     f"completed optimization epoch {epoch_count+1} for problem {problem_id} ..."
                 )
