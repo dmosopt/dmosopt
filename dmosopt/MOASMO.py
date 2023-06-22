@@ -399,7 +399,8 @@ def train(
         egp_n_iter = surrogate_options.get("n_iter", 5000)
         egp_cuda = surrogate_options.get("cuda", False)
         egp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
-        megp_batch_size = surrogate_options.get("batch_size", None)
+        egp_batch_size = surrogate_options.get("batch_size", None)
+        egp_min_loss_pct_change = surrogate_options.get("min_loss_pct_change", 1.0)
         sm = model.EGP_Matern(
             x,
             y,
@@ -415,6 +416,7 @@ def train(
             fast_pred_var=egp_fast_pred_var,
             batch_size=egp_batch_size,
             use_cuda=egp_cuda,
+            min_loss_pct_change=egp_min_loss_pct_change,
             logger=logger,
         )
     elif surrogate_method == "megp":
@@ -425,6 +427,7 @@ def train(
         megp_cuda = surrogate_options.get("cuda", False)
         megp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         megp_batch_size = surrogate_options.get("batch_size", None)
+        megp_min_loss_pct_change = surrogate_options.get("min_loss_pct_change", 0.1)
         sm = model.MEGP_Matern(
             x,
             y,
@@ -439,6 +442,7 @@ def train(
             fast_pred_var=megp_fast_pred_var,
             batch_size=megp_batch_size,
             use_cuda=megp_cuda,
+            min_loss_pct_change=megp_min_loss_pct_change,
             logger=logger,
         )
     elif surrogate_method == "mdgp":
@@ -451,6 +455,7 @@ def train(
         mdgp_cuda = surrogate_options.get("cuda", False)
         mdgp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         mdgp_batch_size = surrogate_options.get("batch_size", 10)
+        mdgp_min_loss_pct_change = surrogate_options.get("mdgp_loss_pct_change", 1.0)
         sm = model.MDGP_Matern(
             x,
             y,
@@ -467,6 +472,7 @@ def train(
             fast_pred_var=mdgp_fast_pred_var,
             batch_size=mdgp_batch_size,
             use_cuda=mdgp_cuda,
+            min_loss_pct_change=mdgp_min_loss_pct_change,
             logger=logger,
         )
     elif surrogate_method == "mdspp":
@@ -479,6 +485,7 @@ def train(
         mdspp_cuda = surrogate_options.get("cuda", False)
         mdspp_fast_pred_var = surrogate_options.get("fast_pred_var", True)
         mdspp_batch_size = surrogate_options.get("batch_size", 10)
+        mdspp_min_loss_pct_change = surrogate_options.get("min_loss_pct_change", 1.0)
         sm = model.MDSPP_Matern(
             x,
             y,
@@ -495,6 +502,7 @@ def train(
             fast_pred_var=mdspp_fast_pred_var,
             batch_size=mdspp_batch_size,
             use_cuda=mdspp_cuda,
+            min_loss_pct_change=mdspp_min_loss_pct_change,
             logger=logger,
         )
     elif surrogate_method == "vgp":
@@ -505,6 +513,7 @@ def train(
         vgp_natgrad_gamma = surrogate_options.get("natgrad_gamma", 1.0)
         vgp_adam_lr = surrogate_options.get("adam_lr", 0.01)
         vgp_n_iter = surrogate_options.get("n_iter", 3000)
+        vgp_min_elbo_pct_change = surrogate_options.get("min_elbo_pct_change", 1.0)
         sm = model.VGP_Matern(
             x,
             y,
@@ -518,6 +527,7 @@ def train(
             natgrad_gamma=vgp_natgrad_gamma,
             adam_lr=vgp_adam_lr,
             n_iter=vgp_n_iter,
+            min_elbo_pct_change=vgp_min_elbo_pct_change,
             logger=logger,
         )
     elif surrogate_method == "svgp":
@@ -529,6 +539,7 @@ def train(
         svgp_natgrad_gamma = surrogate_options.get("natgrad_gamma", 0.1)
         svgp_adam_lr = surrogate_options.get("adam_lr", 0.01)
         svgp_n_iter = surrogate_options.get("n_iter", 30000)
+        svgp_min_elbo_pct_change = surrogate_options.get("min_elbo_pct_change", 1.0)
         sm = model.SVGP_Matern(
             x,
             y,
@@ -543,6 +554,7 @@ def train(
             natgrad_gamma=svgp_natgrad_gamma,
             adam_lr=svgp_adam_lr,
             n_iter=svgp_n_iter,
+            min_elbo_pct_change=svgp_min_elbo_pct_change,
             logger=logger,
         )
     elif surrogate_method == "spv":
@@ -555,6 +567,7 @@ def train(
         spv_adam_lr = surrogate_options.get("adam_lr", 0.01)
         spv_n_iter = surrogate_options.get("n_iter", 30000)
         spv_num_latent_gps = surrogate_options.get("num_latent_gps", None)
+        spv_min_elbo_pct_change = surrogate_options.get("min_elbo_pct_change", 0.1)
         sm = model.SPV_Matern(
             x,
             y,
@@ -570,6 +583,7 @@ def train(
             adam_lr=spv_adam_lr,
             n_iter=spv_n_iter,
             num_latent_gps=spv_num_latent_gps,
+            min_elbo_pct_change=spv_min_elbo_pct_change,
             logger=logger,
         )
     elif surrogate_method == "siv":
@@ -582,6 +596,7 @@ def train(
         siv_adam_lr = surrogate_options.get("adam_lr", 0.01)
         siv_n_iter = surrogate_options.get("n_iter", 30000)
         siv_num_latent_gps = surrogate_options.get("num_latent_gps", None)
+        siv_min_elbo_pct_change = surrogate_options.get("min_elbo_pct_change", 0.1)
         sm = model.SIV_Matern(
             x,
             y,
@@ -597,6 +612,7 @@ def train(
             adam_lr=siv_adam_lr,
             n_iter=siv_n_iter,
             num_latent_gps=siv_num_latent_gps,
+            min_elbo_pct_change=siv_min_elbo_pct_change,
             logger=logger,
         )
     elif surrogate_method == "crv":
@@ -609,6 +625,7 @@ def train(
         crv_adam_lr = surrogate_options.get("adam_lr", 0.01)
         crv_n_iter = surrogate_options.get("n_iter", 30000)
         crv_num_latent_gps = surrogate_options.get("num_latent_gps", None)
+        crv_min_elbo_pct_change = surrogate_options.get("min_elbo_pct_change", 0.1)
         sm = model.CRV_Matern(
             x,
             y,
@@ -624,6 +641,7 @@ def train(
             adam_lr=crv_adam_lr,
             n_iter=crv_n_iter,
             num_latent_gps=crv_num_latent_gps,
+            min_elbo_pct_change=crv_min_elbo_pct_change,
             logger=logger,
         )
     else:
