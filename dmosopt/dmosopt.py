@@ -1,4 +1,4 @@
-import os, sys, importlib, logging, pprint, copy, time
+import os, sys, importlib, logging, pprint, copy, time, itertools
 from functools import partial
 from collections import namedtuple
 from collections.abc import Iterable, Iterator
@@ -115,6 +115,18 @@ class SOptStrategy:
                     lambda req: not anyclose(req.parameters, self.x),
                     [EvalRequest(xinit[i, :], None, 0) for i in range(xinit.shape[0])],
                 )
+
+    def has_requests(self):
+        res = False
+        if isinstance(self.reqs, Iterator):
+            try:
+                peek = next(self.reqs)
+                self.reqs = itertools.chain([peek], self.reqs)
+            except StopIteration:
+                pass
+        else:
+            res = len(self.reqs) > 0
+        return res
 
     def get_next_request(self):
         req = None
@@ -1526,7 +1538,8 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
     saved_eval_count = 0
     task_ids = []
     next_epoch = False
-    while epoch_count < sopt.n_epochs:
+    has_requests = False
+    while (epoch_count < sopt.n_epochs) or (len(task_ids) > 0) or has_requests:
 
         epoch = epoch_count + start_epoch
         controller.process()
@@ -1658,8 +1671,10 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                 eval_req = sopt.optimizer_dict[problem_id].get_next_request()
                 if eval_req is None:
                     next_epoch = True
+                    has_requests = False
                     break
                 else:
+                    has_requests = True or has_requests
                     eval_req_dict[problem_id] = eval_req
                     eval_x_dict[problem_id] = eval_req.parameters
 
@@ -1688,7 +1703,8 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                 for problem_id in sopt.problem_ids:
                     sopt.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
-        if next_epoch and (len(task_ids) == 0):
+        if next_epoch and (len(task_ids) == 0) and (epoch_count < sopt.n_epochs):
+
             if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count):
                 sopt.save_evals()
                 saved_eval_count = eval_count
@@ -1727,6 +1743,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                     )
                     x_sm, y_sm = None, None
                     res = sopt.optimizer_dict[problem_id].epoch(epoch)
+                    has_requests = has_requests or sopt.optimizer_dict[problem_id].has_requests()
                     if sopt.save and sopt.save_surrogate_evals_:
                         gen_index = res["gen_index"]
                         x_sm, y_sm = res["x_sm"], res["y_sm"]
@@ -1744,8 +1761,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
             controller.info()
             sys.stdout.flush()
             next_epoch = False
-            if eval_count > 0:
-                epoch_count += 1
+            epoch_count += 1
 
     if sopt.save:
         sopt.save_evals()
