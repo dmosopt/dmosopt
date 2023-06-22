@@ -38,8 +38,6 @@ class SMPSO(MOEA):
             popsize=popsize,
             nInput=nInput,
             nOutput=nOutput,
-            mutation_rate=mutation_rate,
-            nchildren=nchildren,
             **kwargs,
         )
 

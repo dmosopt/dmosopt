@@ -34,10 +34,6 @@ class NSGA2(MOEA):
             popsize=popsize,
             nInput=nInput,
             nOutput=nOutput,
-            crossover_prob=crossover_prob,
-            mutation_prob=mutation_prob,
-            mutation_rate=mutation_rate,
-            nchildren=nchildren,
             **kwargs,
         )
 
