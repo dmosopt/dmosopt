@@ -22,8 +22,6 @@ class SMPSO(MOEA):
         popsize: int,
         nInput: int,
         nOutput: int,
-        mutation_rate: Optional[float],
-        nchildren: Optional[int],
         feasibility_model: Optional[Any],
         distance_metric: Optional[Any],
         **kwargs,
