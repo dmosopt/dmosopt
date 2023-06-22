@@ -108,12 +108,12 @@ class SOptStrategy:
             assert xinit.shape[1] == prob.dim
             if initial is None:
                 self.reqs = [
-                    EvalRequest(xinit[i, :], None) for i in range(xinit.shape[0])
+                    EvalRequest(xinit[i, :], None, 0) for i in range(xinit.shape[0])
                 ]
             else:
                 self.reqs = filter(
                     lambda req: not anyclose(req.parameters, self.x),
-                    [EvalRequest(xinit[i, :], None) for i in range(xinit.shape[0])],
+                    [EvalRequest(xinit[i, :], None, 0) for i in range(xinit.shape[0])],
                 )
 
     def get_next_request(self):
@@ -137,7 +137,7 @@ class SOptStrategy:
         self.completed.append(entry)
         return entry
 
-    def epoch(self):
+    def epoch(self, epoch_index):
         if len(self.completed) > 0:
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
@@ -211,7 +211,7 @@ class SOptStrategy:
 
         self.reqs = []
         for i in range(x_resample.shape[0]):
-            self.reqs.append(EvalRequest(x_resample[i, :], y_pred[i, :]))
+            self.reqs.append(EvalRequest(x_resample[i, :], y_pred[i, :], epoch_index))
 
         return res
 
@@ -449,7 +449,6 @@ class DistOptimizer:
             di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
             self.optimizer_options["di_mutation"] = di_mutation
 
-
         self.start_epoch = 0
         if max_epoch > 0:
             self.start_epoch = max_epoch
@@ -548,7 +547,7 @@ class DistOptimizer:
                     old_eval_cs = [e.constraints for e in self.old_evals[problem_id]]
                     c = np.vstack(old_eval_cs)
                 initial = (epochs, x, y, f, c)
-                if len(old_eval_xs) >= self.n_initial*dim:
+                if len(old_eval_xs) >= self.n_initial * dim:
                     self.start_epoch += 1
 
             opt_strategy = SOptStrategy(
@@ -1555,6 +1554,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                     eval_req = sopt.eval_reqs[problem_id][task_id]
                     eval_x = eval_req.parameters
                     eval_pred = eval_req.prediction
+                    eval_epoch = eval_req.epoch
                     if (
                         sopt.feature_names is not None
                         and sopt.constraint_names is not None
@@ -1565,7 +1565,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                             f=rres[problem_id][1],
                             c=rres[problem_id][2],
                             pred=eval_pred,
-                            epoch=epoch,
+                            epoch=eval_epoch,
                         )
                         sopt.storage_dict[problem_id].append(entry)
                     elif sopt.feature_names is not None:
@@ -1574,7 +1574,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                             rres[problem_id][0],
                             f=rres[problem_id][1],
                             pred=eval_pred,
-                            epoch=epoch,
+                            epoch=eval_epoch,
                         )
                         sopt.storage_dict[problem_id].append(entry)
                     elif sopt.constraint_names is not None:
@@ -1583,12 +1583,12 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                             rres[problem_id][0],
                             c=rres[problem_id][1],
                             pred=eval_pred,
-                            epoch=epoch,
+                            epoch=eval_epoch,
                         )
                         sopt.storage_dict[problem_id].append(entry)
                     else:
                         entry = sopt.optimizer_dict[problem_id].complete_request(
-                            eval_x, rres[problem_id], pred=eval_pred, epoch=epoch
+                            eval_x, rres[problem_id], pred=eval_pred, epoch=eval_epoch
                         )
                         sopt.storage_dict[problem_id].append(entry)
                     prms = list(zip(sopt.param_names, list(eval_x.T)))
@@ -1694,10 +1694,10 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                 saved_eval_count = eval_count
 
             for problem_id in sopt.problem_ids:
-                if epoch > 0:
+                if epoch > 1:
                     completed_epoch_evals = list(
                         filter(
-                            lambda x: x.epoch == epoch,
+                            lambda x: x.epoch == epoch - 1,
                             sopt.optimizer_dict[problem_id].completed,
                         )
                     )
@@ -1719,13 +1719,14 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                                 )
                             )
                         logger.info(
-                            f"surrogate accuracy at epoch {epoch} for problem {problem_id} was {mae}"
+                            f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
                         )
+                if epoch > 0:
                     logger.info(
                         f"performing optimization epoch {epoch} for problem {problem_id} ..."
                     )
                     x_sm, y_sm = None, None
-                    res = sopt.optimizer_dict[problem_id].epoch()
+                    res = sopt.optimizer_dict[problem_id].epoch(epoch)
                     if sopt.save and sopt.save_surrogate_evals_:
                         gen_index = res["gen_index"]
                         x_sm, y_sm = res["x_sm"], res["y_sm"]
