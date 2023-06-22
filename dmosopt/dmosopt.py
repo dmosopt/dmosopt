@@ -1315,7 +1315,6 @@ def save_optimizer_params_to_h5(
 
     opt_params_epoch_grp["optimizer_name"] = optimizer_name
     for k, v in optimizer_params.items():
-        logger.info(f"k = {k} v = {v}")
         if v is not None:
             opt_params_epoch_grp[k] = v
 
@@ -1703,7 +1702,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                 for problem_id in sopt.problem_ids:
                     sopt.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
-        if next_epoch and (len(task_ids) == 0) and (epoch_count < sopt.n_epochs):
+        if next_epoch and (len(task_ids) == 0):
 
             if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count):
                 sopt.save_evals()
@@ -1737,13 +1736,15 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                         logger.info(
                             f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
                         )
-                if epoch > 0:
+                if epoch > 0 and (epoch_count < sopt.n_epochs):
                     logger.info(
                         f"performing optimization epoch {epoch} for problem {problem_id} ..."
                     )
                     x_sm, y_sm = None, None
                     res = sopt.optimizer_dict[problem_id].epoch(epoch)
-                    has_requests = has_requests or sopt.optimizer_dict[problem_id].has_requests()
+                    has_requests = (
+                        has_requests or sopt.optimizer_dict[problem_id].has_requests()
+                    )
                     if sopt.save and sopt.save_surrogate_evals_:
                         gen_index = res["gen_index"]
                         x_sm, y_sm = res["x_sm"], res["y_sm"]
@@ -1755,17 +1756,19 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                         sopt.save_optimizer_params(
                             problem_id, epoch, optimizer.name, optimizer.opt_params
                         )
-                        logger.info(
-                            f"completed optimization epoch {epoch} for problem {problem_id} ..."
-                        )
-            controller.info()
-            sys.stdout.flush()
-            next_epoch = False
-            epoch_count += 1
+                    logger.info(
+                        f"completed optimization epoch {epoch} for problem {problem_id}."
+                    )
+            if epoch_count < sopt.n_epochs:
+                next_epoch = False
+                epoch_count += 1
+                controller.info()
+                sys.stdout.flush()
 
     if sopt.save:
         sopt.save_evals()
     controller.info()
+    sys.stdout.flush()
 
 
 def sopt_work(worker, sopt_params, verbose=False, debug=False):
