@@ -449,9 +449,10 @@ class DistOptimizer:
             di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
             self.optimizer_options["di_mutation"] = di_mutation
 
-        self.start_epoch = max_epoch
-        if self.start_epoch != 0:
-            self.start_epoch += 1
+
+        self.start_epoch = 0
+        if max_epoch > 0:
+            self.start_epoch = max_epoch
 
         self.n_epochs = n_epochs
         self.save_eval = save_eval
@@ -526,6 +527,7 @@ class DistOptimizer:
             self.eval_fun,
             logger=self.logger,
         )
+        dim = len(self.param_names)
         for problem_id in self.problem_ids:
             initial = None
             if problem_id in self.old_evals:
@@ -546,6 +548,8 @@ class DistOptimizer:
                     old_eval_cs = [e.constraints for e in self.old_evals[problem_id]]
                     c = np.vstack(old_eval_cs)
                 initial = (epochs, x, y, f, c)
+                if len(old_eval_xs) >= self.n_initial*dim:
+                    self.start_epoch += 1
 
             opt_strategy = SOptStrategy(
                 opt_prob,
@@ -1603,7 +1607,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                             zip(sopt.constraint_names, rres[problem_id][2].T)
                         )
                         logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch_count}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}"
+                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}"
                         )
                     elif sopt.feature_names is not None:
                         lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
@@ -1612,7 +1616,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                             for x in rres[problem_id][1]
                         ]
                         logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch_count}: parameters {prms}: {lres} / {lftrs}"
+                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs}"
                         )
                     elif sopt.constraint_names is not None:
                         lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
@@ -1620,12 +1624,12 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                             zip(sopt.constraint_names, rres[problem_id][1].T)
                         )
                         logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch_count}: parameters {prms}: {lres} / constr: {lconstr}"
+                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / constr: {lconstr}"
                         )
                     else:
                         lres = list(zip(sopt.objective_names, rres[problem_id].T))
                         logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch_count}: parameters {prms}: {lres}"
+                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres}"
                         )
 
                 eval_count += 1
@@ -1690,10 +1694,10 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                 saved_eval_count = eval_count
 
             for problem_id in sopt.problem_ids:
-                if epoch_count > 0:
+                if epoch > 0:
                     completed_epoch_evals = list(
                         filter(
-                            lambda x: x.epoch == epoch_count,
+                            lambda x: x.epoch == epoch,
                             sopt.optimizer_dict[problem_id].completed,
                         )
                     )
@@ -1715,27 +1719,27 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                                 )
                             )
                         logger.info(
-                            f"surrogate accuracy at epoch {epoch_count} for problem {problem_id} was {mae}"
+                            f"surrogate accuracy at epoch {epoch} for problem {problem_id} was {mae}"
                         )
-                logger.info(
-                    f"performing optimization epoch {epoch_count+1} for problem {problem_id} ..."
-                )
-                x_sm, y_sm = None, None
-                res = sopt.optimizer_dict[problem_id].epoch()
-                if sopt.save and sopt.save_surrogate_evals_:
-                    gen_index = res["gen_index"]
-                    x_sm, y_sm = res["x_sm"], res["y_sm"]
-                    sopt.save_surrogate_evals(
-                        problem_id, epoch + 1, gen_index, x_sm, y_sm
+                    logger.info(
+                        f"performing optimization epoch {epoch} for problem {problem_id} ..."
                     )
-                if sopt.save and sopt.save_optimizer_params_:
-                    optimizer = res["optimizer"]
-                    sopt.save_optimizer_params(
-                        problem_id, epoch + 1, optimizer.name, optimizer.opt_params
-                    )
-                logger.info(
-                    f"completed optimization epoch {epoch_count+1} for problem {problem_id} ..."
-                )
+                    x_sm, y_sm = None, None
+                    res = sopt.optimizer_dict[problem_id].epoch()
+                    if sopt.save and sopt.save_surrogate_evals_:
+                        gen_index = res["gen_index"]
+                        x_sm, y_sm = res["x_sm"], res["y_sm"]
+                        sopt.save_surrogate_evals(
+                            problem_id, epoch, gen_index, x_sm, y_sm
+                        )
+                    if sopt.save and sopt.save_optimizer_params_:
+                        optimizer = res["optimizer"]
+                        sopt.save_optimizer_params(
+                            problem_id, epoch, optimizer.name, optimizer.opt_params
+                        )
+                        logger.info(
+                            f"completed optimization epoch {epoch} for problem {problem_id} ..."
+                        )
             controller.info()
             sys.stdout.flush()
             next_epoch = False
