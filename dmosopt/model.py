@@ -1454,11 +1454,13 @@ class MEGP_Matern:
                 means.append(mean)
                 variances.append(var)
             means = torch.cat(means)
+            variances = torch.cat(variances)
             # undo normalization
             if self.use_cuda:
                 means = means.cpu()
+                variances = variances.cpu()
             y_mean = self.y_train_std * means.numpy() + self.y_train_mean
-            y_var = np.multiply(variances, self.y_train_std**2)
+            y_var = np.multiply(variances.numpy(), self.y_train_std**2)
             y[:] = y_mean
             del means, variances
         return y, y_var
