@@ -1,4 +1,4 @@
-import os, sys, importlib, logging, pprint, copy, time
+import os, sys, importlib, logging, pprint, copy, time, itertools
 from functools import partial
 from collections import namedtuple
 from collections.abc import Iterable, Iterator
@@ -115,6 +115,18 @@ class SOptStrategy:
                     lambda req: not anyclose(req.parameters, self.x),
                     [EvalRequest(xinit[i, :], None, 0) for i in range(xinit.shape[0])],
                 )
+
+    def has_requests(self):
+        res = False
+        if isinstance(self.reqs, Iterator):
+            try:
+                peek = next(self.reqs)
+                self.reqs = itertools.chain([peek], self.reqs)
+            except StopIteration:
+                pass
+        else:
+            res = len(self.reqs) > 0
+        return res
 
     def get_next_request(self):
         req = None
@@ -1303,7 +1315,6 @@ def save_optimizer_params_to_h5(
 
     opt_params_epoch_grp["optimizer_name"] = optimizer_name
     for k, v in optimizer_params.items():
-        logger.info(f"k = {k} v = {v}")
         if v is not None:
             opt_params_epoch_grp[k] = v
 
@@ -1526,7 +1537,8 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
     saved_eval_count = 0
     task_ids = []
     next_epoch = False
-    while epoch_count < sopt.n_epochs:
+    has_requests = False
+    while (epoch_count < sopt.n_epochs) or (len(task_ids) > 0) or has_requests:
 
         epoch = epoch_count + start_epoch
         controller.process()
@@ -1658,8 +1670,10 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                 eval_req = sopt.optimizer_dict[problem_id].get_next_request()
                 if eval_req is None:
                     next_epoch = True
+                    has_requests = False
                     break
                 else:
+                    has_requests = True or has_requests
                     eval_req_dict[problem_id] = eval_req
                     eval_x_dict[problem_id] = eval_req.parameters
 
@@ -1689,6 +1703,7 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                     sopt.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
         if next_epoch and (len(task_ids) == 0):
+
             if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count):
                 sopt.save_evals()
                 saved_eval_count = eval_count
@@ -1721,12 +1736,15 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                         logger.info(
                             f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
                         )
-                if epoch > 0:
+                if epoch > 0 and (epoch_count < sopt.n_epochs):
                     logger.info(
                         f"performing optimization epoch {epoch} for problem {problem_id} ..."
                     )
                     x_sm, y_sm = None, None
                     res = sopt.optimizer_dict[problem_id].epoch(epoch)
+                    has_requests = (
+                        has_requests or sopt.optimizer_dict[problem_id].has_requests()
+                    )
                     if sopt.save and sopt.save_surrogate_evals_:
                         gen_index = res["gen_index"]
                         x_sm, y_sm = res["x_sm"], res["y_sm"]
@@ -1738,18 +1756,19 @@ def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
                         sopt.save_optimizer_params(
                             problem_id, epoch, optimizer.name, optimizer.opt_params
                         )
-                        logger.info(
-                            f"completed optimization epoch {epoch} for problem {problem_id} ..."
-                        )
-            controller.info()
-            sys.stdout.flush()
-            next_epoch = False
-            if eval_count > 0:
+                    logger.info(
+                        f"completed optimization epoch {epoch} for problem {problem_id}."
+                    )
+            if epoch_count < sopt.n_epochs:
+                next_epoch = False
                 epoch_count += 1
+                controller.info()
+                sys.stdout.flush()
 
     if sopt.save:
         sopt.save_evals()
     controller.info()
+    sys.stdout.flush()
 
 
 def sopt_work(worker, sopt_params, verbose=False, debug=False):
