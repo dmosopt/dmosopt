@@ -31,10 +31,6 @@ class AGEMOEA(MOEA):
         popsize: int,
         nInput: int,
         nOutput: int,
-        crossover_prob: Optional[float],
-        mutation_prob: Optional[float],
-        mutation_rate: Optional[float],
-        nchildren: Optional[int],
         feasibility_model: Optional[Any],
         **kwargs,
     ):
