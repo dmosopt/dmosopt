@@ -51,6 +51,7 @@ EvalRequest = namedtuple(
     [
         "parameters",
         "prediction",
+        "epoch",
     ],
 )
 
