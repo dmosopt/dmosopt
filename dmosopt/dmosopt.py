@@ -16,7 +16,7 @@ try:
 except ImportError as e:
     logger.warning(f"unable to import h5py: {e}")
 
-sopt_dict = {}
+dopt_dict = {}
 
 
 def anyclose(a, b, rtol=1e-4, atol=1e-4):
@@ -26,23 +26,26 @@ def anyclose(a, b, rtol=1e-4, atol=1e-4):
     return False
 
 
-class SOptStrategy:
+class DistOptStrategy:
     def __init__(
         self,
-        prob,
-        n_initial=10,
+        prob: OptProblem,
+        n_initial: int = 10,
         initial=None,
-        initial_maxiter=5,
-        initial_method="slh",
-        resample_fraction=0.25,
-        population_size=100,
-        num_generations=100,
-        surrogate_method="gpr",
-        surrogate_options={"anisotropic": False, "optimizer": "sceua"},
-        sensitivity_method=None,
+        initial_maxiter: int = 5,
+        initial_method: str = "slh",
+        population_size: int = 100,
+        resample_fraction: float = 0.25,
+        num_generations: int = 100,
+        surrogate_method: str = "gpr",
+        surrogate_options: Dict[str, Union[bool, str]] = {
+            "anisotropic": False,
+            "optimizer": "sceua",
+        },
+        sensitivity_method: Optional[str] = None,
         sensitivity_options={},
         distance_metric=None,
-        optimizer="nsga2",
+        optimizer: str = "nsga2",
         optimizer_options={
             "crossover_prob": 0.9,
             "mutation_prob": 0.1,
@@ -149,7 +152,8 @@ class SOptStrategy:
         self.completed.append(entry)
         return entry
 
-    def epoch(self, epoch_index):
+    def update_evals(self):
+    
         if len(self.completed) > 0:
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
@@ -182,6 +186,12 @@ class SOptStrategy:
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
             self.completed = []
+
+            
+    def epoch(self, epoch_index):
+
+        self.update_evals()
+        
         optimizer_kwargs = {}
         if self.optimizer_options is not None:
             optimizer_kwargs.update(self.optimizer_options)
@@ -193,7 +203,8 @@ class SOptStrategy:
         x_sm = None
         y_sm = None
         x_resample = None
-        res = opt.epoch(
+        
+        opt_gen = opt.epoch(
             self.num_generations,
             self.prob.param_names,
             self.prob.objective_names,
@@ -215,17 +226,45 @@ class SOptStrategy:
             local_random=self.local_random,
             logger=self.logger,
         )
+        x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
+        try:
+            item = next(opt_gen)
+        except StopIteration as ex:
+            opt_gen.close()
+            opt_gen = None
 
-        x_resample = res["x_resample"]
-        y_pred = res["y_pred"]
-        gen_index = res["gen_index"]
-        x_sm, y_sm = res["x_sm"], res["y_sm"]
+            result_dict = ex.args[0]
 
-        self.reqs = []
-        for i in range(x_resample.shape[0]):
-            self.reqs.append(EvalRequest(x_resample[i, :], y_pred[i, :], epoch_index))
+            x_resample = result_dict["x_resample"]
+            y_pred = result_dict["y_pred"]
+            gen_index = result_dict["gen_index"]
+            x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
 
-        return res
+            for i in range(x_resample.shape[0]):
+                self.reqs.append(EvalRequest(x_resample[i, :], y_pred[i], epoch_index))
+        else:
+            while True:
+                assert len(self.reqs) == 0
+                x_gen = item
+                for i in range(x_gen.shape[0]):
+                    self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
+                y_gen = yield None
+                try:
+                    item = opt_gen.send(y_gen)
+                except StopIteration as ex:
+                    opt_gen.close()
+                    opt_gen = None
+                    result_dict = ex.args[0]
+                    
+                    x_resample = result_dict["x_resample"]
+                    y_pred = result_dict["y_pred"]
+                    gen_index = result_dict["gen_index"]
+                    x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
+
+                    break
+                
+
+        return result_dict
 
     def get_best_evals(self, feasible=True):
         if self.x is not None:
@@ -308,8 +347,9 @@ class DistOptimizer:
         random_seed=None,
         feasibility_model=False,
         termination_conditions=None,
+        controller: Optional[distwq.MPIController] = None,
         **kwargs,
-    ):
+    ) -> None:
         """
         `Creates an optimizer based on the MO-ASMO optimizer. Supports
         distributed optimization runs via mpi4py.
@@ -349,6 +389,7 @@ class DistOptimizer:
         if random_seed is not None:
             local_random = default_rng(seed=random_seed)
 
+        self.controller = controller
         self.opt_id = opt_id
         self.verbose = verbose
         self.population_size = population_size
@@ -562,7 +603,7 @@ class DistOptimizer:
                 if len(old_eval_xs) >= self.n_initial * dim:
                     self.start_epoch += 1
 
-            opt_strategy = SOptStrategy(
+            opt_strategy = DistOptStrategy(
                 opt_prob,
                 self.n_initial,
                 initial=initial,
@@ -761,7 +802,244 @@ class DistOptimizer:
                 else:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
 
+    def epoch(self, epoch):
 
+        if self.controller is None:
+            raise RuntimeError(
+                "DistOptimizer: method epoch cannot be executed when controller is not set."
+            )
+
+        controller = self.controller
+        wait_evals = False
+        wait_evals_count = None
+        next_epoch = False
+        epoch = self.epoch_count + self.start_epoch
+        task_ids = []
+        gen = None
+
+        while(len(task_ids) > 0) or has_requests:
+        
+            controller.process()
+
+            if (controller.time_limit is not None) and (
+                    time.time() - controller.start_time
+            ) >= controller.time_limit:
+                break
+
+            if len(task_ids) > 0:
+                rets = controller.probe_all_next_results()
+                for ret in rets:
+
+                    task_id, res = ret
+
+                    if self.reduce_fun is None:
+                        rres = res
+                    else:
+                        if self.reduce_fun_args is None:
+                            rres = self.reduce_fun(res)
+                        else:
+                            rres = self.reduce_fun(res, *dopt.reduce_fun_args)
+
+                    for problem_id in rres:
+                        eval_req = self.eval_reqs[problem_id][task_id]
+                        eval_x = eval_req.parameters
+                        eval_pred = eval_req.prediction
+                        eval_epoch = eval_req.epoch
+                        if (
+                            self.feature_names is not None
+                            and self.constraint_names is not None
+                        ):
+                            entry = self.optimizer_dict[problem_id].complete_request(
+                                eval_x,
+                                rres[problem_id][0],
+                                f=rres[problem_id][1],
+                                c=rres[problem_id][2],
+                                pred=eval_pred,
+                                epoch=eval_epoch,
+                            )
+                            self.storage_dict[problem_id].append(entry)
+                        elif self.feature_names is not None:
+                            entry = self.optimizer_dict[problem_id].complete_request(
+                                eval_x,
+                                rres[problem_id][0],
+                                f=rres[problem_id][1],
+                                pred=eval_pred,
+                                epoch=eval_epoch,
+                            )
+                            self.storage_dict[problem_id].append(entry)
+                        elif self.constraint_names is not None:
+                            entry = self.optimizer_dict[problem_id].complete_request(
+                                eval_x,
+                                rres[problem_id][0],
+                                c=rres[problem_id][1],
+                                pred=eval_pred,
+                                epoch=eval_epoch,
+                            )
+                            self.storage_dict[problem_id].append(entry)
+                        else:
+                            entry = self.optimizer_dict[problem_id].complete_request(
+                                eval_x, rres[problem_id], pred=eval_pred, epoch=eval_epoch
+                            )
+                            self.storage_dict[problem_id].append(entry)
+                        prms = list(zip(self.param_names, list(eval_x.T)))
+                        lftrs = None
+                        lres = None
+                        if (
+                            self.feature_names is not None
+                            and self.constraint_names is not None
+                        ):
+                            lres = list(zip(self.objective_names, rres[problem_id][0].T))
+                            lftrs = [
+                                dict(zip(rres[problem_id][1].dtype.names, x))
+                                for x in rres[problem_id][1]
+                            ]
+                            lconstr = list(
+                                zip(self.constraint_names, rres[problem_id][2].T)
+                            )
+                            logger.info(
+                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}"
+                            )
+                        elif self.feature_names is not None:
+                            lres = list(zip(self.objective_names, rres[problem_id][0].T))
+                            lftrs = [
+                                dict(zip(rres[problem_id][1].dtype.names, x))
+                                for x in rres[problem_id][1]
+                            ]
+                            logger.info(
+                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs}"
+                            )
+                        elif self.constraint_names is not None:
+                            lres = list(zip(self.objective_names, rres[problem_id][0].T))
+                            lconstr = list(
+                                zip(self.constraint_names, rres[problem_id][1].T)
+                            )
+                            logger.info(
+                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / constr: {lconstr}"
+                            )
+                        else:
+                            lres = list(zip(self.objective_names, rres[problem_id].T))
+                            logger.info(
+                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres}"
+                            )
+
+                    eval_count += 1
+                    task_ids.remove(task_id)
+
+            if (
+                self.save
+                and (eval_count > 0)
+                and (saved_eval_count < eval_count)
+                and ((eval_count - saved_eval_count) >= self.save_eval)
+            ):
+                self.save_evals()
+                saved_eval_count = eval_count
+
+            if (controller.time_limit is not None) and (
+                time.time() - controller.start_time
+            ) >= controller.time_limit:
+                break
+
+            task_args = []
+            task_reqs = []
+            while not next_epoch:
+                eval_req_dict = {}
+                eval_x_dict = {}
+                for problem_id in self.problem_ids:
+                    eval_req = self.optimizer_dict[problem_id].get_next_request()
+                    if eval_req is None:
+                        next_epoch = True
+                        has_requests = False
+                        break
+                    else:
+                        has_requests = True or has_requests
+                        eval_req_dict[problem_id] = eval_req
+                        eval_x_dict[problem_id] = eval_req.parameters
+
+                if next_epoch:
+                    break
+                else:
+                    task_args.append(
+                        (
+                            self.opt_id,
+                            eval_x_dict,
+                        )
+                    )
+                    task_reqs.append(eval_req_dict)
+
+            if (controller.time_limit is not None) and (
+                time.time() - controller.start_time
+            ) >= controller.time_limit:
+                break
+
+            if len(task_args) > 0:
+                new_task_ids = controller.submit_multiple(
+                    "eval_fun", module_name="dmosopt.dmosopt", args=task_args
+                )
+                for task_id, eval_req_dict in zip(new_task_ids, task_reqs):
+                    task_ids.append(task_id)
+                    for problem_id in self.problem_ids:
+                        self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
+
+            if next_epoch and (len(task_ids) == 0):
+
+                if self.save and (eval_count > 0) and (saved_eval_count < eval_count):
+                    self.save_evals()
+                    saved_eval_count = eval_count
+
+                for problem_id in self.problem_ids:
+                    if epoch > 1:
+                        completed_epoch_evals = list(
+                            filter(
+                                lambda x: x.epoch == epoch - 1,
+                                self.optimizer_dict[problem_id].completed,
+                            )
+                        )
+                        if len(completed_epoch_evals) > 0:
+                            y_completed = np.vstack(
+                                [x.objectives for x in completed_epoch_evals]
+                            )
+                            pred_completed = np.vstack(
+                                [x.prediction for x in completed_epoch_evals]
+                            )
+                            n_objectives = y_completed.shape[1]
+                            mae = []
+                            for i in range(n_objectives):
+                                y_i = y_completed[:, i]
+                                pred_i = pred_completed[:, i]
+                                mae.append(
+                                    np.mean(
+                                        np.abs(y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)])
+                                    )
+                                )
+                            logger.info(
+                                f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
+                            )
+                    ## TODO: clarify "next epoch" logic
+                    if epoch > 0 and (epoch_count < self.n_epochs):
+                        logger.info(
+                            f"performing optimization epoch {epoch} for problem {problem_id} ..."
+                        )
+                        x_sm, y_sm = None, None
+                        res = self.optimizer_dict[problem_id].epoch(epoch)
+                        has_requests = (
+                            has_requests or self.optimizer_dict[problem_id].has_requests()
+                        )
+                        if self.save and self.save_surrogate_evals_:
+                            gen_index = res["gen_index"]
+                            x_sm, y_sm = res["x_sm"], res["y_sm"]
+                            self.save_surrogate_evals(
+                                problem_id, epoch, gen_index, x_sm, y_sm
+                            )
+                        if self.save and self.save_optimizer_params_:
+                            optimizer = res["optimizer"]
+                            self.save_optimizer_params(
+                                problem_id, epoch, optimizer.name, optimizer.opt_params
+                            )
+                        logger.info(
+                            f"completed optimization epoch {epoch} for problem {problem_id}."
+                        )
+
+                    
 def h5_get_group(h, groupname):
     if groupname in h.keys():
         g = h[groupname]
@@ -1453,12 +1731,12 @@ def eval_obj_fun_mp(
     return result_dict
 
 
-def sopt_init(
-    sopt_params, worker=None, nprocs_per_worker=None, verbose=False, init_strategy=False
+def dopt_init(
+    dopt_params, worker=None, nprocs_per_worker=None, verbose=False, init_strategy=False
 ):
     objfun = None
-    objfun_module = sopt_params.get("obj_fun_module", "__main__")
-    objfun_name = sopt_params.get("obj_fun_name", None)
+    objfun_module = dopt_params.get("obj_fun_module", "__main__")
+    objfun_name = dopt_params.get("obj_fun_name", None)
     if distwq.is_worker:
         if objfun_name is not None:
             if objfun_module not in sys.modules:
@@ -1466,9 +1744,9 @@ def sopt_init(
 
             objfun = eval(objfun_name, sys.modules[objfun_module].__dict__)
         else:
-            objfun_init_module = sopt_params.get("obj_fun_init_module", "__main__")
-            objfun_init_name = sopt_params.get("obj_fun_init_name", None)
-            objfun_init_args = sopt_params.get("obj_fun_init_args", None)
+            objfun_init_module = dopt_params.get("obj_fun_init_module", "__main__")
+            objfun_init_name = dopt_params.get("obj_fun_init_name", None)
+            objfun_init_args = dopt_params.get("obj_fun_init_args", None)
             if objfun_init_name is None:
                 raise RuntimeError("dmosopt.soptinit: objfun is not provided")
             if objfun_init_module not in sys.modules:
@@ -1478,9 +1756,9 @@ def sopt_init(
             )
             objfun = objfun_init(**objfun_init_args, worker=worker)
     else:
-        ctrl_init_fun_module = sopt_params.get("controller_init_fun_module", "__main__")
-        ctrl_init_fun_name = sopt_params.get("controller_init_fun_name", None)
-        ctrl_init_fun_args = sopt_params.get("controller_init_fun_args", {})
+        ctrl_init_fun_module = dopt_params.get("controller_init_fun_module", "__main__")
+        ctrl_init_fun_name = dopt_params.get("controller_init_fun_name", None)
+        ctrl_init_fun_args = dopt_params.get("controller_init_fun_args", {})
         if ctrl_init_fun_module not in sys.modules:
             importlib.import_module(ctrl_init_fun_module)
         if ctrl_init_fun_name is not None:
@@ -1489,14 +1767,14 @@ def sopt_init(
             )
             ctrl_init_fun(**ctrl_init_fun_args)
 
-    sopt_params["obj_fun"] = objfun
-    reducefun_module = sopt_params.get("reduce_fun_module", "__main__")
-    reducefun_name = sopt_params.get("reduce_fun_name", None)
+    dopt_params["obj_fun"] = objfun
+    reducefun_module = dopt_params.get("reduce_fun_module", "__main__")
+    reducefun_name = dopt_params.get("reduce_fun_name", None)
     if reducefun_module not in sys.modules:
         importlib.import_module(reducefun_module)
     if reducefun_name is not None:
         reducefun = eval(reducefun_name, sys.modules[reducefun_module].__dict__)
-        sopt_params["reduce_fun"] = reducefun
+        dopt_params["reduce_fun"] = reducefun
     else:
         # If using MPI with 1 process per worker, then each worker
         # will always return a list containing one element, and
@@ -1505,285 +1783,57 @@ def sopt_init(
         if distwq.is_controller and distwq.workers_available:
             if nprocs_per_worker == 1:
                 reducefun = lambda xs: xs[0]
-                sopt_params["reduce_fun"] = reducefun
+                dopt_params["reduce_fun"] = reducefun
             elif nprocs_per_worker > 1:
                 raise RuntimeError(
                     f"When nprocs_per_workers > 1, a reduce function must be specified."
                 )
 
-    sopt = DistOptimizer(**sopt_params, verbose=verbose)
+    dopt = DistOptimizer(**dopt_params, verbose=verbose)
     if init_strategy:
-        sopt.init_strategy()
-    sopt_dict[sopt.opt_id] = sopt
-    return sopt
+        dopt.init_strategy()
+    dopt_dict[dopt.opt_id] = sopt
+    return dopt
 
 
-def sopt_ctrl(controller, sopt_params, nprocs_per_worker, verbose=True):
+def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     """Controller for distributed surrogate optimization."""
-    logger = logging.getLogger(sopt_params["opt_id"])
+    logger = logging.getLogger(dopt_params["opt_id"])
     logger.info(f"Initializing optimization controller...")
     if verbose:
         logger.setLevel(logging.INFO)
-    sopt = sopt_init(
-        sopt_params,
+    dopt_params["controller"] = controller
+    dopt = dopt_init(
+        dopt_params,
         nprocs_per_worker=nprocs_per_worker,
         verbose=verbose,
         init_strategy=True,
     )
-    logger.info(f"Optimizing for {sopt.n_epochs} epochs...")
-    start_epoch = sopt.start_epoch
+    logger.info(f"Optimizing for {dopt.n_epochs} epochs...")
+    start_epoch = dopt.start_epoch
     epoch_count = 0
-    eval_count = 0
-    saved_eval_count = 0
-    task_ids = []
-    next_epoch = False
-    has_requests = False
-    while (epoch_count < sopt.n_epochs) or (len(task_ids) > 0) or has_requests:
+    while epoch_count < dopt.n_epochs:
 
         epoch = epoch_count + start_epoch
-        controller.process()
-
-        if (controller.time_limit is not None) and (
-            time.time() - controller.start_time
-        ) >= controller.time_limit:
-            break
-
-        if len(task_ids) > 0:
-            rets = controller.probe_all_next_results()
-            for ret in rets:
-
-                task_id, res = ret
-
-                if sopt.reduce_fun is None:
-                    rres = res
-                else:
-                    if sopt.reduce_fun_args is None:
-                        rres = sopt.reduce_fun(res)
-                    else:
-                        rres = sopt.reduce_fun(res, *sopt.reduce_fun_args)
-
-                for problem_id in rres:
-                    eval_req = sopt.eval_reqs[problem_id][task_id]
-                    eval_x = eval_req.parameters
-                    eval_pred = eval_req.prediction
-                    eval_epoch = eval_req.epoch
-                    if (
-                        sopt.feature_names is not None
-                        and sopt.constraint_names is not None
-                    ):
-                        entry = sopt.optimizer_dict[problem_id].complete_request(
-                            eval_x,
-                            rres[problem_id][0],
-                            f=rres[problem_id][1],
-                            c=rres[problem_id][2],
-                            pred=eval_pred,
-                            epoch=eval_epoch,
-                        )
-                        sopt.storage_dict[problem_id].append(entry)
-                    elif sopt.feature_names is not None:
-                        entry = sopt.optimizer_dict[problem_id].complete_request(
-                            eval_x,
-                            rres[problem_id][0],
-                            f=rres[problem_id][1],
-                            pred=eval_pred,
-                            epoch=eval_epoch,
-                        )
-                        sopt.storage_dict[problem_id].append(entry)
-                    elif sopt.constraint_names is not None:
-                        entry = sopt.optimizer_dict[problem_id].complete_request(
-                            eval_x,
-                            rres[problem_id][0],
-                            c=rres[problem_id][1],
-                            pred=eval_pred,
-                            epoch=eval_epoch,
-                        )
-                        sopt.storage_dict[problem_id].append(entry)
-                    else:
-                        entry = sopt.optimizer_dict[problem_id].complete_request(
-                            eval_x, rres[problem_id], pred=eval_pred, epoch=eval_epoch
-                        )
-                        sopt.storage_dict[problem_id].append(entry)
-                    prms = list(zip(sopt.param_names, list(eval_x.T)))
-                    lftrs = None
-                    lres = None
-                    if (
-                        sopt.feature_names is not None
-                        and sopt.constraint_names is not None
-                    ):
-                        lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
-                        lftrs = [
-                            dict(zip(rres[problem_id][1].dtype.names, x))
-                            for x in rres[problem_id][1]
-                        ]
-                        lconstr = list(
-                            zip(sopt.constraint_names, rres[problem_id][2].T)
-                        )
-                        logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}"
-                        )
-                    elif sopt.feature_names is not None:
-                        lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
-                        lftrs = [
-                            dict(zip(rres[problem_id][1].dtype.names, x))
-                            for x in rres[problem_id][1]
-                        ]
-                        logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs}"
-                        )
-                    elif sopt.constraint_names is not None:
-                        lres = list(zip(sopt.objective_names, rres[problem_id][0].T))
-                        lconstr = list(
-                            zip(sopt.constraint_names, rres[problem_id][1].T)
-                        )
-                        logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / constr: {lconstr}"
-                        )
-                    else:
-                        lres = list(zip(sopt.objective_names, rres[problem_id].T))
-                        logger.info(
-                            f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres}"
-                        )
-
-                eval_count += 1
-                task_ids.remove(task_id)
-
-        if (
-            sopt.save
-            and (eval_count > 0)
-            and (saved_eval_count < eval_count)
-            and ((eval_count - saved_eval_count) >= sopt.save_eval)
-        ):
-            sopt.save_evals()
-            saved_eval_count = eval_count
-
-        if (controller.time_limit is not None) and (
-            time.time() - controller.start_time
-        ) >= controller.time_limit:
-            break
-
-        task_args = []
-        task_reqs = []
-        while not next_epoch:
-            eval_req_dict = {}
-            eval_x_dict = {}
-            for problem_id in sopt.problem_ids:
-                eval_req = sopt.optimizer_dict[problem_id].get_next_request()
-                if eval_req is None:
-                    next_epoch = True
-                    has_requests = False
-                    break
-                else:
-                    has_requests = True or has_requests
-                    eval_req_dict[problem_id] = eval_req
-                    eval_x_dict[problem_id] = eval_req.parameters
-
-            if next_epoch:
-                break
-            else:
-                task_args.append(
-                    (
-                        sopt.opt_id,
-                        eval_x_dict,
-                    )
-                )
-                task_reqs.append(eval_req_dict)
-
-        if (controller.time_limit is not None) and (
-            time.time() - controller.start_time
-        ) >= controller.time_limit:
-            break
-
-        if len(task_args) > 0:
-            new_task_ids = controller.submit_multiple(
-                "eval_fun", module_name="dmosopt.dmosopt", args=task_args
-            )
-            for task_id, eval_req_dict in zip(new_task_ids, task_reqs):
-                task_ids.append(task_id)
-                for problem_id in sopt.problem_ids:
-                    sopt.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
-
-        if next_epoch and (len(task_ids) == 0):
-
-            if sopt.save and (eval_count > 0) and (saved_eval_count < eval_count):
-                sopt.save_evals()
-                saved_eval_count = eval_count
-
-            for problem_id in sopt.problem_ids:
-                if epoch > 1:
-                    completed_epoch_evals = list(
-                        filter(
-                            lambda x: x.epoch == epoch - 1,
-                            sopt.optimizer_dict[problem_id].completed,
-                        )
-                    )
-                    if len(completed_epoch_evals) > 0:
-                        y_completed = np.vstack(
-                            [x.objectives for x in completed_epoch_evals]
-                        )
-                        pred_completed = np.vstack(
-                            [x.prediction for x in completed_epoch_evals]
-                        )
-                        n_objectives = y_completed.shape[1]
-                        mae = []
-                        for i in range(n_objectives):
-                            y_i = y_completed[:, i]
-                            pred_i = pred_completed[:, i]
-                            mae.append(
-                                np.mean(
-                                    np.abs(y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)])
-                                )
-                            )
-                        logger.info(
-                            f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
-                        )
-                if epoch > 0 and (epoch_count < sopt.n_epochs):
-                    logger.info(
-                        f"performing optimization epoch {epoch} for problem {problem_id} ..."
-                    )
-                    x_sm, y_sm = None, None
-                    res = sopt.optimizer_dict[problem_id].epoch(epoch)
-                    has_requests = (
-                        has_requests or sopt.optimizer_dict[problem_id].has_requests()
-                    )
-                    if sopt.save and sopt.save_surrogate_evals_:
-                        gen_index = res["gen_index"]
-                        x_sm, y_sm = res["x_sm"], res["y_sm"]
-                        sopt.save_surrogate_evals(
-                            problem_id, epoch, gen_index, x_sm, y_sm
-                        )
-                    if sopt.save and sopt.save_optimizer_params_:
-                        optimizer = res["optimizer"]
-                        sopt.save_optimizer_params(
-                            problem_id, epoch, optimizer.name, optimizer.opt_params
-                        )
-                    logger.info(
-                        f"completed optimization epoch {epoch} for problem {problem_id}."
-                    )
-            if epoch_count < sopt.n_epochs:
-                next_epoch = False
-                epoch_count += 1
-                controller.info()
-                sys.stdout.flush()
-
-    if sopt.save:
-        sopt.save_evals()
-    controller.info()
-    sys.stdout.flush()
+        ## TODO: clarify "next epoch" logic
+        dopt.epoch(epoch)
+        
+        epoch_count += 1
 
 
-def sopt_work(worker, sopt_params, verbose=False, debug=False):
+def dopt_work(worker, dopt_params, verbose=False, debug=False):
     """Worker for distributed surrogate optimization."""
     if worker.worker_id > 1 and (not debug):
         verbose = False
-    sopt_init(sopt_params, worker=worker, verbose=verbose, init_strategy=False)
+    dopt_init(dopt_params, worker=worker, verbose=verbose, init_strategy=False)
 
 
 def eval_fun(opt_id, *args):
-    return sopt_dict[opt_id].eval_fun(*args)
+    return dopt_dict[opt_id].eval_fun(*args)
 
 
 def run(
-    sopt_params,
+    dopt_params,
     time_limit=None,
     feasible=True,
     return_features=False,
@@ -1800,11 +1850,11 @@ def run(
 ):
     if distwq.is_controller:
         distwq.run(
-            fun_name="sopt_ctrl",
+            fun_name="dopt_ctrl",
             module_name="dmosopt.dmosopt",
             verbose=verbose,
             args=(
-                sopt_params,
+                dopt_params,
                 nprocs_per_worker,
                 verbose,
             ),
@@ -1818,27 +1868,27 @@ def run(
             collective_mode=collective_mode,
             time_limit=time_limit,
         )
-        opt_id = sopt_params["opt_id"]
-        sopt = sopt_dict[opt_id]
-        sopt.print_best()
-        return sopt.get_best(
+        opt_id = dopt_params["opt_id"]
+        sopt = dopt_dict[opt_id]
+        dopt.print_best()
+        return dopt.get_best(
             feasible=feasible,
             return_features=return_features,
             return_constraints=return_constraints,
         )
     else:
-        if "file_path" in sopt_params:
-            del sopt_params["file_path"]
-        if "save" in sopt_params:
-            del sopt_params["save"]
+        if "file_path" in dopt_params:
+            del dopt_params["file_path"]
+        if "save" in dopt_params:
+            del dopt_params["save"]
         distwq.run(
-            fun_name="sopt_work",
+            fun_name="dopt_work",
             module_name="dmosopt.dmosopt",
-            broker_fun_name=sopt_params.get("broker_fun_name", None),
-            broker_module_name=sopt_params.get("broker_module_name", None),
+            broker_fun_name=dopt_params.get("broker_fun_name", None),
+            broker_module_name=dopt_params.get("broker_module_name", None),
             verbose=verbose,
             args=(
-                sopt_params,
+                dopt_params,
                 verbose,
                 worker_debug,
             ),

@@ -5,7 +5,7 @@ import numpy as np
 from numpy.random import default_rng
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, model, sa, sampling
 from dmosopt.feasibility import LogisticFeasibilityModel
-from dmosopt.datatypes import OptHistory
+from dmosopt.datatypes import OptHistory, EpochResults
 
 
 def optimization(
@@ -87,7 +87,12 @@ def optimization(
 
         ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()
-        y_gen = model.evaluate(x_gen)
+
+        if model is None:
+            y_gen = yield x_gen
+        else:
+            y_gen = model.evaluate(x_gen)
+            
         optimizer.update(x_gen, y_gen, state_gen)
         count = x_gen.shape[0]
         n_eval += count
@@ -101,7 +106,7 @@ def optimization(
     y = np.vstack([y] + y_new)
     bestx, besty = optimizer.population_objectives
 
-    results = (bestx, besty, gen_index, x, y)
+    results = EpochResults(bestx, besty, gen_index, x, y)
 
     return results
 
@@ -233,18 +238,21 @@ def epoch(
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-    sm = train(
-        nInput,
-        nOutput,
-        xlb,
-        xub,
-        Xinit,
-        Yinit,
-        C,
-        surrogate_method=surrogate_method,
-        surrogate_options=surrogate_options,
-        logger=logger,
-    )
+
+    sm = None
+    if surrogate_method is not None:
+        sm = train(
+            nInput,
+            nOutput,
+            xlb,
+            xub,
+            Xinit,
+            Yinit,
+            C,
+            surrogate_method=surrogate_method,
+            surrogate_options=surrogate_options,
+            logger=logger,
+        )
 
     optimizer_kwargs_ = {
         "sampling_method": "slh",
@@ -304,7 +312,7 @@ def epoch(
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer_name}")
 
-    bestx_sm, besty_sm, gen_index, x_sm, y_sm = optimization(
+    opt_gen = optimization(
         gen,
         optimizer,
         sm,
@@ -321,6 +329,29 @@ def epoch(
         **optimizer_kwargs_,
     )
 
+    res = next(opt_gen)
+
+    while True:
+        x_gen = res
+
+        if sm is not None:
+            y_gen = sm.evaluate(x_gen)
+        else:
+            y_gen = yield x_gen
+            
+        try:
+            res = opt_gen.send(y_gen)
+        except StopIteration as ex:
+            opt_gen.close()
+            opt_gen = None
+            res = ex.args[0]
+            bestx_sm = res.best_x
+            besty_sm = res.best_y
+            gen_index = res.gen_index
+            x_sm = res.x
+            y_sm = res.y
+            break
+        
     D = MOEA.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr, :]

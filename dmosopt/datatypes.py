@@ -66,6 +66,18 @@ OptHistory = namedtuple(
     ],
 )
 
+EpochResults = namedtuple(
+    "EpochResults",
+    [
+        "best_x",
+        "best_y",
+        "gen_index",
+        "x",
+        "y",
+    ],
+)
+
+
 
 class OptProblem(object):
 
