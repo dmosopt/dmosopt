@@ -3,13 +3,14 @@
 import sys, itertools
 import numpy as np
 from numpy.random import default_rng
+from typing import Any, Union, Dict, List, Tuple, Optional
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, model, sa, sampling
 from dmosopt.feasibility import LogisticFeasibilityModel
-from dmosopt.datatypes import OptHistory, EpochResults
+from dmosopt.datatypes import OptHistory, OptResults
 
 
 def optimization(
-    gen,
+    num_generations,
     optimizer,
     model,
     nInput,
@@ -45,7 +46,10 @@ def optimization(
     bounds = np.column_stack((xlb, xub))
 
     x = optimizer.generate_initial(bounds, local_random)
-    y = model.evaluate(x).astype(np.float32)
+    if model is None:
+        y = yield x
+    else:
+        y = model.evaluate(x).astype(np.float32)
 
     x_initial = None
     y_initial = None
@@ -70,7 +74,7 @@ def optimization(
     y_new = []
 
     n_eval = 0
-    it = range(1, gen + 1)
+    it = range(1, num_generations + 1)
     if termination is not None:
         it = itertools.count(1)
     for i in it:
@@ -92,7 +96,7 @@ def optimization(
             y_gen = yield x_gen
         else:
             y_gen = model.evaluate(x_gen)
-            
+
         optimizer.update(x_gen, y_gen, state_gen)
         count = x_gen.shape[0]
         n_eval += count
@@ -106,7 +110,7 @@ def optimization(
     y = np.vstack([y] + y_new)
     bestx, besty = optimizer.population_objectives
 
-    results = EpochResults(bestx, besty, gen_index, x, y)
+    results = OptResults(bestx, besty, gen_index, x, y)
 
     return results
 
@@ -178,7 +182,7 @@ def xinit(
 
 
 def epoch(
-    gen,
+    num_generations,
     param_names,
     objective_names,
     xlb,
@@ -211,7 +215,7 @@ def epoch(
     Xinit and Yinit: initial samplers for surrogate model construction
     ### options for the embedded NSGA-II:
         pop: number of population
-        gen: number of generation
+        num_generations: number of generation
         crossover_prob: probability of crossover in each generation
         mutation_prob: probability of mutation in each generation
         di_crossover: distribution index for crossover
@@ -311,9 +315,11 @@ def epoch(
         )
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer_name}")
+    print(f"before opt_gen")
+    sys.stdout.flush()
 
     opt_gen = optimization(
-        gen,
+        num_generations,
         optimizer,
         sm,
         nInput,
@@ -329,16 +335,20 @@ def epoch(
         **optimizer_kwargs_,
     )
 
+    print(f"opt_gen = {opt_gen}")
+    sys.stdout.flush()
+
     res = next(opt_gen)
 
     while True:
         x_gen = res
 
+        print(f"sm = {sm}")
         if sm is not None:
             y_gen = sm.evaluate(x_gen)
         else:
             y_gen = yield x_gen
-            
+
         try:
             res = opt_gen.send(y_gen)
         except StopIteration as ex:
@@ -351,7 +361,7 @@ def epoch(
             x_sm = res.x
             y_sm = res.y
             break
-        
+
     D = MOEA.crowding_distance(besty_sm)
     idxr = D.argsort()[::-1][:N_resample]
     x_resample = bestx_sm[idxr, :]

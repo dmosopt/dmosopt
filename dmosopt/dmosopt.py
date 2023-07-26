@@ -2,11 +2,12 @@ import os, sys, importlib, logging, pprint, copy, time, itertools
 from functools import partial
 from collections import namedtuple
 from collections.abc import Iterable, Iterator
+from typing import Any, Union, Dict, List, Tuple, Optional
 import numpy as np
 from numpy.random import default_rng
 import distwq
 import dmosopt.MOASMO as opt
-from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry, EvalRequest
+from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry, EvalRequest, OptResults
 from dmosopt.termination import MultiObjectiveStdTermination
 
 logger = logging.getLogger("dmosopt")
@@ -118,6 +119,8 @@ class DistOptStrategy:
                     lambda req: not anyclose(req.parameters, self.x),
                     [EvalRequest(xinit[i, :], None, 0) for i in range(xinit.shape[0])],
                 )
+        self.opt_gen = None
+        self.epoch_index = -1
 
     def has_requests(self):
         res = False
@@ -153,8 +156,9 @@ class DistOptStrategy:
         return entry
 
     def update_evals(self):
-    
-        if len(self.completed) > 0:
+
+        result = None
+        if len(self.completed) > 0 and not self.has_requests():
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
 
@@ -186,12 +190,16 @@ class DistOptStrategy:
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
             self.completed = []
+            result = x_completed, y_completed, f_completed, c_completed
 
-            
-    def epoch(self, epoch_index):
+        return result
 
-        self.update_evals()
-        
+    def initialize_epoch(self, epoch_index):
+
+        assert (
+            self.opt_gen == None
+        ), "Optimization generator is active in DistOptStrategy"
+
         optimizer_kwargs = {}
         if self.optimizer_options is not None:
             optimizer_kwargs.update(self.optimizer_options)
@@ -200,11 +208,9 @@ class DistOptStrategy:
         if self.termination is not None:
             self.termination.reset()
 
-        x_sm = None
-        y_sm = None
-        x_resample = None
-        
-        opt_gen = opt.epoch(
+        assert epoch_index > self.epoch_index
+        self.epoch_index = epoch_index
+        self.opt_gen = opt.epoch(
             self.num_generations,
             self.prob.param_names,
             self.prob.objective_names,
@@ -226,45 +232,70 @@ class DistOptStrategy:
             local_random=self.local_random,
             logger=self.logger,
         )
+
+    def update_epoch(self, resample=False):
+
+        completed_evals = self.update_evals()
+
+        result = None
         x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
-        try:
-            item = next(opt_gen)
-        except StopIteration as ex:
-            opt_gen.close()
-            opt_gen = None
+        ## TODO: differentiate between whether we need to wait for more evals to be completed,
+        ## and whether there are no more outstanding requests
+        if completed_evals is None:
+            try:
+                item = next(self.opt_gen)
+            except StopIteration as ex:
+                self.opt_gen.close()
+                self.opt_gen = None
 
-            result_dict = ex.args[0]
+                result_dict = ex.args[0]
 
-            x_resample = result_dict["x_resample"]
-            y_pred = result_dict["y_pred"]
-            gen_index = result_dict["gen_index"]
-            x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
+                x_resample = result_dict["x_resample"]
+                y_pred = result_dict["y_pred"]
+                gen_index = result_dict["gen_index"]
+                x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
 
-            for i in range(x_resample.shape[0]):
-                self.reqs.append(EvalRequest(x_resample[i, :], y_pred[i], epoch_index))
-        else:
-            while True:
-                assert len(self.reqs) == 0
+                for i in range(x_resample.shape[0]):
+                    self.reqs.append(
+                        EvalRequest(x_resample[i, :], y_pred[i], self.epoch_index)
+                    )
+
+                result = OptResults(x_resample, y_pred, gen_index, x_sm, y_sm)
+
+            else:
                 x_gen = item
                 for i in range(x_gen.shape[0]):
                     self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
-                y_gen = yield None
-                try:
-                    item = opt_gen.send(y_gen)
-                except StopIteration as ex:
-                    opt_gen.close()
-                    opt_gen = None
-                    result_dict = ex.args[0]
-                    
-                    x_resample = result_dict["x_resample"]
-                    y_pred = result_dict["y_pred"]
-                    gen_index = result_dict["gen_index"]
-                    x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
+                result = x_gen
 
-                    break
-                
+        else:
+            y_gen = completed_evals[1]
+            try:
+                item = opt_gen.send(y_gen)
+            except StopIteration as ex:
+                self.opt_gen.close()
+                self.opt_gen = None
 
-        return result_dict
+                result_dict = ex.args[0]
+
+                x_resample = result_dict["x_resample"]
+                y_pred = result_dict["y_pred"]
+                gen_index = result_dict["gen_index"]
+                x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
+
+                for i in range(x_resample.shape[0]):
+                    self.reqs.append(
+                        EvalRequest(x_resample[i, :], y_pred[i], self.epoch_index)
+                    )
+
+                result = OptResults(x_resample, y_pred, gen_index, x_sm, y_sm)
+            else:
+                x_gen = item
+                for i in range(x_gen.shape[0]):
+                    self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
+                result = x_gen
+
+        return result
 
     def get_best_evals(self, feasible=True):
         if self.x is not None:
@@ -802,7 +833,7 @@ class DistOptimizer:
                 else:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
 
-    def epoch(self, epoch):
+    def run_epoch(self):
 
         if self.controller is None:
             raise RuntimeError(
@@ -810,19 +841,26 @@ class DistOptimizer:
             )
 
         controller = self.controller
-        wait_evals = False
-        wait_evals_count = None
-        next_epoch = False
+        next_epoch = self.epoch_count > 0
         epoch = self.epoch_count + self.start_epoch
         task_ids = []
+        eval_count = 0
+        saved_eval_count = 0
         gen = None
+        run_optimization = self.epoch_count < self.n_epochs
 
-        while(len(task_ids) > 0) or has_requests:
-        
+        has_requests = False
+        for problem_id in self.problem_ids:
+            has_requests = (
+                has_requests or self.optimizer_dict[problem_id].has_requests()
+            )
+
+        while (len(task_ids) > 0) or has_requests:
+
             controller.process()
 
             if (controller.time_limit is not None) and (
-                    time.time() - controller.start_time
+                time.time() - controller.start_time
             ) >= controller.time_limit:
                 break
 
@@ -878,7 +916,10 @@ class DistOptimizer:
                             self.storage_dict[problem_id].append(entry)
                         else:
                             entry = self.optimizer_dict[problem_id].complete_request(
-                                eval_x, rres[problem_id], pred=eval_pred, epoch=eval_epoch
+                                eval_x,
+                                rres[problem_id],
+                                pred=eval_pred,
+                                epoch=eval_epoch,
                             )
                             self.storage_dict[problem_id].append(entry)
                         prms = list(zip(self.param_names, list(eval_x.T)))
@@ -888,7 +929,9 @@ class DistOptimizer:
                             self.feature_names is not None
                             and self.constraint_names is not None
                         ):
-                            lres = list(zip(self.objective_names, rres[problem_id][0].T))
+                            lres = list(
+                                zip(self.objective_names, rres[problem_id][0].T)
+                            )
                             lftrs = [
                                 dict(zip(rres[problem_id][1].dtype.names, x))
                                 for x in rres[problem_id][1]
@@ -900,7 +943,9 @@ class DistOptimizer:
                                 f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}"
                             )
                         elif self.feature_names is not None:
-                            lres = list(zip(self.objective_names, rres[problem_id][0].T))
+                            lres = list(
+                                zip(self.objective_names, rres[problem_id][0].T)
+                            )
                             lftrs = [
                                 dict(zip(rres[problem_id][1].dtype.names, x))
                                 for x in rres[problem_id][1]
@@ -909,7 +954,9 @@ class DistOptimizer:
                                 f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs}"
                             )
                         elif self.constraint_names is not None:
-                            lres = list(zip(self.objective_names, rres[problem_id][0].T))
+                            lres = list(
+                                zip(self.objective_names, rres[problem_id][0].T)
+                            )
                             lconstr = list(
                                 zip(self.constraint_names, rres[problem_id][1].T)
                             )
@@ -980,66 +1027,68 @@ class DistOptimizer:
                     for problem_id in self.problem_ids:
                         self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
-            if next_epoch and (len(task_ids) == 0):
+        if next_epoch and (len(task_ids) == 0):
 
-                if self.save and (eval_count > 0) and (saved_eval_count < eval_count):
-                    self.save_evals()
-                    saved_eval_count = eval_count
+            if self.save and (eval_count > 0) and (saved_eval_count < eval_count):
+                self.save_evals()
+                saved_eval_count = eval_count
 
-                for problem_id in self.problem_ids:
-                    if epoch > 1:
-                        completed_epoch_evals = list(
-                            filter(
-                                lambda x: x.epoch == epoch - 1,
-                                self.optimizer_dict[problem_id].completed,
-                            )
+            for problem_id in self.problem_ids:
+                self.optimizer_dict[problem_id].update_evals()
+                if epoch > 1:
+                    completed_epoch_evals = list(
+                        filter(
+                            lambda x: x.epoch == epoch - 1,
+                            self.optimizer_dict[problem_id].completed,
                         )
-                        if len(completed_epoch_evals) > 0:
-                            y_completed = np.vstack(
-                                [x.objectives for x in completed_epoch_evals]
-                            )
-                            pred_completed = np.vstack(
-                                [x.prediction for x in completed_epoch_evals]
-                            )
-                            n_objectives = y_completed.shape[1]
-                            mae = []
-                            for i in range(n_objectives):
-                                y_i = y_completed[:, i]
-                                pred_i = pred_completed[:, i]
-                                mae.append(
-                                    np.mean(
-                                        np.abs(y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)])
-                                    )
+                    )
+                    if len(completed_epoch_evals) > 0:
+                        y_completed = np.vstack(
+                            [x.objectives for x in completed_epoch_evals]
+                        )
+                        pred_completed = np.vstack(
+                            [x.prediction for x in completed_epoch_evals]
+                        )
+                        n_objectives = y_completed.shape[1]
+                        mae = []
+                        for i in range(n_objectives):
+                            y_i = y_completed[:, i]
+                            pred_i = pred_completed[:, i]
+                            mae.append(
+                                np.mean(
+                                    np.abs(y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)])
                                 )
-                            logger.info(
-                                f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
-                            )
-                    ## TODO: clarify "next epoch" logic
-                    if epoch > 0 and (epoch_count < self.n_epochs):
-                        logger.info(
-                            f"performing optimization epoch {epoch} for problem {problem_id} ..."
-                        )
-                        x_sm, y_sm = None, None
-                        res = self.optimizer_dict[problem_id].epoch(epoch)
-                        has_requests = (
-                            has_requests or self.optimizer_dict[problem_id].has_requests()
-                        )
-                        if self.save and self.save_surrogate_evals_:
-                            gen_index = res["gen_index"]
-                            x_sm, y_sm = res["x_sm"], res["y_sm"]
-                            self.save_surrogate_evals(
-                                problem_id, epoch, gen_index, x_sm, y_sm
-                            )
-                        if self.save and self.save_optimizer_params_:
-                            optimizer = res["optimizer"]
-                            self.save_optimizer_params(
-                                problem_id, epoch, optimizer.name, optimizer.opt_params
                             )
                         logger.info(
-                            f"completed optimization epoch {epoch} for problem {problem_id}."
+                            f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
                         )
 
-                    
+                if epoch > 0 and run_optimization:
+                    logger.info(
+                        f"performing optimization epoch {epoch} for problem {problem_id} ..."
+                    )
+                    x_sm, y_sm = None, None
+                    res = self.optimizer_dict[problem_id].update_epoch()
+                    print(f"res = {res}")
+                    if self.save and self.save_surrogate_evals_:
+                        gen_index = res["gen_index"]
+                        x_sm, y_sm = res["x_sm"], res["y_sm"]
+                        self.save_surrogate_evals(
+                            problem_id, epoch, gen_index, x_sm, y_sm
+                        )
+                    if self.save and self.save_optimizer_params_:
+                        optimizer = res["optimizer"]
+                        self.save_optimizer_params(
+                            problem_id, epoch, optimizer.name, optimizer.opt_params
+                        )
+                    logger.info(
+                        f"completed optimization epoch {epoch} for problem {problem_id}."
+                    )
+
+            self.epoch_count = self.epoch_count + 1
+            return self.epoch_count
+
+
 def h5_get_group(h, groupname):
     if groupname in h.keys():
         g = h[groupname]
@@ -1792,7 +1841,7 @@ def dopt_init(
     dopt = DistOptimizer(**dopt_params, verbose=verbose)
     if init_strategy:
         dopt.init_strategy()
-    dopt_dict[dopt.opt_id] = sopt
+    dopt_dict[dopt.opt_id] = dopt
     return dopt
 
 
@@ -1811,14 +1860,8 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     )
     logger.info(f"Optimizing for {dopt.n_epochs} epochs...")
     start_epoch = dopt.start_epoch
-    epoch_count = 0
-    while epoch_count < dopt.n_epochs:
-
-        epoch = epoch_count + start_epoch
-        ## TODO: clarify "next epoch" logic
-        dopt.epoch(epoch)
-        
-        epoch_count += 1
+    while dopt.epoch_count < dopt.n_epochs:
+        dopt.run_epoch()
 
 
 def dopt_work(worker, dopt_params, verbose=False, debug=False):
@@ -1869,7 +1912,7 @@ def run(
             time_limit=time_limit,
         )
         opt_id = dopt_params["opt_id"]
-        sopt = dopt_dict[opt_id]
+        dopt = dopt_dict[opt_id]
         dopt.print_best()
         return dopt.get_best(
             feasible=feasible,

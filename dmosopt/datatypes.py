@@ -66,8 +66,8 @@ OptHistory = namedtuple(
     ],
 )
 
-EpochResults = namedtuple(
-    "EpochResults",
+OptResults = namedtuple(
+    "OptResults",
     [
         "best_x",
         "best_y",
@@ -76,7 +76,6 @@ EpochResults = namedtuple(
         "y",
     ],
 )
-
 
 
 class OptProblem(object):
