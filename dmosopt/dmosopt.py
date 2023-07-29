@@ -7,7 +7,7 @@ import numpy as np
 from numpy.random import default_rng
 import distwq
 import dmosopt.MOASMO as opt
-from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry, EvalRequest, OptResults
+from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry, EvalRequest, EpochResults, GenerationResults, StrategyState
 from dmosopt.termination import MultiObjectiveStdTermination
 
 logger = logging.getLogger("dmosopt")
@@ -155,6 +155,9 @@ class DistOptStrategy:
         self.completed.append(entry)
         return entry
 
+    def has_completed(self):
+        return len(self.completed) > 0
+    
     def update_evals(self):
 
         result = None
@@ -233,15 +236,21 @@ class DistOptStrategy:
             logger=self.logger,
         )
 
+        
     def update_epoch(self, resample=False):
 
+        assert self.opt_gen is not None, "Epoch not initialized"
+        
+        return_state = None
+        return_value = None
+        x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
         completed_evals = self.update_evals()
 
-        result = None
-        x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
-        ## TODO: differentiate between whether we need to wait for more evals to be completed,
-        ## and whether there are no more outstanding requests
         if completed_evals is None:
+
+            if self.has_requests():
+                return_state = StrategyState.WaitingRequests
+                return return_state, return_value
             try:
                 item = next(self.opt_gen)
             except StopIteration as ex:
@@ -255,18 +264,21 @@ class DistOptStrategy:
                 gen_index = result_dict["gen_index"]
                 x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
 
-                for i in range(x_resample.shape[0]):
-                    self.reqs.append(
-                        EvalRequest(x_resample[i, :], y_pred[i], self.epoch_index)
-                    )
+                if resample:
+                    for i in range(x_resample.shape[0]):
+                        self.reqs.append(
+                            EvalRequest(x_resample[i, :], y_pred[i], self.epoch_index)
+                        )
 
-                result = OptResults(x_resample, y_pred, gen_index, x_sm, y_sm)
+                return_state = StrategyState.CompletedEpoch
+                return_value = EpochResults(x_resample, y_pred, gen_index, x_sm, y_sm)
 
             else:
                 x_gen = item
                 for i in range(x_gen.shape[0]):
                     self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
-                result = x_gen
+                return_state = StrategyState.EnqueuedRequests
+                return_value = x_gen
 
         else:
             y_gen = completed_evals[1]
@@ -278,24 +290,21 @@ class DistOptStrategy:
 
                 result_dict = ex.args[0]
 
-                x_resample = result_dict["x_resample"]
-                y_pred = result_dict["y_pred"]
+                best_x = result_dict["best_x"]
+                best_y = result_dict["best_y"]
                 gen_index = result_dict["gen_index"]
-                x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
+                x, y = result_dict["x"], result_dict["y"]
 
-                for i in range(x_resample.shape[0]):
-                    self.reqs.append(
-                        EvalRequest(x_resample[i, :], y_pred[i], self.epoch_index)
-                    )
-
-                result = OptResults(x_resample, y_pred, gen_index, x_sm, y_sm)
+                return_state = StrategyState.CompletedGeneration
+                return_value = GenerationResults(best_x, best_y, gen_index, x, y)
             else:
                 x_gen = item
                 for i in range(x_gen.shape[0]):
                     self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
-                result = x_gen
+                return_state = StrategyState.EnqueuedRequests
+                return_value = x_gen
 
-        return result
+        return return_state, return_value
 
     def get_best_evals(self, feasible=True):
         if self.x is not None:
@@ -600,7 +609,7 @@ class DistOptimizer:
                     self.file_path,
                 )
 
-    def init_strategy(self):
+    def initialize_strategy(self):
         opt_prob = OptProblem(
             self.param_names,
             self.objective_names,
@@ -841,14 +850,19 @@ class DistOptimizer:
             )
 
         controller = self.controller
-        next_epoch = self.epoch_count > 0
+        next_phase = False
         epoch = self.epoch_count + self.start_epoch
         task_ids = []
         eval_count = 0
         saved_eval_count = 0
         gen = None
-        run_optimization = self.epoch_count < self.n_epochs
+        advance_epoch = self.epoch_count < self.n_epochs
 
+        
+        for problem_id in self.problem_ids:
+            self.optimizer_dict[problem_id].initialize_epoch(epoch)
+            self.optimizer_dict[problem_id].update_epoch()
+        
         has_requests = False
         for problem_id in self.problem_ids:
             has_requests = (
@@ -988,13 +1002,13 @@ class DistOptimizer:
 
             task_args = []
             task_reqs = []
-            while not next_epoch:
+            while not next_phase:
                 eval_req_dict = {}
                 eval_x_dict = {}
                 for problem_id in self.problem_ids:
                     eval_req = self.optimizer_dict[problem_id].get_next_request()
                     if eval_req is None:
-                        next_epoch = True
+                        next_phase = True
                         has_requests = False
                         break
                     else:
@@ -1002,7 +1016,7 @@ class DistOptimizer:
                         eval_req_dict[problem_id] = eval_req
                         eval_x_dict[problem_id] = eval_req.parameters
 
-                if next_epoch:
+                if next_phase:
                     break
                 else:
                     task_args.append(
@@ -1027,14 +1041,20 @@ class DistOptimizer:
                     for problem_id in self.problem_ids:
                         self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
-        if next_epoch and (len(task_ids) == 0):
+        if next_phase and (len(task_ids) == 0):
 
             if self.save and (eval_count > 0) and (saved_eval_count < eval_count):
                 self.save_evals()
                 saved_eval_count = eval_count
 
             for problem_id in self.problem_ids:
-                self.optimizer_dict[problem_id].update_evals()
+
+
+                ## Have we completed the evaluations for an epoch or a generation
+                ## TODO
+                
+                
+                ## Compute prediction accuracy of completed evaluations
                 if epoch > 1:
                     completed_epoch_evals = list(
                         filter(
@@ -1062,13 +1082,14 @@ class DistOptimizer:
                         logger.info(
                             f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
                         )
-
-                if epoch > 0 and run_optimization:
-                    logger.info(
-                        f"performing optimization epoch {epoch} for problem {problem_id} ..."
-                    )
-                    x_sm, y_sm = None, None
+                        
+                if epoch == 0:
+                    
                     res = self.optimizer_dict[problem_id].update_epoch()
+                    
+                elif epoch > 0 and advance_epoch:
+                    x_sm, y_sm = None, None
+                    res = self.optimizer_dict[problem_id].update_epoch(resample=True)
                     print(f"res = {res}")
                     if self.save and self.save_surrogate_evals_:
                         gen_index = res["gen_index"]
@@ -1081,10 +1102,8 @@ class DistOptimizer:
                         self.save_optimizer_params(
                             problem_id, epoch, optimizer.name, optimizer.opt_params
                         )
-                    logger.info(
-                        f"completed optimization epoch {epoch} for problem {problem_id}."
-                    )
-
+                    
+                    
             self.epoch_count = self.epoch_count + 1
             return self.epoch_count
 
@@ -1781,7 +1800,7 @@ def eval_obj_fun_mp(
 
 
 def dopt_init(
-    dopt_params, worker=None, nprocs_per_worker=None, verbose=False, init_strategy=False
+    dopt_params, worker=None, nprocs_per_worker=None, verbose=False, initialize_strategy=False
 ):
     objfun = None
     objfun_module = dopt_params.get("obj_fun_module", "__main__")
@@ -1839,8 +1858,8 @@ def dopt_init(
                 )
 
     dopt = DistOptimizer(**dopt_params, verbose=verbose)
-    if init_strategy:
-        dopt.init_strategy()
+    if initialize_strategy:
+        dopt.initialize_strategy()
     dopt_dict[dopt.opt_id] = dopt
     return dopt
 
@@ -1856,7 +1875,7 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
         dopt_params,
         nprocs_per_worker=nprocs_per_worker,
         verbose=verbose,
-        init_strategy=True,
+        initialize_strategy=True,
     )
     logger.info(f"Optimizing for {dopt.n_epochs} epochs...")
     start_epoch = dopt.start_epoch
@@ -1868,7 +1887,7 @@ def dopt_work(worker, dopt_params, verbose=False, debug=False):
     """Worker for distributed surrogate optimization."""
     if worker.worker_id > 1 and (not debug):
         verbose = False
-    dopt_init(dopt_params, worker=worker, verbose=verbose, init_strategy=False)
+    dopt_init(dopt_params, worker=worker, verbose=verbose, initialize_strategy=False)
 
 
 def eval_fun(opt_id, *args):

@@ -6,10 +6,10 @@ from numpy.random import default_rng
 from typing import Any, Union, Dict, List, Tuple, Optional
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, model, sa, sampling
 from dmosopt.feasibility import LogisticFeasibilityModel
-from dmosopt.datatypes import OptHistory, OptResults
+from dmosopt.datatypes import OptHistory, EpochResults
 
 
-def optimization(
+def optimize(
     num_generations,
     optimizer,
     model,
@@ -110,7 +110,7 @@ def optimization(
     y = np.vstack([y] + y_new)
     bestx, besty = optimizer.population_objectives
 
-    results = OptResults(bestx, besty, gen_index, x, y)
+    results = EpochResults(bestx, besty, gen_index, x, y)
 
     return results
 
@@ -318,7 +318,7 @@ def epoch(
     print(f"before opt_gen")
     sys.stdout.flush()
 
-    opt_gen = optimization(
+    opt_gen = optimize(
         num_generations,
         optimizer,
         sm,
@@ -355,25 +355,37 @@ def epoch(
             opt_gen.close()
             opt_gen = None
             res = ex.args[0]
-            bestx_sm = res.best_x
-            besty_sm = res.best_y
+            best_x = res.best_x
+            best_y = res.best_y
             gen_index = res.gen_index
-            x_sm = res.x
-            y_sm = res.y
+            x = res.x
+            y = res.y
             break
 
-    D = MOEA.crowding_distance(besty_sm)
-    idxr = D.argsort()[::-1][:N_resample]
-    x_resample = bestx_sm[idxr, :]
-    y_pred = besty_sm[idxr, :]
-    return_dict = {
-        "x_resample": x_resample,
-        "y_pred": y_pred,
-        "gen_index": gen_index,
-        "x_sm": x_sm,
-        "y_sm": y_sm,
-        "optimizer": optimizer,
-    }
+    if surrogate_method is not None:
+        D = MOEA.crowding_distance(best_y)
+        idxr = D.argsort()[::-1][:N_resample]
+        x_resample = best_x[idxr, :]
+        y_pred = best_y[idxr, :]
+        
+        return_dict = {
+            "x_resample": x_resample,
+            "y_pred": y_pred,
+            "gen_index": gen_index,
+            "x_sm": x,
+            "y_sm": y,
+            "optimizer": optimizer,
+        }
+    else:
+        return_dict = {
+            "best_x": best_x,
+            "best_y": best_y,
+            "gen_index": gen_index,
+            "x": x,
+            "y": y,
+            "optimizer": optimizer,
+        }
+        
 
     return return_dict
 

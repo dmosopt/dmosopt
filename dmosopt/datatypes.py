@@ -2,7 +2,7 @@ import os, sys, logging, pprint
 from functools import partial
 from collections import namedtuple
 import numpy as np
-
+from enum import IntEnum
 
 class Struct(object):
     def __init__(self, **items):
@@ -24,6 +24,14 @@ class Struct(object):
         return f"<Struct>"
 
 
+class StrategyState(IntEnum):
+    EnqueuedRequests = 1
+    WaitingRequests = 2
+    CompletedEpoch = 3
+    CompletedGeneration = 4
+
+
+    
 ParamSpec = namedtuple(
     "ParamSpec",
     [
@@ -66,8 +74,19 @@ OptHistory = namedtuple(
     ],
 )
 
-OptResults = namedtuple(
-    "OptResults",
+EpochResults = namedtuple(
+    "EpochResults",
+    [
+        "best_x",
+        "best_y",
+        "gen_index",
+        "x",
+        "y",
+    ],
+)
+
+GenerationResults = namedtuple(
+    "GenerationResults",
     [
         "best_x",
         "best_y",
