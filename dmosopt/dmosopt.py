@@ -7,7 +7,15 @@ import numpy as np
 from numpy.random import default_rng
 import distwq
 import dmosopt.MOASMO as opt
-from dmosopt.datatypes import OptProblem, ParamSpec, EvalEntry, EvalRequest, EpochResults, GenerationResults, StrategyState
+from dmosopt.datatypes import (
+    OptProblem,
+    ParamSpec,
+    EvalEntry,
+    EvalRequest,
+    EpochResults,
+    GenerationResults,
+    StrategyState,
+)
 from dmosopt.termination import MultiObjectiveStdTermination
 
 logger = logging.getLogger("dmosopt")
@@ -157,10 +165,10 @@ class DistOptStrategy:
 
     def has_completed(self):
         return len(self.completed) > 0
-    
-    def update_evals(self):
 
+    def _update_evals(self):
         result = None
+
         if len(self.completed) > 0 and not self.has_requests():
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
@@ -198,7 +206,6 @@ class DistOptStrategy:
         return result
 
     def initialize_epoch(self, epoch_index):
-
         assert (
             self.opt_gen == None
         ), "Optimization generator is active in DistOptStrategy"
@@ -236,21 +243,18 @@ class DistOptStrategy:
             logger=self.logger,
         )
 
-        
     def update_epoch(self, resample=False):
-
         assert self.opt_gen is not None, "Epoch not initialized"
-        
+
         return_state = None
         return_value = None
         x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
-        completed_evals = self.update_evals()
+        completed_evals = self._update_evals()
 
         if completed_evals is None:
-
             if self.has_requests():
                 return_state = StrategyState.WaitingRequests
-                return return_state, return_value
+                return return_state, return_value, completed_evals
             try:
                 item = next(self.opt_gen)
             except StopIteration as ex:
@@ -304,7 +308,7 @@ class DistOptStrategy:
                 return_state = StrategyState.EnqueuedRequests
                 return_value = x_gen
 
-        return return_state, return_value
+        return return_state, return_value, completed_evals
 
     def get_best_evals(self, feasible=True):
         if self.x is not None:
@@ -842,35 +846,20 @@ class DistOptimizer:
                 else:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
 
-    def run_epoch(self):
-
-        if self.controller is None:
-            raise RuntimeError(
-                "DistOptimizer: method epoch cannot be executed when controller is not set."
-            )
-
-        controller = self.controller
-        next_phase = False
-        epoch = self.epoch_count + self.start_epoch
-        task_ids = []
+    def _process_requests(self):
         eval_count = 0
-        saved_eval_count = 0
-        gen = None
-        advance_epoch = self.epoch_count < self.n_epochs
+        task_ids = []
 
-        
-        for problem_id in self.problem_ids:
-            self.optimizer_dict[problem_id].initialize_epoch(epoch)
-            self.optimizer_dict[problem_id].update_epoch()
-        
         has_requests = False
         for problem_id in self.problem_ids:
+            if not self.optimizer_dict[problem_id].has_requests():
+                self.optimizer_dict[problem_id].update_epoch()
             has_requests = (
                 has_requests or self.optimizer_dict[problem_id].has_requests()
             )
 
+        next_phase = False
         while (len(task_ids) > 0) or has_requests:
-
             controller.process()
 
             if (controller.time_limit is not None) and (
@@ -881,7 +870,6 @@ class DistOptimizer:
             if len(task_ids) > 0:
                 rets = controller.probe_all_next_results()
                 for ret in rets:
-
                     task_id, res = ret
 
                     if self.reduce_fun is None:
@@ -1041,71 +1029,86 @@ class DistOptimizer:
                     for problem_id in self.problem_ids:
                         self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
-        if next_phase and (len(task_ids) == 0):
+        assert len(task_ids) == 0
+
+    def run_epoch(self):
+        if self.controller is None:
+            raise RuntimeError(
+                "DistOptimizer: method epoch cannot be executed when controller is not set."
+            )
+
+        controller = self.controller
+        epoch = self.epoch_count + self.start_epoch
+        saved_eval_count = 0
+        gen = None
+        advance_epoch = self.epoch_count < self.n_epochs
+        completed_epoch = False
+
+        for problem_id in self.problem_ids:
+            self.optimizer_dict[problem_id].initialize_epoch(epoch)
+
+        while True:
+            eval_count = self._process_requests(self)
 
             if self.save and (eval_count > 0) and (saved_eval_count < eval_count):
                 self.save_evals()
                 saved_eval_count = eval_count
 
             for problem_id in self.problem_ids:
-
-
                 ## Have we completed the evaluations for an epoch or a generation
-                ## TODO
-                
-                
-                ## Compute prediction accuracy of completed evaluations
-                if epoch > 1:
-                    completed_epoch_evals = list(
-                        filter(
-                            lambda x: x.epoch == epoch - 1,
-                            self.optimizer_dict[problem_id].completed,
+                strategy_state, strategy_value, completed_evals = self.optimizer_dict[
+                    problem_id
+                ].update_epoch(resample=(epoch > 0) and advance_epoch)
+                completed_epoch = stategy_state == StrategyState.CompletedEpoch
+
+                if completed_epoch:
+                    res = strategy_value
+
+                    ## Compute prediction accuracy of completed evaluations
+                    if epoch > 1:
+                        completed_epoch_evals = list(
+                            filter(lambda x: x.epoch == epoch - 1, completed_evals)
                         )
-                    )
-                    if len(completed_epoch_evals) > 0:
-                        y_completed = np.vstack(
-                            [x.objectives for x in completed_epoch_evals]
-                        )
-                        pred_completed = np.vstack(
-                            [x.prediction for x in completed_epoch_evals]
-                        )
-                        n_objectives = y_completed.shape[1]
-                        mae = []
-                        for i in range(n_objectives):
-                            y_i = y_completed[:, i]
-                            pred_i = pred_completed[:, i]
-                            mae.append(
-                                np.mean(
-                                    np.abs(y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)])
-                                )
+                        if len(completed_epoch_evals) > 0:
+                            y_completed = np.vstack(
+                                [x.objectives for x in completed_epoch_evals]
                             )
-                        logger.info(
-                            f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
-                        )
-                        
-                if epoch == 0:
-                    
-                    res = self.optimizer_dict[problem_id].update_epoch()
-                    
-                elif epoch > 0 and advance_epoch:
-                    x_sm, y_sm = None, None
-                    res = self.optimizer_dict[problem_id].update_epoch(resample=True)
-                    print(f"res = {res}")
-                    if self.save and self.save_surrogate_evals_:
-                        gen_index = res["gen_index"]
-                        x_sm, y_sm = res["x_sm"], res["y_sm"]
-                        self.save_surrogate_evals(
-                            problem_id, epoch, gen_index, x_sm, y_sm
-                        )
-                    if self.save and self.save_optimizer_params_:
-                        optimizer = res["optimizer"]
-                        self.save_optimizer_params(
-                            problem_id, epoch, optimizer.name, optimizer.opt_params
-                        )
-                    
-                    
-            self.epoch_count = self.epoch_count + 1
-            return self.epoch_count
+                            pred_completed = np.vstack(
+                                [x.prediction for x in completed_epoch_evals]
+                            )
+                            n_objectives = y_completed.shape[1]
+                            mae = []
+                            for i in range(n_objectives):
+                                y_i = y_completed[:, i]
+                                pred_i = pred_completed[:, i]
+                                mae.append(
+                                    np.mean(
+                                        np.abs(
+                                            y_i[~np.isnan(y_i)] - pred_i[~np.isnan(y_i)]
+                                        )
+                                    )
+                                )
+                            logger.info(
+                                f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
+                            )
+
+                    if epoch > 0 and advance_epoch:
+                        x_sm, y_sm = None, None
+                        if self.save and self.save_surrogate_evals_:
+                            gen_index = res["gen_index"]
+                            x_sm, y_sm = res["x_sm"], res["y_sm"]
+                            self.save_surrogate_evals(
+                                problem_id, epoch, gen_index, x_sm, y_sm
+                            )
+                        if self.save and self.save_optimizer_params_:
+                            optimizer = res["optimizer"]
+                            self.save_optimizer_params(
+                                problem_id, epoch, optimizer.name, optimizer.opt_params
+                            )
+                    break
+
+        self.epoch_count = self.epoch_count + 1
+        return self.epoch_count
 
 
 def h5_get_group(h, groupname):
@@ -1142,7 +1145,6 @@ def h5_init_types(
     problem_parameters,
     spec,
 ):
-
     opt_grp = h5_get_group(f, opt_id)
 
     objective_keys = set(objective_names)
@@ -1565,7 +1567,6 @@ def save_to_h5(
     parameters_name_dict = {idx: parm for parm, idx in parameters_idx_dict.items()}
 
     for problem_id in problem_ids:
-
         (
             prob_evals_epoch,
             prob_evals_x,
@@ -1800,7 +1801,11 @@ def eval_obj_fun_mp(
 
 
 def dopt_init(
-    dopt_params, worker=None, nprocs_per_worker=None, verbose=False, initialize_strategy=False
+    dopt_params,
+    worker=None,
+    nprocs_per_worker=None,
+    verbose=False,
+    initialize_strategy=False,
 ):
     objfun = None
     objfun_module = dopt_params.get("obj_fun_module", "__main__")

@@ -83,7 +83,6 @@ class SMPSO(MOEA):
         local_random: Optional[np.random.Generator] = None,
         **params,
     ):
-
         nInput = self.nInput
         nOutput = self.nOutput
         popsize = self.popsize
@@ -134,7 +133,6 @@ class SMPSO(MOEA):
         return state
 
     def generate_strategy(self, **params):
-
         popsize = self.popsize
         swarm_size = self.opt_params.swarm_size
         mutation_rate = self.opt_params.mutation_rate
@@ -185,7 +183,6 @@ class SMPSO(MOEA):
         state: Dict[Any, Any],
         **params,
     ):
-
         local_random = self.local_random
 
         population_parm = self.state.population_parm
@@ -226,7 +223,6 @@ class SMPSO(MOEA):
             )
 
     def get_population_strategy(self):
-
         popsize = self.popsize
         nInput = self.nInput
         nOutput = self.nOutput
@@ -254,7 +250,6 @@ def update_position(parameters, velocity, xlb, xub):
 
 
 def velocity_vector(local_random, position, velocity, archive, crowding, xlb, xub):
-
     r1 = local_random.uniform(low=0.0, high=1.0, size=1)[0]
     r2 = local_random.uniform(low=0.0, high=1.0, size=1)[0]
     w = local_random.uniform(low=0.1, high=0.5, size=1)[0]

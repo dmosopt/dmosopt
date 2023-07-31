@@ -14,7 +14,6 @@ else:
 
 class SA_FAST:
     def __init__(self, lo_bounds, hi_bounds, param_names, output_names, logger=None):
-
         if not _has_salib:
             raise RuntimeError("SA_FAST requires the SALib library to be installed.")
 
@@ -32,7 +31,6 @@ class SA_FAST:
         return param_values
 
     def analyze(self, model, num_samples=10000):
-
         Y = model.evaluate(self.sample(num_samples=num_samples))
         Sis = list(
             [
@@ -52,7 +50,6 @@ class SA_FAST:
 
 class SA_DGSM:
     def __init__(self, lo_bounds, hi_bounds, param_names, output_names, logger=None):
-
         if not _has_salib:
             raise RuntimeError("SA_DGSM requires the SALib library to be installed.")
 
@@ -70,7 +67,6 @@ class SA_DGSM:
         return param_values
 
     def analyze(self, model, num_samples=10000):
-
         param_values = self.sample(num_samples=num_samples)
         Y = model.evaluate(param_values)
         Sis = list(

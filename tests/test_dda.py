@@ -27,7 +27,6 @@ def comparison_matrix(y, output=None):
 
 
 def dominance_degree_matrix(Y):
-
     n, d = Y.shape
 
     D = np.zeros((n, n), dtype=np.intp)

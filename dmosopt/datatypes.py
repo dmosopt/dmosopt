@@ -4,6 +4,7 @@ from collections import namedtuple
 import numpy as np
 from enum import IntEnum
 
+
 class Struct(object):
     def __init__(self, **items):
         self.__dict__.update(items)
@@ -31,7 +32,6 @@ class StrategyState(IntEnum):
     CompletedGeneration = 4
 
 
-    
 ParamSpec = namedtuple(
     "ParamSpec",
     [
@@ -98,7 +98,6 @@ GenerationResults = namedtuple(
 
 
 class OptProblem(object):
-
     __slots__ = (
         "dim",
         "lb",
@@ -125,7 +124,6 @@ class OptProblem(object):
         eval_fun,
         logger=None,
     ):
-
         self.dim = len(spec.bound1)
         assert self.dim > 0
         self.lb = spec.bound1

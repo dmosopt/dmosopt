@@ -367,7 +367,7 @@ def epoch(
         idxr = D.argsort()[::-1][:N_resample]
         x_resample = best_x[idxr, :]
         y_pred = best_y[idxr, :]
-        
+
         return_dict = {
             "x_resample": x_resample,
             "y_pred": y_pred,
@@ -385,7 +385,6 @@ def epoch(
             "y": y,
             "optimizer": optimizer,
         }
-        
 
     return return_dict
 
@@ -715,7 +714,6 @@ def analyze_sensitivity(
     di_max=20.0,
     logger=None,
 ):
-
     di_mutation = None
     di_crossover = None
     if sensitivity_method is not None:
@@ -775,7 +773,6 @@ def get_best(
     return_feasible=False,
     delete_duplicates=True,
 ):
-
     xtmp = x
     ytmp = y
 

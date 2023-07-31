@@ -64,7 +64,6 @@ def at_least_2d_array(x, extend_as="row", return_if_reshaped=False):
 
 
 def derive_ideal_and_nadir_from_pf(pf, ideal=None, nadir=None):
-
     # try to derive ideal and nadir if not already set and pf provided
     if pf is not None:
         if ideal is None:
@@ -83,7 +82,6 @@ class Indicator(PreNormalization):
         self.default_if_empty = 0.0
 
     def do(self, F, *args, **kwargs):
-
         # if it is a 1d array
         if F.ndim == 1:
             F = F[None, :]
@@ -114,7 +112,6 @@ class DistanceIndicator(Indicator):
         norm_by_dist=False,
         **kwargs
     ):
-
         # the pareto front if necessary to calculate the indicator
         pf = at_least_2d_array(pf, extend_as="row")
         ideal, nadir = derive_ideal_and_nadir_from_pf(pf, ideal=ideal, nadir=nadir)
@@ -126,7 +123,6 @@ class DistanceIndicator(Indicator):
         self.pf = self.normalization.forward(pf)
 
     def _do(self, F):
-
         # a factor to normalize the distances by (1.0 disables that by default)
         norm = 1.0
 
@@ -157,7 +153,6 @@ class Hypervolume(Indicator):
         nadir=None,
         **kwargs
     ):
-
         pf = at_least_2d_array(pf, extend_as="row")
         ideal, nadir = derive_ideal_and_nadir_from_pf(pf, ideal=ideal, nadir=nadir)
 
@@ -182,7 +177,6 @@ class Hypervolume(Indicator):
         ), "For Hypervolume a reference point needs to be provided!"
 
     def _do(self, F):
-
         if self.nds:
             rank = dda_non_dominated_sort(F)
             non_dom = np.argwhere(rank == 0).ravel()

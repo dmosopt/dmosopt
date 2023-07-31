@@ -31,7 +31,6 @@ def list_find(f, lst):
 @click.option("--surrogate-method", type=str, default="gpr")
 @click.option("--verbose", "-v", is_flag=True)
 def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
-
     (
         _,
         _,

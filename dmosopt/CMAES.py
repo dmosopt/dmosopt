@@ -159,7 +159,6 @@ class CMAES(MOEA):
         return state
 
     def _select(self, candidates_x, candidates_y, candidates_ps, candidates_inds):
-
         popsize = self.popsize
 
         if candidates_x.shape[0] <= popsize:
@@ -269,7 +268,6 @@ class CMAES(MOEA):
         state: Dict[Any, Any],
         **params,
     ):
-
         """Update the current covariance matrix strategies from the population.
         :param x:
         :param y:
@@ -337,13 +335,11 @@ class CMAES(MOEA):
 
         # Update the internal parameters for successful offspring
         for ind in np.nonzero(chosen)[0]:
-
             is_offspring = candidates_offspring[ind]
             p_idx = candidates_pidxs[ind]
 
             # Only the offspring update the parameter set
             if is_offspring:
-
                 # Update (Success = 1 since it is chosen)
                 psucc[ind] = (1.0 - cp) * psucc[ind] + cp
                 sigma_factors = np.exp((psucc[ind] - ptarg) / (d * (1.0 - ptarg)))
@@ -364,7 +360,6 @@ class CMAES(MOEA):
 
         # Update the entire parameter set for not chosen individuals
         for ind in np.nonzero(not_chosen)[0]:
-
             is_offspring = candidates_offspring[ind]
             p_idx = candidates_pidxs[ind]
 
@@ -406,7 +401,6 @@ class CMAES(MOEA):
         )
 
     def get_population_strategy(self):
-
         population_parm = self.state.parents_x.copy()
         population_obj = self.state.parents_y.copy()
 
@@ -455,7 +449,6 @@ def sortMO(
 
 
 def updateCholesky(A, Ainv, z, psucc, pc, cc, ccov, pthresh):
-
     alpha = None
     if psucc < pthresh:
         pc = (1.0 - cc) * pc + np.sqrt(cc * (2.0 - cc)) * z

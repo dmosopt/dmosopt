@@ -36,7 +36,6 @@ def zdt1_pareto(n_points=100):
 
 
 if __name__ == "__main__":
-
     space = {}
     for i in range(30):
         space["x%d" % (i + 1)] = [0.0, 1.0]
