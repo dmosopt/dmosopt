@@ -6,9 +6,9 @@ name: "Documentation"
 on:
   # Triggers the workflow on push or pull request events but only for the "master" branch
   push:
-    branches: [ "gh-pages" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "gh-pages" ]
+    branches: [ "master" ]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
             
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
-        if: github.ref == 'refs/heads/gh-pages'
+        if: github.ref == 'refs/heads/master'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: docs/_build/html
