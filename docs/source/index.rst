@@ -3,6 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+===================================
 Welcome to dmosopt's documentation!
 ===================================
 
@@ -19,6 +20,7 @@ dmosopt tries to make things easy for you while staying out of your way.
    quickstart
 
 
+==================
 Indices and tables
 ==================
 
