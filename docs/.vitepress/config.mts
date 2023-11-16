@@ -30,6 +30,12 @@ export default defineConfig({
             { text: 'ZDT1', link: '/examples/zdt1' },
           ]
         }
+      ],
+      '/reference/': [
+        {
+          text: 'Reference',
+          link: '/reference/index'
+        }
       ]
     },
 
