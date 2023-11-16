@@ -243,6 +243,8 @@ class DistOptStrategy:
             logger=self.logger,
         )
 
+        next(self.opt_gen)
+
     def update_epoch(self, resample=False):
         assert self.opt_gen is not None, "Epoch not initialized"
 
@@ -263,6 +265,33 @@ class DistOptStrategy:
 
                 result_dict = ex.args[0]
 
+                best_x = result_dict["best_x"]
+                best_y = result_dict["best_y"]
+                gen_index = result_dict["gen_index"]
+                x, y = result_dict["x"], result_dict["y"]
+
+                return_state = StrategyState.CompletedGeneration
+                return_value = GenerationResults(best_x, best_y, gen_index, x, y)
+
+            else:
+                x_gen = item
+                for i in range(x_gen.shape[0]):
+                    self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
+                return_state = StrategyState.EnqueuedRequests
+                return_value = x_gen
+
+        else:
+            x_gen = completed_evals[0]
+            y_gen = completed_evals[1]
+
+            try:
+                item = self.opt_gen.send((x_gen, y_gen))
+            except StopIteration as ex:
+                self.opt_gen.close()
+                self.opt_gen = None
+
+                result_dict = ex.args[0]
+
                 x_resample = result_dict["x_resample"]
                 y_pred = result_dict["y_pred"]
                 gen_index = result_dict["gen_index"]
@@ -276,31 +305,6 @@ class DistOptStrategy:
 
                 return_state = StrategyState.CompletedEpoch
                 return_value = EpochResults(x_resample, y_pred, gen_index, x_sm, y_sm)
-
-            else:
-                x_gen = item
-                for i in range(x_gen.shape[0]):
-                    self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
-                return_state = StrategyState.EnqueuedRequests
-                return_value = x_gen
-
-        else:
-            y_gen = completed_evals[1]
-            try:
-                item = opt_gen.send(y_gen)
-            except StopIteration as ex:
-                self.opt_gen.close()
-                self.opt_gen = None
-
-                result_dict = ex.args[0]
-
-                best_x = result_dict["best_x"]
-                best_y = result_dict["best_y"]
-                gen_index = result_dict["gen_index"]
-                x, y = result_dict["x"], result_dict["y"]
-
-                return_state = StrategyState.CompletedGeneration
-                return_value = GenerationResults(best_x, best_y, gen_index, x, y)
             else:
                 x_gen = item
                 for i in range(x_gen.shape[0]):
@@ -546,6 +550,7 @@ class DistOptimizer:
             di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
             self.optimizer_options["di_mutation"] = di_mutation
 
+        self.epoch_count = 0
         self.start_epoch = 0
         if max_epoch > 0:
             self.start_epoch = max_epoch
@@ -847,28 +852,27 @@ class DistOptimizer:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
 
     def _process_requests(self):
+        saved_eval_count = 0
         eval_count = 0
         task_ids = []
 
         has_requests = False
         for problem_id in self.problem_ids:
-            if not self.optimizer_dict[problem_id].has_requests():
-                self.optimizer_dict[problem_id].update_epoch()
             has_requests = (
                 has_requests or self.optimizer_dict[problem_id].has_requests()
             )
 
         next_phase = False
         while (len(task_ids) > 0) or has_requests:
-            controller.process()
+            self.controller.process()
 
-            if (controller.time_limit is not None) and (
-                time.time() - controller.start_time
-            ) >= controller.time_limit:
+            if (self.controller.time_limit is not None) and (
+                time.time() - self.controller.start_time
+            ) >= self.controller.time_limit:
                 break
 
             if len(task_ids) > 0:
-                rets = controller.probe_all_next_results()
+                rets = self.controller.probe_all_next_results()
                 for ret in rets:
                     task_id, res = ret
 
@@ -942,7 +946,7 @@ class DistOptimizer:
                                 zip(self.constraint_names, rres[problem_id][2].T)
                             )
                             logger.info(
-                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}"
+                                f"problem id {problem_id}: optimization epoch {eval_epoch}: parameters {prms}: {lres} / {lftrs} constr: {lconstr}"
                             )
                         elif self.feature_names is not None:
                             lres = list(
@@ -953,7 +957,7 @@ class DistOptimizer:
                                 for x in rres[problem_id][1]
                             ]
                             logger.info(
-                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / {lftrs}"
+                                f"problem id {problem_id}: optimization epoch {eval_epoch}: parameters {prms}: {lres} / {lftrs}"
                             )
                         elif self.constraint_names is not None:
                             lres = list(
@@ -963,12 +967,12 @@ class DistOptimizer:
                                 zip(self.constraint_names, rres[problem_id][1].T)
                             )
                             logger.info(
-                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres} / constr: {lconstr}"
+                                f"problem id {problem_id}: optimization epoch {eval_epoch}: parameters {prms}: {lres} / constr: {lconstr}"
                             )
                         else:
                             lres = list(zip(self.objective_names, rres[problem_id].T))
                             logger.info(
-                                f"problem id {problem_id}: optimization epoch {epoch}: parameters {prms}: {lres}"
+                                f"problem id {problem_id}: optimization epoch {eval_epoch}: parameters {prms}: {lres}"
                             )
 
                     eval_count += 1
@@ -983,9 +987,9 @@ class DistOptimizer:
                 self.save_evals()
                 saved_eval_count = eval_count
 
-            if (controller.time_limit is not None) and (
-                time.time() - controller.start_time
-            ) >= controller.time_limit:
+            if (self.controller.time_limit is not None) and (
+                time.time() - self.controller.start_time
+            ) >= self.controller.time_limit:
                 break
 
             task_args = []
@@ -1015,13 +1019,13 @@ class DistOptimizer:
                     )
                     task_reqs.append(eval_req_dict)
 
-            if (controller.time_limit is not None) and (
-                time.time() - controller.start_time
-            ) >= controller.time_limit:
+            if (self.controller.time_limit is not None) and (
+                time.time() - self.controller.start_time
+            ) >= self.controller.time_limit:
                 break
 
             if len(task_args) > 0:
-                new_task_ids = controller.submit_multiple(
+                new_task_ids = self.controller.submit_multiple(
                     "eval_fun", module_name="dmosopt.dmosopt", args=task_args
                 )
                 for task_id, eval_req_dict in zip(new_task_ids, task_reqs):
@@ -1030,6 +1034,7 @@ class DistOptimizer:
                         self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
         assert len(task_ids) == 0
+        return eval_count, saved_eval_count
 
     def run_epoch(self):
         if self.controller is None:
@@ -1039,28 +1044,24 @@ class DistOptimizer:
 
         controller = self.controller
         epoch = self.epoch_count + self.start_epoch
-        saved_eval_count = 0
         gen = None
         advance_epoch = self.epoch_count < self.n_epochs
         completed_epoch = False
 
+        eval_count, saved_eval_count = self._process_requests()
+
         for problem_id in self.problem_ids:
             self.optimizer_dict[problem_id].initialize_epoch(epoch)
 
-        while True:
-            eval_count = self._process_requests(self)
-
-            if self.save and (eval_count > 0) and (saved_eval_count < eval_count):
-                self.save_evals()
-                saved_eval_count = eval_count
+        while not completed_epoch:
+            eval_count, saved_eval_count = self._process_requests()
 
             for problem_id in self.problem_ids:
                 ## Have we completed the evaluations for an epoch or a generation
                 strategy_state, strategy_value, completed_evals = self.optimizer_dict[
                     problem_id
                 ].update_epoch(resample=(epoch > 0) and advance_epoch)
-                completed_epoch = stategy_state == StrategyState.CompletedEpoch
-
+                completed_epoch = strategy_state == StrategyState.CompletedEpoch
                 if completed_epoch:
                     res = strategy_value
 
@@ -1105,7 +1106,6 @@ class DistOptimizer:
                             self.save_optimizer_params(
                                 problem_id, epoch, optimizer.name, optimizer.opt_params
                             )
-                    break
 
         self.epoch_count = self.epoch_count + 1
         return self.epoch_count

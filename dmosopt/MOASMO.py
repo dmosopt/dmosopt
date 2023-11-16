@@ -226,6 +226,10 @@ def epoch(
     nOutput = len(objective_names)
 
     N_resample = int(pop * pct)
+
+    if Xinit is None:
+        Xinit, Yinit = yield
+
     x = Xinit.copy().astype(np.float32)
     y = Yinit.copy().astype(np.float32)
     fsbm = None
@@ -315,8 +319,6 @@ def epoch(
         )
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer_name}")
-    print(f"before opt_gen")
-    sys.stdout.flush()
 
     opt_gen = optimize(
         num_generations,
@@ -335,32 +337,38 @@ def epoch(
         **optimizer_kwargs_,
     )
 
-    print(f"opt_gen = {opt_gen}")
-    sys.stdout.flush()
+    try:
+        res = next(opt_gen)
+    except StopIteration as ex:
+        opt_gen.close()
+        opt_gen = None
+        res = ex.args[0]
+        best_x = res.best_x
+        best_y = res.best_y
+        gen_index = res.gen_index
+        x = res.x
+        y = res.y
+    else:
+        while True:
+            x_gen = res
 
-    res = next(opt_gen)
+            if sm is not None:
+                y_gen = sm.evaluate(x_gen)
+            else:
+                _, y_gen = yield x_gen
 
-    while True:
-        x_gen = res
-
-        print(f"sm = {sm}")
-        if sm is not None:
-            y_gen = sm.evaluate(x_gen)
-        else:
-            y_gen = yield x_gen
-
-        try:
-            res = opt_gen.send(y_gen)
-        except StopIteration as ex:
-            opt_gen.close()
-            opt_gen = None
-            res = ex.args[0]
-            best_x = res.best_x
-            best_y = res.best_y
-            gen_index = res.gen_index
-            x = res.x
-            y = res.y
-            break
+            try:
+                res = opt_gen.send(y_gen)
+            except StopIteration as ex:
+                opt_gen.close()
+                opt_gen = None
+                res = ex.args[0]
+                best_x = res.best_x
+                best_y = res.best_y
+                gen_index = res.gen_index
+                x = res.x
+                y = res.y
+                break
 
     if surrogate_method is not None:
         D = MOEA.crowding_distance(best_y)
