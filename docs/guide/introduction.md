@@ -35,7 +35,7 @@ To get started, run `pip install dmosopt`.
 
 ::: info [Continue with the Guide](./run)
 
-To dives into available options and features.
+To dive into available configuration options and features.
 
 :::
 

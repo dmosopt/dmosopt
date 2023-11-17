@@ -10,7 +10,8 @@ export default defineConfig({
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/introduction' },
-      { text: 'Examples', link: '/examples/zdt1' }
+      { text: 'Examples', link: '/examples/zdt1' },
+      { text: 'Reference', link: '/reference/index' }
     ],
 
     sidebar: {
@@ -20,7 +21,11 @@ export default defineConfig({
           items: [
             { text: 'Installation', link: '/guide/installation' },
             { text: 'Introduction', link: '/guide/introduction' },
-            { text: 'Optimization setup', link: '/guide/run' },
+            { text: 'Configuration', link: '/guide/configuration' },
+            { text: 'Optimizers', link: '/guide/optimizers' },
+            { text: 'Surrogates', link: '/guide/surrogates' },
+            { text: 'Samplers', link: '/guide/sampling' },
+            { text: 'Results', link: '/guide/results' },
           ]
         }
       ],
