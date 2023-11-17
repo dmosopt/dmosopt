@@ -8,7 +8,7 @@ In dmosopt, optimizations are specified in terms of Python callables. To get sta
 from dmosopt import dmosopt
 
 def my_objective(x):
-    # method to optimize; must return features for the given configuration
+    # method to optimize; returns objective values for the given configuration
     ...
 
 dmosopt.run({

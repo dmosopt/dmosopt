@@ -11,7 +11,7 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/introduction' },
       { text: 'Examples', link: '/examples/zdt1' },
-      { text: 'Reference', link: '/reference/index' }
+      // { text: 'Reference', link: '/reference/index' }
     ],
 
     sidebar: {
