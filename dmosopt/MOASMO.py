@@ -110,7 +110,7 @@ def optimize(
     y = np.vstack([y] + y_new)
     bestx, besty = optimizer.population_objectives
 
-    results = EpochResults(bestx, besty, gen_index, x, y)
+    results = EpochResults(bestx, besty, gen_index, x, y, optimizer)
 
     return results
 
@@ -232,6 +232,7 @@ def epoch(
 
     x = Xinit.copy().astype(np.float32)
     y = Yinit.copy().astype(np.float32)
+
     fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0.0, axis=1))

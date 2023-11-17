@@ -82,6 +82,7 @@ EpochResults = namedtuple(
         "gen_index",
         "x",
         "y",
+        "optimizer",
     ],
 )
 
@@ -93,6 +94,7 @@ GenerationResults = namedtuple(
         "gen_index",
         "x",
         "y",
+        "optimizer_params",
     ],
 )
 
