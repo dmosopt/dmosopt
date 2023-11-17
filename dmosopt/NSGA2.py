@@ -105,7 +105,6 @@ class NSGA2(MOEA):
         return state
 
     def generate_strategy(self, **params):
-
         popsize = self.popsize
         poolsize = self.opt_params.poolsize
         crossover_prob = self.opt_params.crossover_prob
@@ -200,7 +199,6 @@ class NSGA2(MOEA):
         self.state.rank[:] = rank
 
     def get_population_strategy(self):
-
         pop_x = self.state.population_parm.copy()
         pop_y = self.state.population_obj.copy()
 

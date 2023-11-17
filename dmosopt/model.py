@@ -55,7 +55,6 @@ try:
         preconditioner_size,
         logger=None,
     ):
-
         N = train_x.size(0)
 
         # Find the optimum partition/checkpoint size by decreasing in powers of 2
@@ -108,7 +107,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             if output_dims is None:
                 if inducing_points is None:
                     inducing_points = torch.randn(num_inducing_points, input_dims)
@@ -191,7 +189,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             super().__init__(Q)
 
             self.num_tasks = num_tasks
@@ -243,7 +240,6 @@ try:
             return output
 
         def predict(self, xin):
-
             from torch.utils.data import DataLoader
 
             batch_size = self.batch_size
@@ -285,7 +281,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             if output_dims is None:
                 if inducing_points is None:
                     inducing_points = torch.randn(num_inducing_points, input_dims)
@@ -364,7 +359,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             super().__init__()
 
             self.num_tasks = num_tasks
@@ -412,7 +406,6 @@ try:
             return output
 
         def predict(self, xin):
-
             from torch.utils.data import DataLoader
 
             batch_size = self.batch_size
@@ -517,7 +510,6 @@ try:
             batch_size=None,
             n_devices=1,
         ):
-
             super().__init__(train_x, train_y, likelihood)
             input_dims = train_x.shape[1]
             self.num_tasks = num_tasks
@@ -627,7 +619,6 @@ class MDSPP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "MDSPP_Matern requires the GPyTorch library to be installed."
@@ -891,7 +882,6 @@ class MDSPP_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -920,7 +910,6 @@ class MDGP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "MDGP_Matern requires the GPyTorch library to be installed."
@@ -1183,7 +1172,6 @@ class MDGP_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -1209,7 +1197,6 @@ class MEGP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "MEGP_Matern requires the GPyTorch library to be installed."
@@ -1288,7 +1275,6 @@ class MEGP_Matern:
             checkpoint_size=None,
             preconditioner_size=None,
         ):
-
             if self.use_cuda:
                 train_x = train_x.cuda()
                 train_y = train_y.cuda()
@@ -1416,7 +1402,6 @@ class MEGP_Matern:
         self.sm = gp_model
 
     def predict(self, xin):
-
         from torch.utils.data import TensorDataset, DataLoader
 
         batch_size = self.batch_size
@@ -1466,7 +1451,6 @@ class MEGP_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -1492,7 +1476,6 @@ class EGP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "EGP_Matern requires the GPyTorch library to be installed."
@@ -1567,7 +1550,6 @@ class EGP_Matern:
             checkpoint_size=None,
             preconditioner_size=None,
         ):
-
             gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(
                 noise_prior=gp_noise_prior, batch_shape=batch_shape
             )
@@ -1751,7 +1733,6 @@ class EGP_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -1960,7 +1941,6 @@ class CRV_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2158,7 +2138,6 @@ class SIV_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2359,7 +2338,6 @@ class SPV_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2562,7 +2540,6 @@ class SVGP_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2734,7 +2711,6 @@ class VGP_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2816,7 +2792,6 @@ class GPR_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -3126,7 +3101,6 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
 
         # Loop on complexes (sub-populations)
         for igs in range(ngs):
-
             # Partition the population into complexes (sub-populations)
             k1 = np.int64(np.linspace(0, npg - 1, npg))
             k2 = k1 * ngs + igs
@@ -3135,7 +3109,6 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
 
             # Evolve sub-population igs for nspl steps
             for loop in range(nspl):
-
                 # Select simplex by sampling the complex according to a linear
                 # probability distribution
                 lcs = np.asarray(select_simplex(nps, npg, local_random))

@@ -403,7 +403,6 @@ def remove_worst(
 
 
 def get_duplicates(X, eps=1e-16):
-
     D = cdist(X, X)
     D[np.triu_indices(len(X))] = np.inf
     D[np.isnan(D)] = np.inf

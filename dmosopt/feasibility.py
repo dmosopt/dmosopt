@@ -14,7 +14,6 @@ from sklearn.model_selection import GridSearchCV
 
 class LogisticFeasibilityModel(object):
     def __init__(self, X, C):
-
         N = C.shape[1]
         self.clfs = []
         self.X = X
@@ -38,7 +37,6 @@ class LogisticFeasibilityModel(object):
             self.clfs.append(clf)
 
     def predict(self, x):
-
         ps = []
         for clf in self.clfs:
             if clf is not None:
@@ -52,7 +50,6 @@ class LogisticFeasibilityModel(object):
         return P
 
     def predict_proba(self, x):
-
         probs = []
         for clf in self.clfs:
             if clf is not None:

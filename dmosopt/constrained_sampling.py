@@ -56,9 +56,7 @@ class ParamSpacePoints:
         self.EvoMeth = False
 
         if self.parents_dict is not None:
-
             if len(self.parents_dict["params"]) == self.parents_dict["values"].shape[1]:
-
                 if np.isin(
                     self.param_keys[self.prm_idx_unc],
                     self.parents_dict["params"],
@@ -119,7 +117,6 @@ class ParamSpacePoints:
             raise RuntimeError(f"Unknown method {method}")
 
     def get_children(self):
-
         """
         model: the evaluated model function
         nInput: number of model input
@@ -332,7 +329,6 @@ class ParamSpacePoints:
         self.cons_arr = cons_arr
 
     def generate_constrained(self):
-
         self.lexercons = BoundaryLexer()
         self.parsercons = BoundaryParser()
         cons_bounds = {}
@@ -431,7 +427,6 @@ class ParamSpacePoints:
         return lb, ub
 
     def get_bounds(self, prms, rels):
-
         uncparams = prms
 
         N_constr = uncparams.shape[0]
@@ -448,7 +443,6 @@ class ParamSpacePoints:
         return bnds
 
     def sample_space_cons(self, spcons_bnds):
-
         space_cns_val = {}
         for k, v in spcons_bnds.items():
             space_cns_val[k] = self.get_sample_val(*v, seed=None)

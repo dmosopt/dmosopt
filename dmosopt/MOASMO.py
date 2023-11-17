@@ -3,13 +3,14 @@
 import sys, itertools
 import numpy as np
 from numpy.random import default_rng
+from typing import Any, Union, Dict, List, Tuple, Optional
 from dmosopt import MOEA, NSGA2, AGEMOEA, SMPSO, CMAES, model, sa, sampling
 from dmosopt.feasibility import LogisticFeasibilityModel
-from dmosopt.datatypes import OptHistory
+from dmosopt.datatypes import OptHistory, EpochResults
 
 
-def optimization(
-    gen,
+def optimize(
+    num_generations,
     optimizer,
     model,
     nInput,
@@ -45,7 +46,10 @@ def optimization(
     bounds = np.column_stack((xlb, xub))
 
     x = optimizer.generate_initial(bounds, local_random)
-    y = model.evaluate(x).astype(np.float32)
+    if model is None:
+        y = yield x
+    else:
+        y = model.evaluate(x).astype(np.float32)
 
     x_initial = None
     y_initial = None
@@ -70,7 +74,7 @@ def optimization(
     y_new = []
 
     n_eval = 0
-    it = range(1, gen + 1)
+    it = range(1, num_generations + 1)
     if termination is not None:
         it = itertools.count(1)
     for i in it:
@@ -87,7 +91,12 @@ def optimization(
 
         ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()
-        y_gen = model.evaluate(x_gen)
+
+        if model is None:
+            y_gen = yield x_gen
+        else:
+            y_gen = model.evaluate(x_gen)
+
         optimizer.update(x_gen, y_gen, state_gen)
         count = x_gen.shape[0]
         n_eval += count
@@ -101,7 +110,7 @@ def optimization(
     y = np.vstack([y] + y_new)
     bestx, besty = optimizer.population_objectives
 
-    results = (bestx, besty, gen_index, x, y)
+    results = EpochResults(bestx, besty, gen_index, x, y, optimizer)
 
     return results
 
@@ -173,7 +182,7 @@ def xinit(
 
 
 def epoch(
-    gen,
+    num_generations,
     param_names,
     objective_names,
     xlb,
@@ -206,7 +215,7 @@ def epoch(
     Xinit and Yinit: initial samplers for surrogate model construction
     ### options for the embedded NSGA-II:
         pop: number of population
-        gen: number of generation
+        num_generations: number of generation
         crossover_prob: probability of crossover in each generation
         mutation_prob: probability of mutation in each generation
         di_crossover: distribution index for crossover
@@ -217,8 +226,13 @@ def epoch(
     nOutput = len(objective_names)
 
     N_resample = int(pop * pct)
+
+    if Xinit is None:
+        Xinit, Yinit = yield
+
     x = Xinit.copy().astype(np.float32)
     y = Yinit.copy().astype(np.float32)
+
     fsbm = None
     if C is not None:
         feasible = np.argwhere(np.all(C > 0.0, axis=1))
@@ -233,18 +247,21 @@ def epoch(
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
-    sm = train(
-        nInput,
-        nOutput,
-        xlb,
-        xub,
-        Xinit,
-        Yinit,
-        C,
-        surrogate_method=surrogate_method,
-        surrogate_options=surrogate_options,
-        logger=logger,
-    )
+
+    sm = None
+    if surrogate_method is not None:
+        sm = train(
+            nInput,
+            nOutput,
+            xlb,
+            xub,
+            Xinit,
+            Yinit,
+            C,
+            surrogate_method=surrogate_method,
+            surrogate_options=surrogate_options,
+            logger=logger,
+        )
 
     optimizer_kwargs_ = {
         "sampling_method": "slh",
@@ -304,8 +321,8 @@ def epoch(
     else:
         raise RuntimeError(f"Unknown optimizer {optimizer_name}")
 
-    bestx_sm, besty_sm, gen_index, x_sm, y_sm = optimization(
-        gen,
+    opt_gen = optimize(
+        num_generations,
         optimizer,
         sm,
         nInput,
@@ -321,18 +338,62 @@ def epoch(
         **optimizer_kwargs_,
     )
 
-    D = MOEA.crowding_distance(besty_sm)
-    idxr = D.argsort()[::-1][:N_resample]
-    x_resample = bestx_sm[idxr, :]
-    y_pred = besty_sm[idxr, :]
-    return_dict = {
-        "x_resample": x_resample,
-        "y_pred": y_pred,
-        "gen_index": gen_index,
-        "x_sm": x_sm,
-        "y_sm": y_sm,
-        "optimizer": optimizer,
-    }
+    try:
+        res = next(opt_gen)
+    except StopIteration as ex:
+        opt_gen.close()
+        opt_gen = None
+        res = ex.args[0]
+        best_x = res.best_x
+        best_y = res.best_y
+        gen_index = res.gen_index
+        x = res.x
+        y = res.y
+    else:
+        while True:
+            x_gen = res
+
+            if sm is not None:
+                y_gen = sm.evaluate(x_gen)
+            else:
+                _, y_gen = yield x_gen
+
+            try:
+                res = opt_gen.send(y_gen)
+            except StopIteration as ex:
+                opt_gen.close()
+                opt_gen = None
+                res = ex.args[0]
+                best_x = res.best_x
+                best_y = res.best_y
+                gen_index = res.gen_index
+                x = res.x
+                y = res.y
+                break
+
+    if surrogate_method is not None:
+        D = MOEA.crowding_distance(best_y)
+        idxr = D.argsort()[::-1][:N_resample]
+        x_resample = best_x[idxr, :]
+        y_pred = best_y[idxr, :]
+
+        return_dict = {
+            "x_resample": x_resample,
+            "y_pred": y_pred,
+            "gen_index": gen_index,
+            "x_sm": x,
+            "y_sm": y,
+            "optimizer": optimizer,
+        }
+    else:
+        return_dict = {
+            "best_x": best_x,
+            "best_y": best_y,
+            "gen_index": gen_index,
+            "x": x,
+            "y": y,
+            "optimizer": optimizer,
+        }
 
     return return_dict
 
@@ -662,7 +723,6 @@ def analyze_sensitivity(
     di_max=20.0,
     logger=None,
 ):
-
     di_mutation = None
     di_crossover = None
     if sensitivity_method is not None:
@@ -722,7 +782,6 @@ def get_best(
     return_feasible=False,
     delete_duplicates=True,
 ):
-
     xtmp = x
     ytmp = y
 
