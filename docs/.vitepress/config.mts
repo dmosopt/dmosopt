@@ -20,6 +20,7 @@ export default defineConfig({
           items: [
             { text: 'Installation', link: '/guide/installation' },
             { text: 'Introduction', link: '/guide/introduction' },
+            { text: 'Optimization setup', link: '/guide/run' },
           ]
         }
       ],
