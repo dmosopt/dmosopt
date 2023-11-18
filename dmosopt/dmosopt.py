@@ -1588,7 +1588,7 @@ def save_to_h5(
         else:
             opt_grp["problem_ids"] = np.asarray([0], dtype=np.int32)
         if random_seed is not None:
-            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int)
+            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int32)
 
     opt_grp = h5_get_group(f, opt_id)
 
@@ -1785,7 +1785,7 @@ def init_h5(
         if metadata is not None:
             opt_grp["metadata"] = metadata
         if random_seed is not None:
-            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int)
+            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int32)
 
     f.close()
 
