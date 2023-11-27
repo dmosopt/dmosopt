@@ -9,6 +9,7 @@ from dmosopt.feasibility import LogisticFeasibilityModel
 from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.config import import_object_by_path
 
+
 def optimize(
     num_generations,
     optimizer,
@@ -175,7 +176,7 @@ def xinit(
             method = "dmosopt.sampling.mc"
         elif method == "sobol":
             method = "dmosopt.sampling.sobol"
-        
+
         Xinit = import_object_by_path(method)(
             Ninit, nInput, local_random=local_random, maxiter=maxiter
         )
@@ -299,7 +300,7 @@ def epoch(
         optimizer_name = "dmosopt.CMAES.CMAES"
 
     optimizer_cls = import_object_by_path(optimizer_name)
-    
+
     optimizer = optimizer_cls(
         nInput=nInput,
         nOutput=nOutput,
@@ -422,7 +423,7 @@ def train(
                 logger.info(f"Found {len(feasible)} feasible solutions")
 
     x, y = MOEA.remove_duplicates(x, y)
-    
+
     # resolve shorthands
     if surrogate_method_name == "gpr":
         surrogate_method_name = "dmosopt.model.GPR_Matern"
@@ -444,7 +445,7 @@ def train(
         surrogate_method_name = "dmosopt.model.SIV_Matern"
     elif surrogate_method_name == "crv":
         surrogate_method_name = "dmosopt.model.CRV_Matern"
-    
+
     surrogate_method_cls = import_object_by_path(surrogate_method_name)
     sm = surrogate_method_cls(
         x,
@@ -456,7 +457,7 @@ def train(
         **surrogate_method_kwargs,
         logger=logger,
     )
-    
+
     return sm
 
 
@@ -480,7 +481,7 @@ def analyze_sensitivity(
             sensitivity_method_name = "dmosopt.sa.SA_DGSM"
         elif sensitivity_method_name == "fast":
             sensitivity_method_name = "dmosopt.sa.SA_FAST"
-        
+
         sens_cls = import_object_by_path(sensitivity_method_name)
         sens = sens_cls(xlb, xub, param_names, objective_names)
         sens_results = sens.analyze(sm)

@@ -2519,7 +2519,6 @@ class SVGP_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         for i in range(self.nOutput):
-
             if self.batch_size is not None:
                 n_batches = max(int(N // self.batch_size), 1)
                 means, vars = [], []
@@ -2690,7 +2689,6 @@ class VGP_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         for i in range(self.nOutput):
-
             if self.batch_size is not None:
                 n_batches = max(int(N // self.batch_size), 1)
                 means, vars = [], []
