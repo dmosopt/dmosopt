@@ -45,15 +45,14 @@ if __name__ == "__main__":
     # Create an optimizer
     dmosopt_params = {
         "opt_id": "dmosopt_zdt1",
-        "obj_fun_name": "obj_fun",
-        "obj_fun_module": "example_dmosopt_zdt1",
+        "obj_fun_name": "example_dmosopt_zdt1.obj_fun",
         "problem_parameters": problem_parameters,
         "space": space,
         "objective_names": objective_names,
         "population_size": 200,
         "num_generations": 100,
         "initial_maxiter": 10,
-        "optimizer": "age",
+        "optimizer_name": "age",
         "termination_conditions": True,
         "n_initial": 3,
         "n_epochs": 4,

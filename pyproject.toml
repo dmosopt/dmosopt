@@ -20,18 +20,18 @@ black = "^22.8.0"
 pre-commit = "^2.20.0"
 
 
-[tool.poetry.group.extras.dependencies]
-gpytorch = "^1.9.0"
-salib = "^1.4.6.1"
+# [tool.poetry.group.extras.dependencies]
+# gpytorch = "^1.9.0"
+# salib = "^1.4.6.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.extras]
-gpflow = ["gpflow"]
-gpytorch = ["gpytorch"]
-sensitivity = ["SALib"]
+# [tool.poetry.extras]
+# gpflow = ["gpflow"]
+# gpytorch = ["gpytorch"]
+# sensitivity = ["SALib"]
 
 [tool.poetry.scripts]
 # Main functions

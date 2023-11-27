@@ -64,8 +64,7 @@ if __name__ == "__main__":
     # Create an optimizer
     dmosopt_params = {
         "opt_id": "dmosopt_zdt1",
-        "obj_fun_name": "obj_fun",
-        "obj_fun_module": "example_dmosopt_zdt1_file",
+        "obj_fun_name": "example_dmosopt_zdt1_file.obj_fun",
         "problem_parameters": problem_parameters,
         "space": space,
         "objective_names": problem_objectives,
