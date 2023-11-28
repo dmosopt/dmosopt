@@ -7,7 +7,13 @@ from typing import Any, Union, Dict, List, Tuple, Optional
 from dmosopt import MOEA, model, sa
 from dmosopt.feasibility import LogisticFeasibilityModel
 from dmosopt.datatypes import OptHistory, EpochResults
-from dmosopt.config import import_object_by_path
+from dmosopt.config import (
+    import_object_by_path,
+    default_optimizers,
+    default_sampling_methods,
+    default_surrogate_methods,
+    default_sa_methods,
+)
 
 
 def optimize(
@@ -166,16 +172,8 @@ def xinit(
         Xinit = method(Ninit, nInput, local_random)
     else:
         # resolve shorthands
-        if method == "glp":
-            method = "dmosopt.sampling.glp"
-        elif method == "slh":
-            method = "dmosopt.sampling.slh"
-        elif method == "lh":
-            method = "dmosopt.sampling.lh"
-        elif method == "mc":
-            method = "dmosopt.sampling.mc"
-        elif method == "sobol":
-            method = "dmosopt.sampling.sobol"
+        if method in default_sampling_methods:
+            method = default_sampling_methods[method]
 
         Xinit = import_object_by_path(method)(
             Ninit, nInput, local_random=local_random, maxiter=maxiter
@@ -290,14 +288,8 @@ def epoch(
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
 
     # resolve shorthands
-    if optimizer_name == "nsga2":
-        optimizer_name = "dmosopt.NSGA2.NSGA2"
-    elif optimizer_name == "age":
-        optimizer_name = "dmosopt.AGEMOEA.AGEMOEA"
-    elif optimizer_name == "smpso":
-        optimizer_name = "dmosopt.SMPSO.SMPSO"
-    elif optimizer_name == "cmaes":
-        optimizer_name = "dmosopt.CMAES.CMAES"
+    if optimizer_name in default_optimizers:
+        optimizer_name = default_optimizers[optimizer_name]
 
     optimizer_cls = import_object_by_path(optimizer_name)
 
@@ -425,26 +417,8 @@ def train(
     x, y = MOEA.remove_duplicates(x, y)
 
     # resolve shorthands
-    if surrogate_method_name == "gpr":
-        surrogate_method_name = "dmosopt.model.GPR_Matern"
-    elif surrogate_method_name == "egp":
-        surrogate_method_name = "dmosopt.model.EGP_Matern"
-    elif surrogate_method_name == "megp":
-        surrogate_method_name = "dmosopt.model.MEGP_Matern"
-    elif surrogate_method_name == "mdgp":
-        surrogate_method_name = "dmosopt.model.MDGP_Matern"
-    elif surrogate_method_name == "mdspp":
-        surrogate_method_name = "dmosopt.model.MDSPP_Matern"
-    elif surrogate_method_name == "vgp":
-        surrogate_method_name = "dmosopt.model.VGP_Matern"
-    elif surrogate_method_name == "svgp":
-        surrogate_method_name = "dmosopt.model.SVGP_Matern"
-    elif surrogate_method_name == "spv":
-        surrogate_method_name = "dmosopt.model.SPV_Matern"
-    elif surrogate_method_name == "siv":
-        surrogate_method_name = "dmosopt.model.SIV_Matern"
-    elif surrogate_method_name == "crv":
-        surrogate_method_name = "dmosopt.model.CRV_Matern"
+    if surrogate_method_name in default_surrogate_methods:
+        surrogate_method_name = default_surrogate_methods[surrogate_method_name]
 
     surrogate_method_cls = import_object_by_path(surrogate_method_name)
     sm = surrogate_method_cls(
@@ -477,10 +451,8 @@ def analyze_sensitivity(
     di_crossover = None
     if sensitivity_method_name is not None:
         # resolve shorthands
-        if sensitivity_method_name == "dgsm":
-            sensitivity_method_name = "dmosopt.sa.SA_DGSM"
-        elif sensitivity_method_name == "fast":
-            sensitivity_method_name = "dmosopt.sa.SA_FAST"
+        if sensitivity_method_name in default_sa_methods:
+            sensitivity_method_name = default_sa_methods[sensitivity_method_name]
 
         sens_cls = import_object_by_path(sensitivity_method_name)
         sens = sens_cls(xlb, xub, param_names, objective_names)
