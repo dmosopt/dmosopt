@@ -44,8 +44,7 @@ if __name__ == "__main__":
     # Create an optimizer
     dmosopt_params = {
         "opt_id": "dmosopt_zdt2",
-        "obj_fun_name": "obj_fun",
-        "obj_fun_module": "example_dmosopt_zdt2",
+        "obj_fun_name": "example_dmosopt_zdt2.obj_fun",
         "problem_parameters": problem_parameters,
         "optimizer": "nsga2",
         "population_size": 200,
