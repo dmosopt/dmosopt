@@ -7,6 +7,7 @@ from types import GeneratorType
 import numpy as np
 from numpy.random import default_rng
 import distwq
+from dmosopt.config import import_object_by_path
 import dmosopt.MOASMO as opt
 from dmosopt.datatypes import (
     OptProblem,
@@ -47,16 +48,16 @@ class DistOptStrategy:
         population_size: int = 100,
         resample_fraction: float = 0.25,
         num_generations: int = 100,
-        surrogate_method: str = "gpr",
-        surrogate_options: Dict[str, Union[bool, str]] = {
+        surrogate_method_name: str = "gpr",
+        surrogate_method_kwargs: Dict[str, Union[bool, str]] = {
             "anisotropic": False,
             "optimizer": "sceua",
         },
-        sensitivity_method: Optional[str] = None,
-        sensitivity_options={},
+        sensitivity_method_name: Optional[str] = None,
+        sensitivity_method_kwargs={},
         distance_metric=None,
-        optimizer: str = "nsga2",
-        optimizer_options={
+        optimizer_name: str = "nsga2",
+        optimizer_kwargs={
             "crossover_prob": 0.9,
             "mutation_prob": 0.1,
         },
@@ -70,11 +71,11 @@ class DistOptStrategy:
         self.local_random = local_random
         self.logger = logger
         self.feasibility_model = feasibility_model
-        self.surrogate_options = surrogate_options
-        self.surrogate_method = surrogate_method
-        self.sensitivity_options = sensitivity_options
-        self.sensitivity_method = sensitivity_method
-        self.optimizer = optimizer
+        self.surrogate_method_kwargs = surrogate_method_kwargs
+        self.surrogate_method_name = surrogate_method_name
+        self.sensitivity_method_kwargs = sensitivity_method_kwargs
+        self.sensitivity_method_name = sensitivity_method_name
+        self.optimizer_name = optimizer_name
         self.distance_metric = distance_metric
         self.prob = prob
         self.completed = []
@@ -87,7 +88,7 @@ class DistOptStrategy:
         else:
             epochs, self.x, self.y, self.f, self.c = initial
         self.resample_fraction = resample_fraction
-        self.optimizer_options = optimizer_options
+        self.optimizer_kwargs = optimizer_kwargs
         self.num_generations = num_generations
         self.population_size = population_size
         self.termination = None
@@ -213,8 +214,8 @@ class DistOptStrategy:
         ), "Optimization generator is active in DistOptStrategy"
 
         optimizer_kwargs = {}
-        if self.optimizer_options is not None:
-            optimizer_kwargs.update(self.optimizer_options)
+        if self.optimizer_kwargs is not None:
+            optimizer_kwargs.update(self.optimizer_kwargs)
         if self.distance_metric is not None:
             optimizer_kwargs["distance_metric"] = self.distance_metric
         if self.termination is not None:
@@ -233,12 +234,12 @@ class DistOptStrategy:
             self.y,
             self.c,
             pop=self.population_size,
-            optimizer_name=self.optimizer,
+            optimizer_name=self.optimizer_name,
             optimizer_kwargs=optimizer_kwargs,
-            surrogate_method=self.surrogate_method,
-            surrogate_options=self.surrogate_options,
-            sensitivity_method=self.sensitivity_method,
-            sensitivity_options=self.sensitivity_options,
+            surrogate_method_name=self.surrogate_method_name,
+            surrogate_method_kwargs=self.surrogate_method_kwargs,
+            sensitivity_method_name=self.sensitivity_method_name,
+            sensitivity_method_kwargs=self.sensitivity_method_kwargs,
             feasibility_model=self.feasibility_model,
             termination=self.termination,
             local_random=self.local_random,
@@ -418,15 +419,15 @@ class DistOptimizer:
         save_surrogate_evals=False,
         save_optimizer_params=True,
         metadata=None,
-        surrogate_method="gpr",
-        surrogate_options={"anisotropic": False, "optimizer": "sceua"},
-        optimizer="nsga2",
-        optimizer_options={
+        surrogate_method_name="gpr",
+        surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
+        optimizer_name="nsga2",
+        optimizer_kwargs={
             "mutation_prob": 0.1,
             "crossover_prob": 0.9,
         },
-        sensitivity_method=None,
-        sensitivity_options={},
+        sensitivity_method_name=None,
+        sensitivity_method_kwargs={},
         local_random=None,
         random_seed=None,
         feasibility_model=False,
@@ -480,12 +481,12 @@ class DistOptimizer:
         self.num_generations = num_generations
         self.resample_fraction = resample_fraction
         self.distance_metric = distance_metric
-        self.surrogate_method = surrogate_method
-        self.surrogate_options = surrogate_options
-        self.sensitivity_method = sensitivity_method
-        self.sensitivity_options = sensitivity_options
-        self.optimizer = optimizer
-        self.optimizer_options = optimizer_options
+        self.surrogate_method_name = surrogate_method_name
+        self.surrogate_method_kwargs = surrogate_method_kwargs
+        self.sensitivity_method_name = sensitivity_method_name
+        self.sensitivity_method_kwargs = sensitivity_method_kwargs
+        self.optimizer_name = optimizer_name
+        self.optimizer_kwargs = optimizer_kwargs
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
         self.metadata = metadata
@@ -576,15 +577,15 @@ class DistOptimizer:
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
-        di_crossover = self.optimizer_options.get("di_crossover", None)
+        di_crossover = self.optimizer_kwargs.get("di_crossover", None)
         if isinstance(di_crossover, dict):
             di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
-            self.optimizer_options["di_crossover"] = di_crossover
+            self.optimizer_kwargs["di_crossover"] = di_crossover
 
-        di_mutation = self.optimizer_options.get("di_mutation", None)
+        di_mutation = self.optimizer_kwargs.get("di_mutation", None)
         if isinstance(di_mutation, dict):
             di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
-            self.optimizer_options["di_mutation"] = di_mutation
+            self.optimizer_kwargs["di_mutation"] = di_mutation
 
         self.epoch_count = 0
         self.start_epoch = 0
@@ -698,12 +699,12 @@ class DistOptimizer:
                 initial_maxiter=self.initial_maxiter,
                 initial_method=self.initial_method,
                 distance_metric=self.distance_metric,
-                surrogate_method=self.surrogate_method,
-                surrogate_options=self.surrogate_options,
-                sensitivity_method=self.sensitivity_method,
-                sensitivity_options=self.sensitivity_options,
-                optimizer=self.optimizer,
-                optimizer_options=self.optimizer_options,
+                surrogate_method_name=self.surrogate_method_name,
+                surrogate_method_kwargs=self.surrogate_method_kwargs,
+                sensitivity_method_name=self.sensitivity_method_name,
+                sensitivity_method_kwargs=self.sensitivity_method_kwargs,
+                optimizer_name=self.optimizer_name,
+                optimizer_kwargs=self.optimizer_kwargs,
                 feasibility_model=self.feasibility_model,
                 termination_conditions=self.termination_conditions,
                 local_random=self.local_random,
@@ -1588,7 +1589,7 @@ def save_to_h5(
         else:
             opt_grp["problem_ids"] = np.asarray([0], dtype=np.int32)
         if random_seed is not None:
-            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int)
+            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int32)
 
     opt_grp = h5_get_group(f, opt_id)
 
@@ -1785,7 +1786,7 @@ def init_h5(
         if metadata is not None:
             opt_grp["metadata"] = metadata
         if random_seed is not None:
-            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int)
+            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int32)
 
     f.close()
 
@@ -1838,45 +1839,28 @@ def dopt_init(
     initialize_strategy=False,
 ):
     objfun = None
-    objfun_module = dopt_params.get("obj_fun_module", "__main__")
     objfun_name = dopt_params.get("obj_fun_name", None)
     if distwq.is_worker:
         if objfun_name is not None:
-            if objfun_module not in sys.modules:
-                importlib.import_module(objfun_module)
-
-            objfun = eval(objfun_name, sys.modules[objfun_module].__dict__)
+            objfun = import_object_by_path(objfun_name)
         else:
-            objfun_init_module = dopt_params.get("obj_fun_init_module", "__main__")
             objfun_init_name = dopt_params.get("obj_fun_init_name", None)
             objfun_init_args = dopt_params.get("obj_fun_init_args", None)
             if objfun_init_name is None:
                 raise RuntimeError("dmosopt.soptinit: objfun is not provided")
-            if objfun_init_module not in sys.modules:
-                importlib.import_module(objfun_init_module)
-            objfun_init = eval(
-                objfun_init_name, sys.modules[objfun_init_module].__dict__
-            )
+            objfun_init = import_object_by_path(objfun_init_name)
             objfun = objfun_init(**objfun_init_args, worker=worker)
     else:
-        ctrl_init_fun_module = dopt_params.get("controller_init_fun_module", "__main__")
         ctrl_init_fun_name = dopt_params.get("controller_init_fun_name", None)
         ctrl_init_fun_args = dopt_params.get("controller_init_fun_args", {})
-        if ctrl_init_fun_module not in sys.modules:
-            importlib.import_module(ctrl_init_fun_module)
         if ctrl_init_fun_name is not None:
-            ctrl_init_fun = eval(
-                ctrl_init_fun_name, sys.modules[ctrl_init_fun_module].__dict__
-            )
+            ctrl_init_fun = import_object_by_path(ctrl_init_fun_name)
             ctrl_init_fun(**ctrl_init_fun_args)
 
     dopt_params["obj_fun"] = objfun
-    reducefun_module = dopt_params.get("reduce_fun_module", "__main__")
     reducefun_name = dopt_params.get("reduce_fun_name", None)
-    if reducefun_module not in sys.modules:
-        importlib.import_module(reducefun_module)
     if reducefun_name is not None:
-        reducefun = eval(reducefun_name, sys.modules[reducefun_module].__dict__)
+        reducefun = import_object_by_path(reducefun_name)
         dopt_params["reduce_fun"] = reducefun
     else:
         # If using MPI with 1 process per worker, then each worker
