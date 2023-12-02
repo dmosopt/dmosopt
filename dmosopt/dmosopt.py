@@ -266,9 +266,14 @@ class DistOptStrategy:
                 return_state = StrategyState.WaitingRequests
                 return return_state, return_value, completed_evals
             try:
-                item = next(self.opt_gen)
+                if isinstance(self.opt_gen, dict):
+                    raise StopIteration(self.opt_gen)
+                else:
+                    item = next(self.opt_gen)
             except StopIteration as ex:
-                self.opt_gen.close()
+
+                if isinstance(self.opt_gen, GeneratorType):
+                    self.opt_gen.close()
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
@@ -282,7 +287,7 @@ class DistOptStrategy:
 
                     return_state = StrategyState.CompletedGeneration
                     return_value = GenerationResults(
-                        best_x, best_y, gen_index, x, y, optimizer.opt_params
+                        best_x, best_y, gen_index, x, y, optimizer
                     )
                 else:
                     x_resample = result_dict["x_resample"]
@@ -301,7 +306,7 @@ class DistOptStrategy:
 
                     return_state = StrategyState.CompletedEpoch
                     return_value = EpochResults(
-                        x_resample, y_pred, gen_index, x_sm, y_sm, optimizer.opt_params
+                        x_resample, y_pred, gen_index, x_sm, y_sm, optimizer
                     )
             else:
                 x_gen = item
@@ -1103,7 +1108,7 @@ class DistOptimizer:
                     res = strategy_value
 
                     ## Compute prediction accuracy of completed evaluations
-                    if epoch > 1:
+                    if (completed_evals is not None) and (epoch > 1):
                         x_completed = completed_evals[0]
                         y_completed = completed_evals[1]
                         pred_completed = completed_evals[2]
@@ -1135,7 +1140,10 @@ class DistOptimizer:
                         if self.save and self.save_optimizer_params_:
                             optimizer = res.optimizer
                             self.save_optimizer_params(
-                                problem_id, epoch, optimizer.name, optimizer.opt_params
+                                problem_id,
+                                epoch,
+                                optimizer.name,
+                                optimizer.opt_parameters,
                             )
 
         self.epoch_count = self.epoch_count + 1
