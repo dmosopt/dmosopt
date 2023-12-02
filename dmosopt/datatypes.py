@@ -2,6 +2,7 @@ import os, sys, logging, pprint
 from functools import partial
 from collections import namedtuple
 import numpy as np
+from enum import IntEnum
 
 
 class Struct(object):
@@ -22,6 +23,13 @@ class Struct(object):
 
     def __str__(self):
         return f"<Struct>"
+
+
+class StrategyState(IntEnum):
+    EnqueuedRequests = 1
+    WaitingRequests = 2
+    CompletedEpoch = 3
+    CompletedGeneration = 4
 
 
 ParamSpec = namedtuple(
@@ -66,9 +74,32 @@ OptHistory = namedtuple(
     ],
 )
 
+EpochResults = namedtuple(
+    "EpochResults",
+    [
+        "best_x",
+        "best_y",
+        "gen_index",
+        "x",
+        "y",
+        "optimizer",
+    ],
+)
+
+GenerationResults = namedtuple(
+    "GenerationResults",
+    [
+        "best_x",
+        "best_y",
+        "gen_index",
+        "x",
+        "y",
+        "optimizer_params",
+    ],
+)
+
 
 class OptProblem(object):
-
     __slots__ = (
         "dim",
         "lb",
@@ -95,7 +126,6 @@ class OptProblem(object):
         eval_fun,
         logger=None,
     ):
-
         self.dim = len(spec.bound1)
         assert self.dim > 0
         self.lb = spec.bound1

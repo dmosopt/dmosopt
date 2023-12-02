@@ -34,7 +34,6 @@ def list_find(f, lst):
 def main(
     file_path, opt_id, resample_fraction, population_size, num_generations, verbose
 ):
-
     (
         _,
         _,

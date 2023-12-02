@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "dmosopt"
-version = "0.41.4"
+version = "0.43.0"
 description = "Distributed multi-objective surrogate optimization algorithm."
 authors = ["Ivan Raikov <ivan.g.raikov@gmail.com>"]
 license = "GPL-3.0-or-later"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.8"
+python = ">=3.8,<4.0"
 mpi4py = ">=3.1.4"
 numpy = ">=1.23.5"
 h5py = ">=3.7.0"

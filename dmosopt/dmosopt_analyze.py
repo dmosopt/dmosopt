@@ -45,7 +45,6 @@ def main(
     output_file,
     verbose,
 ):
-
     (
         _,
         max_epoch,
@@ -64,7 +63,6 @@ def main(
     if problem_ids is None:
         problem_ids = [0]
     for problem_id in problem_ids:
-
         old_eval_epochs = [e.epoch for e in old_evals[problem_id]]
         old_eval_xs = [e.parameters for e in old_evals[problem_id]]
         old_eval_ys = [e.objectives for e in old_evals[problem_id]]
@@ -127,10 +125,8 @@ def main(
         n_res = best_y.shape[0]
         m = len(objective_names)
         if len(sort_key) == 0:
-
             nn = range(n_res)
             if knn > 0:
-
                 points = np.zeros((n_res, m))
                 for i in range(n_res):
                     res_i = np.asarray([res_dict[k][i] for k in objective_names])
@@ -153,7 +149,6 @@ def main(
                     nn = nn[~np.isinf(dnn)]
 
             for i in nn:
-
                 res_i = {k: res_dict[k][i] for k in objective_names}
                 prms_i = {k: prms_dict[k][i] for k in param_names}
                 output_dict[i] = [float(prms_dict[k][i]) for k in param_names]

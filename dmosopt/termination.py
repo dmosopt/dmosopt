@@ -161,7 +161,6 @@ class SlidingWindowTermination(TerminationCollection):
         )
 
     def _do_continue(self, opt):
-
         # if the maximum generation or maximum evaluations say terminated -> do so
         if not super()._do_continue(opt):
             return False
@@ -182,7 +181,6 @@ class SlidingWindowTermination(TerminationCollection):
             opt.n_gen % self.nth_gen == 0
             and len(self.metrics) >= self.metric_window_size
         ):
-
             # ask the implementation whether to terminate or not
             return self._decide(self.metrics[-self.metric_window_size :])
 
@@ -213,7 +211,6 @@ class ParameterToleranceTermination(SlidingWindowTermination):
     def __init__(
         self, problem, n_last=10, tol=1e-6, nth_gen=1, n_max_gen=None, **kwargs
     ):
-
         super().__init__(
             problem,
             metric_window_size=n_last,
@@ -316,7 +313,6 @@ class ConstraintViolationToleranceTermination(SlidingWindowTermination):
     def __init__(
         self, problem, n_last=10, tol=1e-6, nth_gen=1, n_max_gen=None, **kwargs
     ):
-
         super().__init__(
             problem,
             metric_window_size=n_last,
@@ -353,7 +349,6 @@ class ConstraintViolationToleranceTermination(SlidingWindowTermination):
 
 class StdTermination(SlidingWindowTermination):
     def __init__(self, problem, x_tol, f_tol, n_max_gen=1000, **kwargs):
-
         super().__init__(
             problem,
             metric_window_size=1,

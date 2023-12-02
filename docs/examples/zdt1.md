@@ -1,3 +1,10 @@
+# ZDT1
+
+Let's consider a hello-world example using the ZDT1 objective. 
+
+Below, we define our own function and perform minimization.
+
+```python
 import sys, logging
 import numpy as np
 from dmosopt import dmosopt
@@ -50,15 +57,12 @@ if __name__ == "__main__":
         "space": space,
         "objective_names": objective_names,
         "population_size": 200,
-        "num_generations": 100,
+        "num_generations": 200,
         "initial_maxiter": 10,
-        "optimizer_name": "age",
+        "optimizer": "nsga2",
         "termination_conditions": True,
         "n_initial": 3,
-        "n_epochs": 4,
-        "save_surrogate_eval": True,
-        "save": True,
-        "file_path": "results/zdt1.h5",
+        "n_epochs": 2,
     }
 
     best = dmosopt.run(dmosopt_params, verbose=True)
@@ -66,7 +70,7 @@ if __name__ == "__main__":
         import matplotlib.pyplot as plt
 
         bestx, besty = best
-        x, y = dmosopt.dopt_dict["dmosopt_zdt1"].optimizer_dict[0].get_evals()
+        x, y = dmosopt.sopt_dict["dmosopt_zdt1"].optimizer_dict[0].get_evals()
         besty_dict = dict(besty)
 
         # plot results
@@ -78,3 +82,5 @@ if __name__ == "__main__":
         plt.legend()
 
         plt.savefig("example_dmosopt_zdt1.svg")
+
+```

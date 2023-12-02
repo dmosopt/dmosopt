@@ -87,7 +87,6 @@ class AGEMOEA(MOEA):
         local_random: Optional[np.random.Generator] = None,
         **params,
     ):
-
         population_parm, population_obj, rank, crowd_dist = environmental_selection(
             local_random,
             x,
@@ -114,7 +113,6 @@ class AGEMOEA(MOEA):
         return state
 
     def generate_strategy(self, **params):
-
         popsize = self.popsize
         poolsize = self.opt_params.poolsize
         crossover_prob = self.opt_params.crossover_prob
@@ -216,7 +214,6 @@ class AGEMOEA(MOEA):
         self.state.crowd_dist[:] = crowd_dist
 
     def get_population_strategy(self):
-
         pop_x = self.state.population_parm.copy()
         pop_y = self.state.population_obj.copy()
 
@@ -305,7 +302,6 @@ def get_geometry(front, extreme):
 
 
 def point_2_line_distance(P, A, B):
-
     d = np.zeros(P.shape[0])
 
     for i in range(P.shape[0]):
@@ -406,7 +402,6 @@ def environmental_selection(
     feasibility_model=None,
     logger=None,
 ):
-
     # get max int value
     max_int = np.iinfo(np.int32).max
 

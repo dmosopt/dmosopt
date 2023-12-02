@@ -55,7 +55,6 @@ try:
         preconditioner_size,
         logger=None,
     ):
-
         N = train_x.size(0)
 
         # Find the optimum partition/checkpoint size by decreasing in powers of 2
@@ -108,7 +107,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             if output_dims is None:
                 if inducing_points is None:
                     inducing_points = torch.randn(num_inducing_points, input_dims)
@@ -191,7 +189,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             super().__init__(Q)
 
             self.num_tasks = num_tasks
@@ -243,7 +240,6 @@ try:
             return output
 
         def predict(self, xin):
-
             from torch.utils.data import DataLoader
 
             batch_size = self.batch_size
@@ -285,7 +281,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             if output_dims is None:
                 if inducing_points is None:
                     inducing_points = torch.randn(num_inducing_points, input_dims)
@@ -364,7 +359,6 @@ try:
             use_cuda=False,
             n_devices=1,
         ):
-
             super().__init__()
 
             self.num_tasks = num_tasks
@@ -412,7 +406,6 @@ try:
             return output
 
         def predict(self, xin):
-
             from torch.utils.data import DataLoader
 
             batch_size = self.batch_size
@@ -517,7 +510,6 @@ try:
             batch_size=None,
             n_devices=1,
         ):
-
             super().__init__(train_x, train_y, likelihood)
             input_dims = train_x.shape[1]
             self.num_tasks = num_tasks
@@ -627,7 +619,6 @@ class MDSPP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "MDSPP_Matern requires the GPyTorch library to be installed."
@@ -891,7 +882,6 @@ class MDSPP_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -920,7 +910,6 @@ class MDGP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "MDGP_Matern requires the GPyTorch library to be installed."
@@ -1183,7 +1172,6 @@ class MDGP_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -1209,7 +1197,6 @@ class MEGP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "MEGP_Matern requires the GPyTorch library to be installed."
@@ -1288,7 +1275,6 @@ class MEGP_Matern:
             checkpoint_size=None,
             preconditioner_size=None,
         ):
-
             if self.use_cuda:
                 train_x = train_x.cuda()
                 train_y = train_y.cuda()
@@ -1416,7 +1402,6 @@ class MEGP_Matern:
         self.sm = gp_model
 
     def predict(self, xin):
-
         from torch.utils.data import TensorDataset, DataLoader
 
         batch_size = self.batch_size
@@ -1466,7 +1451,6 @@ class MEGP_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -1492,7 +1476,6 @@ class EGP_Matern:
         use_cuda=False,
         logger=None,
     ):
-
         if not _has_gpytorch:
             raise RuntimeError(
                 "EGP_Matern requires the GPyTorch library to be installed."
@@ -1567,7 +1550,6 @@ class EGP_Matern:
             checkpoint_size=None,
             preconditioner_size=None,
         ):
-
             gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(
                 noise_prior=gp_noise_prior, batch_shape=batch_shape
             )
@@ -1751,7 +1733,6 @@ class EGP_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -1790,7 +1771,7 @@ class CRV_Matern:
         self.xrng = np.where(
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
-
+        self.batch_size = batch_size
         self.logger = logger
 
         N = xin.shape[0]
@@ -1939,7 +1920,18 @@ class CRV_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
 
-        mean, var = self.sm.predict_f(x)
+        if self.batch_size is not None:
+            n_batches = max(int(N // self.batch_size), 1)
+            means, vars = [], []
+            for x_batch in np.array_split(x, n_batches):
+                m, v = self.sm.predict_f(x_batch)
+                means.append(m)
+                vars.append(v)
+            mean = np.concatenate(means)
+            var = np.concatenate(vars)
+        else:
+            mean, var = self.sm.predict_f(x)
+
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
         y_var = np.multiply(var, self.y_train_std**2)
@@ -1949,7 +1941,6 @@ class CRV_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -1988,7 +1979,7 @@ class SIV_Matern:
         self.xrng = np.where(
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
-
+        self.batch_size = batch_size
         self.logger = logger
 
         N = xin.shape[0]
@@ -2126,7 +2117,18 @@ class SIV_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
 
-        mean, var = self.sm.predict_f(x)
+        if self.batch_size is not None:
+            n_batches = max(int(N // self.batch_size), 1)
+            means, vars = [], []
+            for x_batch in np.array_split(x, n_batches):
+                m, v = self.sm.predict_f(x_batch)
+                means.append(m)
+                vars.append(v)
+            mean = np.concatenate(means)
+            var = np.concatenate(vars)
+        else:
+            mean, var = self.sm.predict_f(x)
+
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
         y_var = np.multiply(variances, self.y_train_std**2)
@@ -2136,7 +2138,6 @@ class SIV_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2175,7 +2176,7 @@ class SPV_Matern:
         self.xrng = np.where(
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
-
+        self.batch_size = batch_size
         self.logger = logger
 
         N = xin.shape[0]
@@ -2315,7 +2316,18 @@ class SPV_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
 
-        mean, var = self.sm.predict_f(x)
+        if self.batch_size is not None:
+            n_batches = max(int(N // self.batch_size), 1)
+            means, vars = [], []
+            for x_batch in np.array_split(x, n_batches):
+                m, v = self.sm.predict_f(x_batch)
+                means.append(m)
+                vars.append(v)
+            mean = np.concatenate(means)
+            var = np.concatenate(vars)
+        else:
+            mean, var = self.sm.predict_f(x)
+
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
         y = np.zeros((N, self.nOutput), dtype=np.float32)
@@ -2326,7 +2338,6 @@ class SPV_Matern:
         return y, y_var
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2364,7 +2375,7 @@ class SVGP_Matern:
         self.xrng = np.where(
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
-
+        self.batch_size = batch_size
         self.logger = logger
 
         N = xin.shape[0]
@@ -2508,7 +2519,18 @@ class SVGP_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         for i in range(self.nOutput):
-            mean, var = self.smlist[i].predict_f(x)
+            if self.batch_size is not None:
+                n_batches = max(int(N // self.batch_size), 1)
+                means, vars = [], []
+                for x_batch in np.array_split(x, n_batches):
+                    m, v = self.smlist[i].predict_f(x_batch)
+                    means.append(m)
+                    vars.append(v)
+                mean = np.concatenate(means)
+                var = np.concatenate(vars)
+            else:
+                mean, var = self.smlist[i].predict_f(x)
+
             # undo normalization
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
             y_var = tf.tensordot(var, self.y_train_std[i] ** 2, axes=0)
@@ -2517,7 +2539,6 @@ class SVGP_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2532,6 +2553,7 @@ class VGP_Matern:
         xlb,
         xub,
         seed=None,
+        batch_size=None,
         gp_lengthscale_bounds=(1e-6, 100.0),
         gp_likelihood_sigma=1.0e-4,
         natgrad_gamma=1.0,
@@ -2552,7 +2574,7 @@ class VGP_Matern:
         self.xrng = np.where(
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
-
+        self.batch_size = batch_size
         self.logger = logger
 
         N = xin.shape[0]
@@ -2667,7 +2689,18 @@ class VGP_Matern:
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrng
         for i in range(self.nOutput):
-            mean, var = self.smlist[i].predict_f(x)
+            if self.batch_size is not None:
+                n_batches = max(int(N // self.batch_size), 1)
+                means, vars = [], []
+                for x_batch in np.array_split(x, n_batches):
+                    m, v = self.smlist[i].predict_f(x_batch)
+                    means.append(m)
+                    vars.append(v)
+                mean = np.concatenate(means)
+                var = np.concatenate(vars)
+            else:
+                mean, var = self.smlist[i].predict_f(x)
+
             # undo normalization
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
             y_var = tf.tensordot(var, self.y_train_std[i] ** 2, axes=0)
@@ -2676,7 +2709,6 @@ class VGP_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -2758,7 +2790,6 @@ class GPR_Matern:
         return y, y_vars
 
     def evaluate(self, x):
-
         mean, var = self.predict(x)
         return mean
 
@@ -3068,7 +3099,6 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
 
         # Loop on complexes (sub-populations)
         for igs in range(ngs):
-
             # Partition the population into complexes (sub-populations)
             k1 = np.int64(np.linspace(0, npg - 1, npg))
             k2 = k1 * ngs + igs
@@ -3077,7 +3107,6 @@ def sceua(func, bl, bu, nopt, ngs, maxn, kstop, pcento, peps, seed=None, logger=
 
             # Evolve sub-population igs for nspl steps
             for loop in range(nspl):
-
                 # Select simplex by sampling the complex according to a linear
                 # probability distribution
                 lcs = np.asarray(select_simplex(nps, npg, local_random))

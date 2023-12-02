@@ -112,7 +112,6 @@ class ZeroToOneNormalization(Normalization):
 
 class PreNormalization:
     def __init__(self, zero_to_one=False, ideal=None, nadir=None, **kwargs):
-
         # normalization related stuff if that should be performed beforehand
         self.ideal, self.nadir = ideal, nadir
 
