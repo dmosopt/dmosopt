@@ -10,7 +10,7 @@ export default defineConfig({
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/introduction' },
-      { text: 'Examples', link: '/examples/zdt1' },
+      { text: 'Examples', link: '/examples/zdt' },
       // { text: 'Reference', link: '/reference/index' }
     ],
 
@@ -33,7 +33,8 @@ export default defineConfig({
         {
           text: 'Examples',
           items: [
-            { text: 'ZDT1', link: '/examples/zdt1' },
+            { text: 'ZDT', link: '/examples/zdt' },
+            { text: 'Lorenz', link: '/examples/lorenz' },
           ]
         }
       ],
