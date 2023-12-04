@@ -12,7 +12,7 @@ hero:
       link: /guide/introduction
     - theme: alt
       text: API Examples
-      link: /examples/zdt1
+      link: /examples/zdt
 
 # features:
 #   - title: Feature A
