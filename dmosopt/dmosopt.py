@@ -602,7 +602,6 @@ class DistOptimizer:
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
-        print(f"self.optimizer_kwargs = {self.optimizer_kwargs}")
         for optimizer_kwargs in self.optimizer_kwargs:
             di_crossover = optimizer_kwargs.get("di_crossover", None)
             if isinstance(di_crossover, dict):
