@@ -1,7 +1,7 @@
 import os, sys, importlib, logging, pprint, copy, time, itertools
 from functools import partial
 from collections import namedtuple
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, Union, Dict, List, Tuple, Optional
 from types import GeneratorType
 import numpy as np
@@ -56,8 +56,8 @@ class DistOptStrategy:
         sensitivity_method_name: Optional[str] = None,
         sensitivity_method_kwargs={},
         distance_metric=None,
-        optimizer_name: str = "nsga2",
-        optimizer_kwargs={
+        optimizer_name: Union[str, Sequence[str]] = "nsga2",
+        optimizer_kwargs: Union[Dict, Sequence[Dict]] = {
             "crossover_prob": 0.9,
             "mutation_prob": 0.1,
         },
@@ -75,7 +75,18 @@ class DistOptStrategy:
         self.surrogate_method_name = surrogate_method_name
         self.sensitivity_method_kwargs = sensitivity_method_kwargs
         self.sensitivity_method_name = sensitivity_method_name
-        self.optimizer_name = optimizer_name
+        self.optimizer_name = (
+            optimizer_name
+            if isinstance(optimizer_name, Sequence)
+            else (optimizer_name,)
+        )
+        self.optimizer_kwargs = (
+            optimizer_kwargs
+            if isinstance(optimizer_kwargs, Sequence)
+            else (optimizer_kwargs,)
+        )
+
+        self.optimizer_iter = itertools.cycle(range(len(self.optimizer_name)))
         self.distance_metric = distance_metric
         self.prob = prob
         self.completed = []
@@ -88,7 +99,6 @@ class DistOptStrategy:
         else:
             epochs, self.x, self.y, self.f, self.c = initial
         self.resample_fraction = resample_fraction
-        self.optimizer_kwargs = optimizer_kwargs
         self.num_generations = num_generations
         self.population_size = population_size
         self.termination = None
@@ -213,9 +223,10 @@ class DistOptStrategy:
             self.opt_gen == None
         ), "Optimization generator is active in DistOptStrategy"
 
+        optimizer_index = next(self.optimizer_iter)
         optimizer_kwargs = {}
-        if self.optimizer_kwargs is not None:
-            optimizer_kwargs.update(self.optimizer_kwargs)
+        if self.optimizer_kwargs[optimizer_index] is not None:
+            optimizer_kwargs.update(self.optimizer_kwargs[optimizer_index])
         if self.distance_metric is not None:
             optimizer_kwargs["distance_metric"] = self.distance_metric
         if self.termination is not None:
@@ -234,7 +245,7 @@ class DistOptStrategy:
             self.y,
             self.c,
             pop=self.population_size,
-            optimizer_name=self.optimizer_name,
+            optimizer_name=self.optimizer_name[optimizer_index],
             optimizer_kwargs=optimizer_kwargs,
             surrogate_method_name=self.surrogate_method_name,
             surrogate_method_kwargs=self.surrogate_method_kwargs,
@@ -490,8 +501,17 @@ class DistOptimizer:
         self.surrogate_method_kwargs = surrogate_method_kwargs
         self.sensitivity_method_name = sensitivity_method_name
         self.sensitivity_method_kwargs = sensitivity_method_kwargs
-        self.optimizer_name = optimizer_name
-        self.optimizer_kwargs = optimizer_kwargs
+        self.optimizer_name = (
+            optimizer_name
+            if isinstance(optimizer_name, Sequence)
+            else (optimizer_name,)
+        )
+        self.optimizer_kwargs = (
+            optimizer_kwargs
+            if isinstance(optimizer_kwargs, Sequence)
+            else (optimizer_kwargs,)
+        )
+
         self.feasibility_model = feasibility_model
         self.termination_conditions = termination_conditions
         self.metadata = metadata
@@ -582,15 +602,17 @@ class DistOptimizer:
         self.is_int = is_int
         self.file_path, self.save = file_path, save
 
-        di_crossover = self.optimizer_kwargs.get("di_crossover", None)
-        if isinstance(di_crossover, dict):
-            di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
-            self.optimizer_kwargs["di_crossover"] = di_crossover
+        print(f"self.optimizer_kwargs = {self.optimizer_kwargs}")
+        for optimizer_kwargs in self.optimizer_kwargs:
+            di_crossover = optimizer_kwargs.get("di_crossover", None)
+            if isinstance(di_crossover, dict):
+                di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
+                optimizer_kwargs["di_crossover"] = di_crossover
 
-        di_mutation = self.optimizer_kwargs.get("di_mutation", None)
-        if isinstance(di_mutation, dict):
-            di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
-            self.optimizer_kwargs["di_mutation"] = di_mutation
+            di_mutation = optimizer_kwargs.get("di_mutation", None)
+            if isinstance(di_mutation, dict):
+                di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
+                optimizer_kwargs["di_mutation"] = di_mutation
 
         self.epoch_count = 0
         self.start_epoch = 0
