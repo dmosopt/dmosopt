@@ -1,76 +1,41 @@
 # Trust Region Search, multi-objective local optimization algorithm.
 
 import gc, itertools, math
+from functools import partial
 import numpy as np
 from numpy.random import default_rng
 from dmosopt.datatypes import OptHistory
+from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import (
     Struct,
     MOEA,
-    sortMO,
     remove_worst,
     remove_duplicates,
 )
 from dmosopt.sampling import sobol
+from dmosopt.indicators import Hypervolume
 from typing import Any, Union, Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
 
 @dataclass
-class TrbState:
+class TrState:
     dim: int
     is_constrained: bool = False
-    length: float = 0.8
-    length_init: float = 0.8
+    length: float = 0.08
+    length_init: float = 0.08
     length_min: float = 0.5**7
     length_max: float = 1.6
-    failure_counter: int = 0
-    failure_tolerance: int = float("nan")  # Note: Post-initialized
     success_counter: int = 0
-    success_tolerance: int = 10
-    Y_best: np.ndarray = [np.inf]  # Goal is minimization
+    failure_tolerance: int = float("nan")  # Note: Post-initialized
+    success_tolerance: int = 0.2
+    Y_best: np.ndarray = np.asarray([np.inf])  # Goal is minimization
     constraint_violation = float("inf")
     restart: bool = False
 
     def __post_init__(self):
-        self.failure_tolerance = math.ceil(max([4.0, float(self.dim)]))
-        self.Y_best = np.asarray([np.inf] * self.dim)
-
-
-def update_state(state, Y_next):
-    if not state.is_constrained:
-        better_than_current = np.min(Y_next) < np.min(self.Y_best) - 1e-3 * math.fabs(
-            np.min(self.Y_best)
-        )
-        state.Y_best = np.max(state.Y_best, Y_next)
-    else:
-        raise NotImplemented
-
-    if better_than_current:
-        state.success_counter += 1
-        state.failure_counter = 0
-    else:
-        state.success_counter = 0
-        state.failure_counter += 1
-
-    if state.success_counter == state.success_tolerance:  # Expand trust region
-        state.length = min(2.0 * state.length, state.length_max)
-        state.success_counter = 0
-    elif state.failure_counter == state.failure_tolerance:  # Shrink trust region
-        state.length /= 2.0
-        state.failure_counter = 0
-
-    if state.length < state.length_min:
-        state.restart = True
-    return state
-
-
-def restart_state(state):
-    state.failure_counter = 0
-    state.success_counter = 0
-    state.length = state.length_init
-    state.Y_best = np.asarray([np.inf] * state.dim)
-    state.restart = False
+        self.failure_tolerance = min(1 / self.dim, self.success_tolerance / 2.0)
+        self.Y_best = np.asarray([np.inf] * self.dim).reshape((1, -1))
 
 
 class TRS(MOEA):
@@ -92,6 +57,10 @@ class TRS(MOEA):
         )
 
         self.feasibility_model = feasibility_model
+        self.x_distance_metrics = None
+        if self.feasibility_model is not None:
+            self.x_distance_metrics = [self.feasibility_model.rank]
+        self.indicator = Hypervolume
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
@@ -110,24 +79,19 @@ class TRS(MOEA):
         local_random: Optional[np.random.Generator] = None,
         **params,
     ):
-        x, y, rank, _ = sortMO(
-            x,
-            y,
-            self.nInput,
-            self.nOutput,
-        )
-        population_parm = x[: self.popsize]
-        population_obj = y[: self.popsize]
+        order, rank = sortMO(x, y, self.x_distance_metrics)
+        population_parm = x[order][: self.popsize]
+        population_obj = y[order][: self.popsize]
         rank = rank[: self.popsize]
 
-        trb = TrbState(dim=nInput)
+        tr = TrState(dim=self.nInput)
 
         state = Struct(
             bounds=bounds,
             population_parm=population_parm,
             population_obj=population_obj,
             rank=rank,
-            trb=trb,
+            tr=tr,
         )
 
         return state
@@ -142,32 +106,38 @@ class TRS(MOEA):
 
         population_parm = self.state.population_parm
         population_obj = self.state.population_obj
-        ranks = self.state.ranks
 
         parentidxs = local_random.integers(low=0, high=popsize, size=popsize)
 
         # Create the trust region boundaries
-        x_centers = population_param[None, :]
+        x_centers = population_parm
         weights = xub - xlb
         weights = weights / np.mean(weights)  # This will make the next line more stable
         weights = weights / np.prod(
             np.power(weights, 1.0 / len(weights))
         )  # We now have weights.prod() = 1
-        tr_lb = np.clip(x_centers - weights * self.state.trb.length / 2.0, 0.0, 1.0)
-        tr_ub = np.clip(x_centers + weights * length / 2.0, 0.0, 1.0)
+        tr_lb = np.clip(x_centers - weights * self.state.tr.length / 2.0, xlb, xub)
+        tr_ub = np.clip(x_centers + weights * self.state.tr.length / 2.0, xlb, xub)
 
         # Draw a Sobolev sequence in [lb, ub]
         pert = sobol(popsize, self.nInput, local_random=local_random)
         pert = tr_lb + (tr_ub - tr_lb) * pert
 
-        # Create a perturbation mask
-        prob_perturb = min(20.0 / self.dim, 1.0)
-        mask = local_random.rand(popsize, self.dim) <= prob_perturb
-        ind = np.where(np.sum(mask, axis=1) == 0)[0]
-        mask[ind, local_random.randint(0, self.dim - 1, size=len(ind))] = 1
+        # Creates a perturbation mask; perturbing fewer dimensions at
+        # a time improves performance for high-dimensional problems
+        # (R. G. Regis and C. A. Shoemaker. Combining radial basis
+        # function surrogates and dynamic coordinate search in
+        # high-dimensional expensive black-box optimization.
+        # Engineering Optimization, 45(5):529–555, 2013)
+
+        prob_perturb = min(20.0 / self.state.tr.dim, 1.0)
+        perturb_selection = local_random.random((self.state.tr.dim,)) <= prob_perturb
+        ind = np.nonzero(perturb_selection)[0]
+        mask = np.zeros((self.popsize, self.state.tr.dim), dtype=int)
+        mask[ind, local_random.integers(0, self.state.tr.dim - 1, size=len(ind))] = 1
 
         # Create candidate points
-        X_cand = x_center.copy()
+        X_cand = x_centers.copy()
         X_cand[mask] = pert[mask]
 
         return X_cand, {}
@@ -187,22 +157,24 @@ class TRS(MOEA):
         nInput = self.nInput
         nOutput = self.nOutput
 
-        self.state.trb = update_state(self.state.trb, y_gen)
-        if self.state.trb.restart:
-            self.state.trb = restart_state(self.state.trb)
+        candidates_x = np.vstack((x_gen, population_parm))
+        candidates_y = np.vstack((y_gen, population_obj))
 
-        population_parm = np.vstack((population_parm, x_gen))
-        population_obj = np.vstack((population_obj, y_gen))
-        population_parm, population_obj = remove_duplicates(
-            population_parm, population_obj
+        P = population_parm.shape[0]
+        C = x_gen.shape[0]
+
+        candidates_offspring = np.concatenate(
+            (
+                np.asarray([True] * C, dtype=bool),
+                np.asarray([False] * P, dtype=bool),
+            )
         )
-        population_parm, population_obj, rank = remove_worst(
-            population_parm,
-            population_obj,
-            popsize,
-            nInput,
-            nOutput,
+
+        population_parm, population_obj = self.update_state(
+            candidates_x, candidates_y, candidates_offspring
         )
+        if self.state.tr.restart:
+            self.restart_state()
 
         self.state.population_parm[:] = population_parm
         self.state.population_obj[:] = population_obj
@@ -213,3 +185,131 @@ class TRS(MOEA):
         pop_y = self.state.population_obj.copy()
 
         return pop_x, pop_y
+
+    def select_candidates(self, candidates_x, candidates_y):
+
+        popsize = self.popsize
+
+        candidates_inds = np.asarray(range(candidates_x.shape[0]), dtype=np.int_)
+
+        if candidates_x.shape[0] <= popsize:
+            return np.ones_like(candidates_inds, dtype=bool_), np.zeros_like(
+                candidates_inds, dtype=bool
+            )
+
+        order, rank = sortMO(candidates_x, candidates_y, self.x_distance_metrics)
+
+        chosen = np.zeros_like(candidates_inds, dtype=bool)
+        not_chosen = np.zeros_like(candidates_inds, dtype=bool)
+        mid_front = None
+
+        # Fill the next population (chosen) with the fronts until there is not enough space
+        # When an entire front does not fit in the space left we rely on the hypervolume
+        # for this front
+        # The remaining fronts are explicitly not chosen
+        full = False
+        rmax = int(np.max(rank))
+        chosen_count = 0
+        for r in range(rmax + 1):
+            front_r = np.argwhere(rank == r).ravel()
+            if chosen_count + len(front_r) <= popsize and not full:
+                chosen[front_r] = True
+                chosen_count += len(front_r)
+            elif mid_front is None and chosen_count < popsize:
+                mid_front = front_r.copy()
+                # With this front, we selected enough individuals
+                full = True
+            else:
+                not_chosen[front_r] = True
+
+        # Separate the mid front to accept only k individuals
+        k = popsize - chosen_count
+        if k > 0:
+            # reference point is chosen in the complete population
+            # as the worst in each dimension +1
+            ref = np.max(candidates_y, axis=0) + 1
+            indicator = self.indicator(ref_point=ref)
+
+            def contribution(front, i):
+                # The contribution of point p_i in point set P
+                # is the hypervolume of P without p_i
+                return indicator.do(
+                    np.concatenate(
+                        (candidates_y[front[:i]], candidates_y[front[i + 1 :]])
+                    )
+                )
+
+            contrib_values = np.fromiter(
+                map(partial(contribution, mid_front), range(len(mid_front))),
+                dtype=np.float32,
+            )
+            contrib_order = np.argsort(contrib_values)
+
+            chosen[mid_front[contrib_order[:k]]] = True
+            not_chosen[mid_front[contrib_order[k:]]] = True
+
+        return chosen, not_chosen
+
+    def update_state(self, X_next, Y_next, is_offspring):
+
+        state = self.state.tr
+
+        chosen, not_chosen = self.select_candidates(X_next, Y_next)
+
+        state.success_counter += np.count_nonzero(is_offspring[chosen])
+
+        if (
+            state.success_counter / self.popsize >= state.success_tolerance
+        ):  # Expand trust region
+            state.length = min(2.0 * state.length, state.length_max)
+            state.success_counter = 0
+        elif (
+            state.success_counter / self.popsize < state.failure_tolerance
+        ):  # Shrink trust region
+            state.length /= 2.0
+            state.success_counter = 0
+        if state.length < state.length_min:
+            state.restart = True
+
+        return X_next[chosen], Y_next[chosen]
+
+    def restart_state(self):
+        self.state.tr.failure_counter = 0
+        self.state.tr.success_counter = 0
+        self.state.tr.length = self.state.tr.length_init
+        self.state.tr.Y_best = np.asarray([np.inf] * state.dim)
+        self.state.tr.restart = False
+
+
+def sortMO(
+    x,
+    y,
+    x_distance_metrics=None,
+):
+    """Non-dominated sort for multi-objective optimization
+    x: input parameter matrix
+    y: output objectives matrix
+    """
+
+    x_distance_functions = []
+    if x_distance_metrics is not None:
+        for distance_metric in x_distance_metrics:
+            if callable(distance_metric):
+                x_distance_functions.append(distance_metric)
+            else:
+                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
+
+    rank = dda_non_dominated_sort(y)
+
+    x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
+    rmax = int(rank.max())
+    if len(x_dists) > 0:
+        for front in range(rmax + 1):
+            rankidx = rank == front
+            for i, x_distance_function in enumerate(x_distance_functions):
+                D = x_distance_function(x[rankidx, :])
+                x_dists[i][rankidx] = D
+
+    perm = np.lexsort((list([-dist for dist in x_dists]) + [rank]))
+
+    return perm, rank

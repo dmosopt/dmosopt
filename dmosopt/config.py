@@ -24,6 +24,7 @@ default_optimizers = {
     "age": "dmosopt.AGEMOEA.AGEMOEA",
     "smpso": "dmosopt.SMPSO.SMPSO",
     "cmaes": "dmosopt.CMAES.CMAES",
+    "trs": "dmosopt.TRS.TRS",
 }
 
 default_surrogate_methods = {
