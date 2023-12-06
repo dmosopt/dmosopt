@@ -24,7 +24,7 @@ class TrState:
     is_constrained: bool = False
     length: float = 0.08
     length_init: float = 0.08
-    length_min: float = 0.5**7
+    length_min: float = 0.001
     length_max: float = 1.6
     success_counter: int = 0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
@@ -274,10 +274,12 @@ class TRS(MOEA):
         return X_next[chosen], Y_next[chosen]
 
     def restart_state(self):
+        if self.state.tr.length_init > 4 * self.state.tr.length_min:
+            self.state.tr.length_init /= 2.0
         self.state.tr.failure_counter = 0
         self.state.tr.success_counter = 0
         self.state.tr.length = self.state.tr.length_init
-        self.state.tr.Y_best = np.asarray([np.inf] * state.dim)
+        self.state.tr.Y_best = np.asarray([np.inf] * self.state.tr.dim).reshape((1, -1))
         self.state.tr.restart = False
 
 
