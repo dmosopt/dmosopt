@@ -143,6 +143,11 @@ class DistOptStrategy:
         self.opt_gen = None
         self.epoch_index = -1
 
+    def append_request(self, req):
+        if isinstance(self.reqs, Iterator):
+            self.reqs = list(self.reqs)
+        self.reqs.append(req)
+
     def has_requests(self):
         res = False
         if isinstance(self.reqs, Iterator):
@@ -185,7 +190,13 @@ class DistOptStrategy:
         if len(self.completed) > 0 and not self.has_requests():
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
-            y_predicted = np.vstack([x.prediction for x in self.completed])
+            n_objectives = y_completed.shape[0]
+            y_predicted = np.vstack(
+                map(
+                    lambda x: [np.nan] * n_objectives if x is None else x,
+                    [x.prediction for x in self.completed],
+                )
+            )
 
             f_completed = None
             if self.prob.n_features is not None:
@@ -310,7 +321,7 @@ class DistOptStrategy:
 
                     if resample:
                         for i in range(x_resample.shape[0]):
-                            self.reqs.append(
+                            self.append_request(
                                 EvalRequest(
                                     x_resample[i, :], y_pred[i], self.epoch_index
                                 )
@@ -323,7 +334,7 @@ class DistOptStrategy:
             else:
                 x_gen = item
                 for i in range(x_gen.shape[0]):
-                    self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
+                    self.append_request(EvalRequest(x_gen[i, :], None, epoch_index))
                 return_state = StrategyState.EnqueuedRequests
                 return_value = x_gen
 
@@ -351,7 +362,7 @@ class DistOptStrategy:
 
                 if resample:
                     for i in range(x_resample.shape[0]):
-                        self.reqs.append(
+                        self.append_request(
                             EvalRequest(x_resample[i, :], y_pred[i], self.epoch_index)
                         )
 
@@ -362,7 +373,7 @@ class DistOptStrategy:
             else:
                 x_gen = item
                 for i in range(x_gen.shape[0]):
-                    self.reqs.append(EvalRequest(x_gen[i, :], None, epoch_index))
+                    self.append_request(EvalRequest(x_gen[i, :], None, epoch_index))
                 return_state = StrategyState.EnqueuedRequests
                 return_value = x_gen
 
