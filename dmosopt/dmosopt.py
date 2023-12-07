@@ -78,6 +78,7 @@ class DistOptStrategy:
         self.optimizer_name = (
             optimizer_name
             if isinstance(optimizer_name, Sequence)
+            and not isinstance(optimizer_name, str)
             else (optimizer_name,)
         )
         self.optimizer_kwargs = (
@@ -504,6 +505,7 @@ class DistOptimizer:
         self.optimizer_name = (
             optimizer_name
             if isinstance(optimizer_name, Sequence)
+            and not isinstance(optimizer_name, str)
             else (optimizer_name,)
         )
         self.optimizer_kwargs = (
