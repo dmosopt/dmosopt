@@ -191,9 +191,11 @@ class DistOptStrategy:
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
             n_objectives = y_completed.shape[0]
-            y_predicted = map(
-                lambda x: [np.nan] * n_objectives if x is None else x,
-                [x.prediction for x in self.completed],
+            y_predicted = np.vstack(
+                map(
+                    lambda x: [np.nan] * n_objectives if x is None else x,
+                    [x.prediction for x in self.completed],
+                )
             )
 
             f_completed = None
