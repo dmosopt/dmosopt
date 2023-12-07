@@ -145,7 +145,7 @@ class DistOptStrategy:
 
     def append_request(self, req):
         if isinstance(self.reqs, Iterator):
-            self.reqs = list(reqs)
+            self.reqs = list(self.reqs)
         self.reqs.append(req)
 
     def has_requests(self):
@@ -190,7 +190,11 @@ class DistOptStrategy:
         if len(self.completed) > 0 and not self.has_requests():
             x_completed = np.vstack([x.parameters for x in self.completed])
             y_completed = np.vstack([x.objectives for x in self.completed])
-            y_predicted = np.vstack([x.prediction for x in self.completed])
+            n_objectives = y_completed.shape[0]
+            y_predicted = map(
+                lambda x: [np.nan] * n_objectives if x is None else x,
+                [x.prediction for x in self.completed],
+            )
 
             f_completed = None
             if self.prob.n_features is not None:
