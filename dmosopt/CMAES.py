@@ -197,7 +197,7 @@ class CMAES(MOEA):
             # reference point is chosen in the complete population
             # as the worst in each dimension +1
             ref = np.max(candidates_y, axis=0) + 1
-            indicator = self.indicator(ref_point=ref)
+            indicator = self.indicator(ref_point=ref, nds=True)
 
             def contribution(front, i):
                 # The contribution of point p_i in point set P
