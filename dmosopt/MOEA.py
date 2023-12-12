@@ -276,15 +276,10 @@ def sortMO(
 
     y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
-    rmax = int(rank.max())
-    for front in range(rmax + 1):
-        rankidx = rank == front
-        for i, y_distance_function in enumerate(y_distance_functions):
-            D = y_distance_function(y[rankidx, :])
-            y_dists[i][rankidx] = D
-        for i, x_distance_function in enumerate(x_distance_functions):
-            D = x_distance_function(x[rankidx, :])
-            x_dists[i][rankidx] = D
+    for i, y_distance_function in enumerate(y_distance_functions):
+        y_dists[i] = y_distance_function(y)
+    for i, x_distance_function in enumerate(x_distance_functions):
+        x_dists[i] = x_distance_function(x)
 
     perm = np.lexsort(
         (list([-dist for dist in x_dists]) + list([-dist for dist in y_dists]) + [rank])
@@ -339,15 +334,10 @@ def orderMO(
 
     y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
-    rmax = int(rank.max())
-    for front in range(rmax + 1):
-        rankidx = rank == front
-        for i, y_distance_function in enumerate(y_distance_functions):
-            D = y_distance_function(y[rankidx, :])
-            y_dists[i][rankidx] = D
-        for i, x_distance_function in enumerate(x_distance_functions):
-            D = x_distance_function(x[rankidx, :])
-            x_dists[i][rankidx] = D
+    for i, y_distance_function in enumerate(y_distance_functions):
+        y_dists[i] = y_distance_function(y)
+    for i, x_distance_function in enumerate(x_distance_functions):
+        x_dists[i] = x_distance_function(x)
 
     perm = np.lexsort(
         (list([-dist for dist in x_dists]) + list([-dist for dist in y_dists]) + [rank])
