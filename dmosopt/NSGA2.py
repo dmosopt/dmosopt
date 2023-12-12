@@ -86,8 +86,6 @@ class NSGA2(MOEA):
         x, y, rank, _ = sortMO(
             x,
             y,
-            self.nInput,
-            self.nOutput,
             x_distance_metrics=self.x_distance_metrics,
             y_distance_metrics=self.y_distance_metrics,
         )
@@ -188,8 +186,6 @@ class NSGA2(MOEA):
             population_parm,
             population_obj,
             popsize,
-            nInput,
-            nOutput,
             x_distance_metrics=self.x_distance_metrics,
             y_distance_metrics=self.y_distance_metrics,
         )
