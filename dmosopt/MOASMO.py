@@ -94,7 +94,7 @@ def optimize(
             if termination is not None:
                 logger.info(f"{optimizer.name}: generation {i}...")
             else:
-                logger.info(f"{optimizer.name}: generation {i} of {gen}...")
+                logger.info(f"{optimizer.name}: generation {i} of {num_generations}...")
 
         ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()

@@ -192,10 +192,10 @@ class DistOptStrategy:
             y_completed = np.vstack([x.objectives for x in self.completed])
             n_objectives = y_completed.shape[0]
             y_predicted = np.vstack(
-                map(
+                tuple(map(
                     lambda x: [np.nan] * n_objectives if x is None else x,
                     [x.prediction for x in self.completed],
-                )
+                ))
             )
 
             f_completed = None
@@ -958,7 +958,7 @@ class DistOptimizer:
                         if self.reduce_fun_args is None:
                             rres = self.reduce_fun(res)
                         else:
-                            rres = self.reduce_fun(res, *dopt.reduce_fun_args)
+                            rres = self.reduce_fun(res, *self.reduce_fun_args)
 
                     for problem_id in rres:
                         eval_req = self.eval_reqs[problem_id][task_id]
