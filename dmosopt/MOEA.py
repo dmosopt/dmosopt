@@ -241,20 +241,20 @@ def sortMO(
     y,
     return_perm=False,
     x_distance_metrics=None,
-    y_distance_metrics=["crowding"],
+    y_distance_metrics=None,
 ):
     """Non-dominated sort for multi-objective optimization
     x: input parameter matrix
     y: output objectives matrix
     return_perm: if True, return permutation indices of original input
     """
-    y_distance_functions = [crowding_distance]
+    y_distance_functions = []
     if y_distance_metrics is not None:
         y_distance_functions = []
         assert len(y_distance_metrics) > 0
         for distance_metric in y_distance_metrics:
-            if distance_metric == None:
-                y_distance_functions.append(crowding_distance)
+            if callable(distance_metric):
+                y_distance_functions.append(distance_metric)
             elif distance_metric == "crowding":
                 y_distance_functions.append(crowding_distance)
             elif distance_metric == "euclidean":
@@ -300,19 +300,18 @@ def orderMO(
     x,
     y,
     x_distance_metrics=None,
-    y_distance_metrics=["crowding"],
+    y_distance_metrics=None,
 ):
     """Returns the ordering for a non-dominated sort for multi-objective optimization
     x: input parameter matrix
     y: output objectives matrix
     """
-    y_distance_functions = [crowding_distance]
+    y_distance_functions = []
     if y_distance_metrics is not None:
-        y_distance_functions = []
         assert len(y_distance_metrics) > 0
         for distance_metric in y_distance_metrics:
-            if distance_metric == None:
-                y_distance_functions.append(crowding_distance)
+            if callable(distance_metric):
+                y_distance_functions.append(distance_metric)
             elif distance_metric == "crowding":
                 y_distance_functions.append(crowding_distance)
             elif distance_metric == "euclidean":
