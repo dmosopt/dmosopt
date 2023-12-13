@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dmosopt"
-version = "0.45.2"
+version = "0.45.3"
 description = "Distributed multi-objective surrogate optimization algorithm."
 authors = ["Ivan Raikov <ivan.g.raikov@gmail.com>"]
 license = "GPL-3.0-or-later"

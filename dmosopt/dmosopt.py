@@ -192,10 +192,12 @@ class DistOptStrategy:
             y_completed = np.vstack([x.objectives for x in self.completed])
             n_objectives = y_completed.shape[0]
             y_predicted = np.vstack(
-                tuple(map(
-                    lambda x: [np.nan] * n_objectives if x is None else x,
-                    [x.prediction for x in self.completed],
-                ))
+                tuple(
+                    map(
+                        lambda x: [np.nan] * n_objectives if x is None else x,
+                        [x.prediction for x in self.completed],
+                    )
+                )
             )
 
             f_completed = None
@@ -341,12 +343,13 @@ class DistOptStrategy:
         else:
             x_gen = completed_evals[0]
             y_gen = completed_evals[1]
+            c_gen = completed_evals[4]
 
             try:
                 if isinstance(self.opt_gen, dict):
                     raise StopIteration(self.opt_gen)
                 else:
-                    item = self.opt_gen.send((x_gen, y_gen))
+                    item = self.opt_gen.send((x_gen, y_gen, c_gen))
             except StopIteration as ex:
                 if isinstance(self.opt_gen, GeneratorType):
                     self.opt_gen.close()
@@ -1146,6 +1149,15 @@ class DistOptimizer:
                         x_completed = completed_evals[0]
                         y_completed = completed_evals[1]
                         pred_completed = completed_evals[2]
+                        c_completed = completed_evals[4]
+                        if c_completed is not None:
+                            feasible = np.argwhere(np.all(c_completed > 0.0, axis=1))
+                            if len(feasible) > 0:
+                                feasible = feasible.ravel()
+                                x_completed = x_completed[feasible, :]
+                                y_completed = y_completed[feasible, :]
+                                pred_completed = pred_completed[feasible, :]
+
                         if x_completed.shape[0] > 0:
                             n_objectives = y_completed.shape[1]
                             mae = []

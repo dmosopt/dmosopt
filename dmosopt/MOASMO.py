@@ -231,7 +231,7 @@ def epoch(
     N_resample = int(pop * pct)
 
     if Xinit is None:
-        Xinit, Yinit = yield
+        Xinit, Yinit, C = yield
 
     x = Xinit.copy().astype(np.float32)
     y = Yinit.copy().astype(np.float32)
@@ -337,7 +337,7 @@ def epoch(
             if sm is not None:
                 y_gen = sm.evaluate(x_gen)
             else:
-                _, y_gen = yield x_gen
+                _, y_gen, c_gen = yield x_gen
 
             try:
                 res = opt_gen.send(y_gen)
