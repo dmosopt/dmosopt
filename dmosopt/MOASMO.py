@@ -231,7 +231,7 @@ def epoch(
     N_resample = int(pop * pct)
 
     if Xinit is None:
-        Xinit, Yinit = yield
+        Xinit, Yinit, C = yield
 
     x = Xinit.copy().astype(np.float32)
     y = Yinit.copy().astype(np.float32)
