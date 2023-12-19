@@ -43,7 +43,6 @@ def optimize(
     pct: percentage of resampled points in each iteration
     Xinit and Yinit: initial samplers for surrogate model construction
     """
-
     optimizer_kwargs = {}
     optimizer_kwargs.update(kwargs)
 
