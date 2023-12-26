@@ -184,7 +184,7 @@ class DistOptStrategy:
     def has_completed(self):
         return len(self.completed) > 0
 
-    def _reduce_evals(self):
+    def _remove_duplicate_evals(self):
 
         is_duplicates = MOEA.get_duplicates(self.x)
 
@@ -194,6 +194,10 @@ class DistOptStrategy:
             self.f = self.f[~is_duplicates]
         if self.c is not None:
             self.c = self.c[~is_duplicates]
+
+    def _reduce_evals(self):
+
+        self._remove_duplicate_evals()
 
         perm, _, _ = MOEA.orderMO(self.x, self.y)
 
@@ -247,6 +251,7 @@ class DistOptStrategy:
                     self.f = np.concatenate((self.f, f_completed))
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
+            self._remove_duplicate_evals()
             self.completed = []
             result = x_completed, y_completed, y_predicted, f_completed, c_completed
 
@@ -355,7 +360,7 @@ class DistOptStrategy:
                         for i in range(x_resample.shape[0]):
                             self.append_request(
                                 EvalRequest(
-                                    x_resample[i, :], y_pred[i], self.epoch_index
+                                    x_resample[i, :], y_pred[i], self.epoch_index + 1
                                 )
                             )
 
@@ -405,7 +410,6 @@ class DistOptStrategy:
                     gen_index = result_dict["gen_index"]
                     x, y = result_dict["x"], result_dict["y"]
                     optimizer = result_dict["optimizer"]
-
                     return_state = StrategyState.CompletedEpoch
                     return_value = EpochResults(
                         best_x, best_y, gen_index, x, y, optimizer
@@ -421,7 +425,7 @@ class DistOptStrategy:
                         for i in range(x_resample.shape[0]):
                             self.append_request(
                                 EvalRequest(
-                                    x_resample[i, :], y_pred[i], self.epoch_index
+                                    x_resample[i, :], y_pred[i], self.epoch_index + 1
                                 )
                             )
 
@@ -462,6 +466,8 @@ class DistOptStrategy:
             return (self.x, self.y, self.f, self.c)
         elif return_features:
             return (self.x, self.y, self.f)
+        elif return_constraints:
+            return (self.x, self.y, self.c)
         else:
             return (self.x, self.y)
 
@@ -698,6 +704,8 @@ class DistOptimizer:
         self.save_eval = save_eval
         self.save_surrogate_evals_ = save_surrogate_evals
         self.save_optimizer_params_ = save_optimizer_params
+        self.saved_eval_count = 0
+        self.eval_count = 0
 
         self.obj_fun_args = obj_fun_args
         if has_problem_ids:
@@ -991,8 +999,6 @@ class DistOptimizer:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
 
     def _process_requests(self):
-        saved_eval_count = 0
-        eval_count = 0
         task_ids = []
 
         has_requests = False
@@ -1114,17 +1120,17 @@ class DistOptimizer:
                                 f"problem id {problem_id}: optimization epoch {eval_epoch}: parameters {prms}: {lres}"
                             )
 
-                    eval_count += 1
+                    self.eval_count += 1
                     task_ids.remove(task_id)
 
             if (
                 self.save
-                and (eval_count > 0)
-                and (saved_eval_count < eval_count)
-                and ((eval_count - saved_eval_count) >= self.save_eval)
+                and (self.eval_count > 0)
+                and (self.saved_eval_count < self.eval_count)
+                and ((self.eval_count - self.saved_eval_count) >= self.save_eval)
             ):
                 self.save_evals()
-                saved_eval_count = eval_count
+                self.saved_eval_count = self.eval_count
 
             if (self.controller.time_limit is not None) and (
                 time.time() - self.controller.start_time
@@ -1173,7 +1179,7 @@ class DistOptimizer:
                         self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
         assert len(task_ids) == 0
-        return eval_count, saved_eval_count
+        return self.eval_count, self.saved_eval_count
 
     def run_epoch(self):
         if self.controller is None:
@@ -1184,7 +1190,7 @@ class DistOptimizer:
         controller = self.controller
         epoch = self.epoch_count + self.start_epoch
         gen = None
-        advance_epoch = self.epoch_count < self.n_epochs
+        advance_epoch = self.epoch_count < self.n_epochs - 1
         completed_epoch = False
 
         eval_count, saved_eval_count = self._process_requests()
@@ -1235,7 +1241,7 @@ class DistOptimizer:
                                 f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
                             )
 
-                    if epoch > 0:
+                    if advance_epoch and epoch > 0:
                         x_sm, y_sm = None, None
                         if self.save and self.save_surrogate_evals_:
                             gen_index = res.gen_index
