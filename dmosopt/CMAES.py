@@ -408,7 +408,7 @@ class CMAES(MOEA):
             population_parm, population_obj
         )
         population_parm, population_obj, _ = remove_worst(
-            population_parm, population_obj, self.popsize, self.nInput, self.nOutput
+            population_parm, population_obj, self.popsize
         )
 
         return population_parm, population_obj

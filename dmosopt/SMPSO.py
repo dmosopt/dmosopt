@@ -113,8 +113,6 @@ class SMPSO(MOEA):
             xs[p], ys[p], rank_p, _ = sortMO(
                 xs[p],
                 ys[p],
-                nInput,
-                nOutput,
                 x_distance_metrics=self.x_distance_metrics,
                 y_distance_metrics=self.y_distance_metrics,
             )
@@ -216,8 +214,6 @@ class SMPSO(MOEA):
                 population_parm_p,
                 population_obj_p,
                 popsize,
-                nInput,
-                nOutput,
                 x_distance_metrics=self.x_distance_metrics,
                 y_distance_metrics=self.y_distance_metrics,
             )
@@ -235,8 +231,6 @@ class SMPSO(MOEA):
             pop_parm,
             pop_obj,
             popsize,
-            nInput,
-            nOutput,
             x_distance_metrics=self.x_distance_metrics,
             y_distance_metrics=self.y_distance_metrics,
         )
