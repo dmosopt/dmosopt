@@ -95,7 +95,7 @@ def optimize(
             else:
                 logger.info(f"{optimizer.name}: generation {i} of {num_generations}...")
 
-        ## optimizer generate-update
+                ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()
 
         if model is None:
@@ -319,7 +319,7 @@ def epoch(
     )
 
     try:
-        res = next(opt_gen)
+        item = next(opt_gen)
     except StopIteration as ex:
         opt_gen.close()
         opt_gen = None
@@ -330,14 +330,17 @@ def epoch(
         x = res.x
         y = res.y
     else:
+        x_gen = item
         while True:
-            x_gen = res
 
+            y_gen, c_gen = None, None
             if sm is not None:
                 y_gen = sm.evaluate(x_gen)
             else:
-                _, y_gen, c_gen = yield x_gen
+                item_eval = yield x_gen, True
+                _, y_gen, c_gen = item_eval
 
+            res = None
             try:
                 res = opt_gen.send(y_gen)
             except StopIteration as ex:
@@ -350,6 +353,8 @@ def epoch(
                 x = res.x
                 y = res.y
                 break
+            else:
+                x_gen = res
 
     if surrogate_method_name is not None:
         D = MOEA.crowding_distance(best_y)
@@ -517,9 +522,7 @@ def get_best(
         if c is not None:
             c = c[~is_duplicate]
 
-    xtmp, ytmp, rank, _, perm = MOEA.sortMO(
-        xtmp, ytmp, nInput, nOutput, return_perm=True
-    )
+    xtmp, ytmp, rank, _, perm = MOEA.sortMO(xtmp, ytmp, return_perm=True)
     idxp = rank == 0
     best_x = xtmp[idxp, :]
     best_y = ytmp[idxp, :]
@@ -559,9 +562,7 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     else:
         feasible = None
 
-    perm_x, perm_y, rank, _, perm = MOEA.sortMO(
-        xtmp, ytmp, nInput, nOutput, return_perm=True
-    )
+    perm_x, perm_y, rank, _, perm = MOEA.sortMO(xtmp, ytmp, return_perm=True)
     # x, y are already permutated upon return
     perm_f = f[perm]
     perm_epoch = epochs[perm]

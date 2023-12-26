@@ -239,26 +239,22 @@ def crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchild
 def sortMO(
     x,
     y,
-    nInput,
-    nOutput,
     return_perm=False,
     x_distance_metrics=None,
-    y_distance_metrics=["crowding"],
+    y_distance_metrics=None,
 ):
     """Non-dominated sort for multi-objective optimization
     x: input parameter matrix
     y: output objectives matrix
-    nInput: number of input
-    nOutput: number of output
     return_perm: if True, return permutation indices of original input
     """
-    y_distance_functions = [crowding_distance]
+    y_distance_functions = []
     if y_distance_metrics is not None:
         y_distance_functions = []
         assert len(y_distance_metrics) > 0
         for distance_metric in y_distance_metrics:
-            if distance_metric == None:
-                y_distance_functions.append(crowding_distance)
+            if callable(distance_metric):
+                y_distance_functions.append(distance_metric)
             elif distance_metric == "crowding":
                 y_distance_functions.append(crowding_distance)
             elif distance_metric == "euclidean":
@@ -280,15 +276,10 @@ def sortMO(
 
     y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
-    rmax = int(rank.max())
-    for front in range(rmax + 1):
-        rankidx = rank == front
-        for i, y_distance_function in enumerate(y_distance_functions):
-            D = y_distance_function(y[rankidx, :])
-            y_dists[i][rankidx] = D
-        for i, x_distance_function in enumerate(x_distance_functions):
-            D = x_distance_function(x[rankidx, :])
-            x_dists[i][rankidx] = D
+    for i, y_distance_function in enumerate(y_distance_functions):
+        y_dists[i] = y_distance_function(y)
+    for i, x_distance_function in enumerate(x_distance_functions):
+        x_dists[i] = x_distance_function(x)
 
     perm = np.lexsort(
         (list([-dist for dist in x_dists]) + list([-dist for dist in y_dists]) + [rank])
@@ -303,6 +294,58 @@ def sortMO(
         return x, y, rank, y_dists, perm
     else:
         return x, y, rank, y_dists
+
+
+def orderMO(
+    x,
+    y,
+    x_distance_metrics=None,
+    y_distance_metrics=None,
+):
+    """Returns the ordering for a non-dominated sort for multi-objective optimization
+    x: input parameter matrix
+    y: output objectives matrix
+    """
+    y_distance_functions = []
+    if y_distance_metrics is not None:
+        assert len(y_distance_metrics) > 0
+        for distance_metric in y_distance_metrics:
+            if callable(distance_metric):
+                y_distance_functions.append(distance_metric)
+            elif distance_metric == "crowding":
+                y_distance_functions.append(crowding_distance)
+            elif distance_metric == "euclidean":
+                y_distance_functions.append(euclidean_distance)
+            elif callable(distance_metric):
+                y_distance_functions.append(distance_metric)
+            else:
+                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
+
+    x_distance_functions = []
+    if x_distance_metrics is not None:
+        for distance_metric in x_distance_metrics:
+            if callable(distance_metric):
+                x_distance_functions.append(distance_metric)
+            else:
+                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
+
+    rank = dda_non_dominated_sort(y)
+
+    y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
+    x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
+    for i, y_distance_function in enumerate(y_distance_functions):
+        y_dists[i] = y_distance_function(y)
+    for i, x_distance_function in enumerate(x_distance_functions):
+        x_dists[i] = x_distance_function(x)
+
+    perm = np.lexsort(
+        (list([-dist for dist in x_dists]) + list([-dist for dist in y_dists]) + [rank])
+    )
+
+    rank = rank[perm]
+    y_dists = tuple([dist[perm] for dist in y_dists])
+
+    return perm, rank, y_dists
 
 
 def crowding_distance(Y):
@@ -385,8 +428,6 @@ def remove_worst(
     population_parm,
     population_obj,
     pop,
-    nInput,
-    nOutput,
     x_distance_metrics=None,
     y_distance_metrics=None,
 ):
@@ -394,8 +435,6 @@ def remove_worst(
     population_parm, population_obj, rank, _ = sortMO(
         population_parm,
         population_obj,
-        nInput,
-        nOutput,
         x_distance_metrics=x_distance_metrics,
         y_distance_metrics=y_distance_metrics,
     )

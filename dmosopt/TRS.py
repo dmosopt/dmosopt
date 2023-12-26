@@ -9,6 +9,7 @@ from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import (
     Struct,
     MOEA,
+    orderMO,
     remove_worst,
     remove_duplicates,
 )
@@ -79,7 +80,7 @@ class TRS(MOEA):
         local_random: Optional[np.random.Generator] = None,
         **params,
     ):
-        order, rank = sortMO(x, y, self.x_distance_metrics)
+        order, rank = orderMO(x, y, x_distance_metrics=self.x_distance_metrics)
         population_parm = x[order][: self.popsize]
         population_obj = y[order][: self.popsize]
         rank = rank[: self.popsize]
@@ -197,7 +198,9 @@ class TRS(MOEA):
                 candidates_inds, dtype=bool
             )
 
-        order, rank = sortMO(candidates_x, candidates_y, self.x_distance_metrics)
+        order, rank = orderMO(
+            candidates_x, candidates_y, x_distance_metrics=self.x_distance_metrics
+        )
 
         chosen = np.zeros_like(candidates_inds, dtype=bool)
         not_chosen = np.zeros_like(candidates_inds, dtype=bool)
@@ -281,37 +284,3 @@ class TRS(MOEA):
         self.state.tr.length = self.state.tr.length_init
         self.state.tr.Y_best = np.asarray([np.inf] * self.state.tr.dim).reshape((1, -1))
         self.state.tr.restart = False
-
-
-def sortMO(
-    x,
-    y,
-    x_distance_metrics=None,
-):
-    """Non-dominated sort for multi-objective optimization
-    x: input parameter matrix
-    y: output objectives matrix
-    """
-
-    x_distance_functions = []
-    if x_distance_metrics is not None:
-        for distance_metric in x_distance_metrics:
-            if callable(distance_metric):
-                x_distance_functions.append(distance_metric)
-            else:
-                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
-
-    rank = dda_non_dominated_sort(y)
-
-    x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
-    rmax = int(rank.max())
-    if len(x_dists) > 0:
-        for front in range(rmax + 1):
-            rankidx = rank == front
-            for i, x_distance_function in enumerate(x_distance_functions):
-                D = x_distance_function(x[rankidx, :])
-                x_dists[i][rankidx] = D
-
-    perm = np.lexsort((list([-dist for dist in x_dists]) + [rank]))
-
-    return perm, rank
