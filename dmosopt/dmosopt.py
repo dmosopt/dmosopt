@@ -8,6 +8,7 @@ import numpy as np
 from numpy.random import default_rng
 import distwq
 from dmosopt.config import import_object_by_path
+from dmosopt import MOEA
 import dmosopt.MOASMO as opt
 from dmosopt.datatypes import (
     OptProblem,
@@ -15,7 +16,6 @@ from dmosopt.datatypes import (
     EvalEntry,
     EvalRequest,
     EpochResults,
-    GenerationResults,
     StrategyState,
 )
 from dmosopt.termination import MultiObjectiveStdTermination
@@ -184,6 +184,26 @@ class DistOptStrategy:
     def has_completed(self):
         return len(self.completed) > 0
 
+    def _reduce_evals(self):
+
+        is_duplicates = MOEA.get_duplicates(self.x)
+
+        self.x = self.x[~is_duplicates]
+        self.y = self.y[~is_duplicates]
+        if self.f is not None:
+            self.f = self.f[~is_duplicates]
+        if self.c is not None:
+            self.c = self.c[~is_duplicates]
+
+        perm, _, _ = MOEA.orderMO(self.x, self.y)
+
+        self.x = self.x[perm[0 : self.popsize], :]
+        self.y = self.y[perm[0 : self.popsize], :]
+        if self.c is not None:
+            self.c = self.c[perm[0 : self.popsize], :]
+        if self.f is not None:
+            self.f = self.f[perm[0 : self.popsize], :]
+
     def _update_evals(self):
         result = None
 
@@ -271,12 +291,21 @@ class DistOptStrategy:
             logger=self.logger,
         )
 
+        res, reduce_evals = None, False
         try:
-            res = next(self.opt_gen)
+            res, reduce_evals = next(self.opt_gen)
         except StopIteration as ex:
             self.opt_gen.close()
             result_dict = ex.args[0]
             self.opt_gen = result_dict
+
+        if reduce_evals:
+            self.reduce_evals()
+
+        if res is not None:
+            x_gen = res
+            for i in range(x_gen.shape[0]):
+                self.append_request(EvalRequest(x_gen[i, :], None, self.epoch_index))
 
     def update_epoch(self, resample=False):
         assert self.opt_gen is not None, "Epoch not initialized"
@@ -285,8 +314,11 @@ class DistOptStrategy:
         return_value = None
         x_resample, y_pred, gen_index, x_sm, y_sm = None, None, None, None, None
         completed_evals = self._update_evals()
+        reduce_evals = False
 
         if completed_evals is None:
+            logger.info(f"update_epoch: self.opt_gen = {self.opt_gen}")
+            logger.info(f"update_epoch: self.has_requests() = {self.has_requests()}")
             if self.has_requests():
                 return_state = StrategyState.WaitingRequests
                 return return_state, return_value, completed_evals
@@ -294,7 +326,7 @@ class DistOptStrategy:
                 if isinstance(self.opt_gen, dict):
                     raise StopIteration(self.opt_gen)
                 else:
-                    item = next(self.opt_gen)
+                    item, reduce_evals = next(self.opt_gen)
             except StopIteration as ex:
 
                 if isinstance(self.opt_gen, GeneratorType):
@@ -302,6 +334,7 @@ class DistOptStrategy:
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
+                logger.info(f"update_epoch: StopIteration: result_dict = {result_dict}")
 
                 if "best_x" in result_dict:
                     best_x = result_dict["best_x"]
@@ -310,8 +343,8 @@ class DistOptStrategy:
                     x, y = result_dict["x"], result_dict["y"]
                     optimizer = result_dict["optimizer"]
 
-                    return_state = StrategyState.CompletedGeneration
-                    return_value = GenerationResults(
+                    return_state = StrategyState.CompletedEpoch
+                    return_value = EpochResults(
                         best_x, best_y, gen_index, x, y, optimizer
                     )
                 else:
@@ -334,9 +367,13 @@ class DistOptStrategy:
                         x_resample, y_pred, gen_index, x_sm, y_sm, optimizer
                     )
             else:
+                if reduce_evals:
+                    self.reduce_evals()
                 x_gen = item
                 for i in range(x_gen.shape[0]):
-                    self.append_request(EvalRequest(x_gen[i, :], None, self.epoch_index))
+                    self.append_request(
+                        EvalRequest(x_gen[i, :], None, self.epoch_index)
+                    )
                 return_state = StrategyState.EnqueuedRequests
                 return_value = x_gen
 
@@ -349,34 +386,61 @@ class DistOptStrategy:
                 if isinstance(self.opt_gen, dict):
                     raise StopIteration(self.opt_gen)
                 else:
-                    item = self.opt_gen.send((x_gen, y_gen, c_gen))
+                    item, reduce_evals = self.opt_gen.send((x_gen, y_gen, c_gen))
             except StopIteration as ex:
                 if isinstance(self.opt_gen, GeneratorType):
                     self.opt_gen.close()
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
+                logger.info(f"update_epoch: StopIteration: result_dict = {result_dict}")
 
-                x_resample = result_dict["x_resample"]
-                y_pred = result_dict["y_pred"]
-                gen_index = result_dict["gen_index"]
-                x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
-                optimizer = result_dict["optimizer"]
+                x_resample = None
+                y_pred = None
+                x_sm = None
+                y_sm = None
+                gen_index = None
+                x = None
+                y = None
 
-                if resample:
-                    for i in range(x_resample.shape[0]):
-                        self.append_request(
-                            EvalRequest(x_resample[i, :], y_pred[i], self.epoch_index)
-                        )
+                if "best_x" in result_dict:
+                    best_x = result_dict["best_x"]
+                    best_y = result_dict["best_y"]
+                    gen_index = result_dict["gen_index"]
+                    x, y = result_dict["x"], result_dict["y"]
+                    optimizer = result_dict["optimizer"]
 
-                return_state = StrategyState.CompletedEpoch
-                return_value = EpochResults(
-                    x_resample, y_pred, gen_index, x_sm, y_sm, optimizer
-                )
+                    return_state = StrategyState.CompletedEpoch
+                    return_value = EpochResults(
+                        best_x, best_y, gen_index, x, y, optimizer
+                    )
+                else:
+                    x_resample = result_dict["x_resample"]
+                    y_pred = result_dict["y_pred"]
+                    gen_index = result_dict["gen_index"]
+                    x_sm, y_sm = result_dict["x_sm"], result_dict["y_sm"]
+                    optimizer = result_dict["optimizer"]
+
+                    if resample and x_resample is not None:
+                        for i in range(x_resample.shape[0]):
+                            self.append_request(
+                                EvalRequest(
+                                    x_resample[i, :], y_pred[i], self.epoch_index
+                                )
+                            )
+
+                    return_state = StrategyState.CompletedEpoch
+                    return_value = EpochResults(
+                        x_resample, y_pred, gen_index, x, y, optimizer
+                    )
             else:
+                if reduce_evals:
+                    self.reduce_evals()
                 x_gen = item
                 for i in range(x_gen.shape[0]):
-                    self.append_request(EvalRequest(x_gen[i, :], None, self.epoch_index))
+                    self.append_request(
+                        EvalRequest(x_gen[i, :], None, self.epoch_index)
+                    )
                 return_state = StrategyState.EnqueuedRequests
                 return_value = x_gen
 
@@ -1129,10 +1193,12 @@ class DistOptimizer:
 
         eval_count, saved_eval_count = self._process_requests()
 
+        logger.info(f"run_epoch: initializing epoch {epoch}")
         for problem_id in self.problem_ids:
             self.optimizer_dict[problem_id].initialize_epoch(epoch)
 
         while not completed_epoch:
+            logger.info(f"run_epoch: completed_epoch = {completed_epoch}")
             eval_count, saved_eval_count = self._process_requests()
 
             for problem_id in self.problem_ids:
@@ -1141,6 +1207,9 @@ class DistOptimizer:
                     problem_id
                 ].update_epoch(resample=advance_epoch)
                 completed_epoch = strategy_state == StrategyState.CompletedEpoch
+                logger.info(
+                    f"run_epoch: strategy_state = {strategy_state} completed_epoch = {completed_epoch}"
+                )
                 if completed_epoch:
                     res = strategy_value
 
