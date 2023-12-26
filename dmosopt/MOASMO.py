@@ -52,13 +52,10 @@ def optimize(
     bounds = np.column_stack((xlb, xub))
 
     x = optimizer.generate_initial(bounds, local_random)
-    logger.info(f"optimize: generate_initial: x.shape = {x.shape}")
     if model is None:
         y = yield x
     else:
         y = model.evaluate(x).astype(np.float32)
-
-    logger.info(f"optimize: initial eval: y.shape = {y.shape}")
 
     x_initial = None
     y_initial = None
@@ -70,14 +67,12 @@ def optimize(
     if y_initial is not None:
         y = np.vstack((y_initial.astype(np.float32), y))
 
-    logger.info(f"optimize: before initialize_strategy")
     optimizer.initialize_strategy(x, y, bounds, local_random, **optimizer_kwargs)
     if logger is not None:
         logger.info(
             f"{optimizer.name}: optimizer parameters are {repr(optimizer.opt_params)}"
         )
 
-    logger.info(f"optimize: strategy initialized")
     gen_indexes = []
     gen_indexes.append(np.zeros((x.shape[0],), dtype=np.uint32))
 
@@ -89,7 +84,6 @@ def optimize(
     if termination is not None:
         it = itertools.count(1)
     for i in it:
-        logger.info(f"optimize: iteration {i}")
         if termination is not None:
             pop_x, pop_y = optimizer.population_objectives
             opt = OptHistory(i, n_eval, pop_x, pop_y, None)
@@ -104,13 +98,11 @@ def optimize(
                 ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()
 
-        logger.info(f"optimize: x_gen.shape = {x_gen.shape}")
         if model is None:
             y_gen = yield x_gen
         else:
             y_gen = model.evaluate(x_gen)
 
-        logger.info(f"optimize: y_gen.shape = {y_gen.shape}")
         optimizer.update(x_gen, y_gen, state_gen)
         count = x_gen.shape[0]
         n_eval += count
@@ -125,7 +117,6 @@ def optimize(
     bestx, besty = optimizer.population_objectives
 
     results = EpochResults(bestx, besty, gen_index, x, y, optimizer)
-    logger.info(f"Returning results {results}")
 
     return results
 
@@ -310,8 +301,6 @@ def epoch(
         **optimizer_kwargs_,
     )
 
-    logger.info(f"epoch: creating optimize generator")
-
     opt_gen = optimize(
         num_generations,
         optimizer,
@@ -330,14 +319,11 @@ def epoch(
     )
 
     try:
-        logger.info(f"epoch: calling next(opt_gen)")
         item = next(opt_gen)
-        logger.info(f"epoch: item = {item}")
     except StopIteration as ex:
         opt_gen.close()
         opt_gen = None
         res = ex.args[0]
-        logger.info(f"epoch: StopIteration: res = {res}")
         best_x = res.best_x
         best_y = res.best_y
         gen_index = res.gen_index
@@ -347,16 +333,12 @@ def epoch(
         x_gen = item
         while True:
 
-            logger.info(f"epoch: x_gen.shape = {x_gen.shape}")
-
             y_gen, c_gen = None, None
             if sm is not None:
                 y_gen = sm.evaluate(x_gen)
             else:
                 item_eval = yield x_gen, True
-                logger.info(f"epoch: item_eval = {item_eval}")
                 _, y_gen, c_gen = item_eval
-                logger.info(f"epoch: y_gen.shape = {y_gen.shape}")
 
             res = None
             try:
@@ -365,7 +347,6 @@ def epoch(
                 opt_gen.close()
                 opt_gen = None
                 res = ex.args[0]
-                logger.info(f"epoch: StopIteration: res = {res}")
                 best_x = res.best_x
                 best_y = res.best_y
                 gen_index = res.gen_index
@@ -373,7 +354,6 @@ def epoch(
                 y = res.y
                 break
             else:
-                logger.info(f"epoch: res = {res}")
                 x_gen = res
 
     if surrogate_method_name is not None:
@@ -399,8 +379,6 @@ def epoch(
             "y": y,
             "optimizer": optimizer,
         }
-
-    logger.info(f"epoch: return_dict = {return_dict}")
 
     return return_dict
 

@@ -197,12 +197,12 @@ class DistOptStrategy:
 
         perm, _, _ = MOEA.orderMO(self.x, self.y)
 
-        self.x = self.x[perm[0 : self.popsize], :]
-        self.y = self.y[perm[0 : self.popsize], :]
+        self.x = self.x[perm[0 : self.population_size], :]
+        self.y = self.y[perm[0 : self.population_size], :]
         if self.c is not None:
-            self.c = self.c[perm[0 : self.popsize], :]
+            self.c = self.c[perm[0 : self.population_size], :]
         if self.f is not None:
-            self.f = self.f[perm[0 : self.popsize], :]
+            self.f = self.f[perm[0 : self.population_size], :]
 
     def _update_evals(self):
         result = None
@@ -291,19 +291,19 @@ class DistOptStrategy:
             logger=self.logger,
         )
 
-        res, reduce_evals = None, False
+        item = None
         try:
-            res, reduce_evals = next(self.opt_gen)
+            item = next(self.opt_gen)
         except StopIteration as ex:
             self.opt_gen.close()
             result_dict = ex.args[0]
             self.opt_gen = result_dict
 
-        if reduce_evals:
-            self.reduce_evals()
+        if item is not None:
+            x_gen, reduce_evals = item
+            if reduce_evals:
+                self._reduce_evals()
 
-        if res is not None:
-            x_gen = res
             for i in range(x_gen.shape[0]):
                 self.append_request(EvalRequest(x_gen[i, :], None, self.epoch_index))
 
@@ -317,8 +317,6 @@ class DistOptStrategy:
         reduce_evals = False
 
         if completed_evals is None:
-            logger.info(f"update_epoch: self.opt_gen = {self.opt_gen}")
-            logger.info(f"update_epoch: self.has_requests() = {self.has_requests()}")
             if self.has_requests():
                 return_state = StrategyState.WaitingRequests
                 return return_state, return_value, completed_evals
@@ -334,7 +332,6 @@ class DistOptStrategy:
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
-                logger.info(f"update_epoch: StopIteration: result_dict = {result_dict}")
 
                 if "best_x" in result_dict:
                     best_x = result_dict["best_x"]
@@ -368,7 +365,7 @@ class DistOptStrategy:
                     )
             else:
                 if reduce_evals:
-                    self.reduce_evals()
+                    self._reduce_evals()
                 x_gen = item
                 for i in range(x_gen.shape[0]):
                     self.append_request(
@@ -393,7 +390,6 @@ class DistOptStrategy:
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
-                logger.info(f"update_epoch: StopIteration: result_dict = {result_dict}")
 
                 x_resample = None
                 y_pred = None
@@ -435,7 +431,7 @@ class DistOptStrategy:
                     )
             else:
                 if reduce_evals:
-                    self.reduce_evals()
+                    self._reduce_evals()
                 x_gen = item
                 for i in range(x_gen.shape[0]):
                     self.append_request(
@@ -1193,12 +1189,10 @@ class DistOptimizer:
 
         eval_count, saved_eval_count = self._process_requests()
 
-        logger.info(f"run_epoch: initializing epoch {epoch}")
         for problem_id in self.problem_ids:
             self.optimizer_dict[problem_id].initialize_epoch(epoch)
 
         while not completed_epoch:
-            logger.info(f"run_epoch: completed_epoch = {completed_epoch}")
             eval_count, saved_eval_count = self._process_requests()
 
             for problem_id in self.problem_ids:
@@ -1207,9 +1201,6 @@ class DistOptimizer:
                     problem_id
                 ].update_epoch(resample=advance_epoch)
                 completed_epoch = strategy_state == StrategyState.CompletedEpoch
-                logger.info(
-                    f"run_epoch: strategy_state = {strategy_state} completed_epoch = {completed_epoch}"
-                )
                 if completed_epoch:
                     res = strategy_value
 

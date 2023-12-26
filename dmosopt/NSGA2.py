@@ -15,10 +15,6 @@ from dmosopt.MOEA import (
 )
 from typing import Any, Union, Dict, List, Tuple, Optional
 
-import logging
-
-logger = logging.getLogger("NSGA2")
-
 
 class NSGA2(MOEA):
     def __init__(
@@ -87,7 +83,6 @@ class NSGA2(MOEA):
         local_random: Optional[np.random.Generator] = None,
         **params,
     ):
-        logger.info(f"NSGA2 initialize_state: x.shape = {x.shape}")
         x, y, rank, _ = sortMO(
             x,
             y,
