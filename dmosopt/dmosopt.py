@@ -271,6 +271,8 @@ class DistOptStrategy:
         if self.termination is not None:
             self.termination.reset()
 
+        completed_evals = self._update_evals()
+
         assert epoch_index > self.epoch_index
         self.epoch_index = epoch_index
         self.opt_gen = opt.epoch(
