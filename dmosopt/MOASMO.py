@@ -243,7 +243,7 @@ def epoch(
             try:
                 if feasibility_model:
                     logger.info(f"Constructing feasibility model...")
-                    fsbm = LogisticFeasibilityModel(Xinit, C)
+                    fsbm = LogisticFeasibilityModel(x, C)
                 x = x[feasible, :]
                 y = y[feasible, :]
             except:
@@ -418,6 +418,7 @@ def train(
             if logger is not None:
                 logger.info(f"Found {len(feasible)} feasible solutions")
 
+
     x, y = MOEA.remove_duplicates(x, y)
 
     # resolve shorthands
@@ -469,6 +470,7 @@ def analyze_sensitivity(
                 ]
             )
         )
+        S1s = np.nan_to_num(S1s, copy=False)
         S1max = np.max(S1s, axis=0)
         S1nmax = S1max / np.max(S1max)
         di_mutation = np.clip(S1nmax * di_max, di_min, None)

@@ -271,6 +271,8 @@ class DistOptStrategy:
         if self.termination is not None:
             self.termination.reset()
 
+        completed_evals = self._update_evals()
+
         assert epoch_index > self.epoch_index
         self.epoch_index = epoch_index
         self.opt_gen = opt.epoch(
@@ -1177,6 +1179,14 @@ class DistOptimizer:
                     task_ids.append(task_id)
                     for problem_id in self.problem_ids:
                         self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
+
+        if (
+                self.save
+                and (self.eval_count > 0)
+                and (self.saved_eval_count < self.eval_count)
+            ):
+                self.save_evals()
+                self.saved_eval_count = self.eval_count
 
         assert len(task_ids) == 0
         return self.eval_count, self.saved_eval_count
