@@ -1184,7 +1184,6 @@ class DistOptimizer:
                 self.save
                 and (self.eval_count > 0)
                 and (self.saved_eval_count < self.eval_count)
-                and ((self.eval_count - self.saved_eval_count) >= self.save_eval)
             ):
                 self.save_evals()
                 self.saved_eval_count = self.eval_count
