@@ -232,8 +232,8 @@ def epoch(
     if Xinit is None:
         Xinit, Yinit, C = yield
 
-    x = Xinit.copy().astype(np.float32)
-    y = Yinit.copy().astype(np.float32)
+    x_0 = Xinit.copy().astype(np.float32)
+    y_0 = Yinit.copy().astype(np.float32)
 
     fsbm = None
     if C is not None:
@@ -244,8 +244,8 @@ def epoch(
                 if feasibility_model:
                     logger.info(f"Constructing feasibility model...")
                     fsbm = LogisticFeasibilityModel(x, C)
-                x = x[feasible, :]
-                y = y[feasible, :]
+                x_0 = x_0[feasible, :]
+                y_0 = y_0[feasible, :]
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
@@ -309,7 +309,7 @@ def epoch(
         nOutput,
         xlb,
         xub,
-        initial=(x, y),
+        initial=(x_0, y_0),
         feasibility_model=fsbm,
         logger=logger,
         popsize=pop,
@@ -357,6 +357,9 @@ def epoch(
                 x_gen = res
 
     if surrogate_method_name is not None:
+        is_duplicate = MOEA.get_duplicates(best_x, x_0)
+        best_x = best_x[~is_duplicate]
+        best_y = best_y[~is_duplicate]
         D = MOEA.crowding_distance(best_y)
         idxr = D.argsort()[::-1][:N_resample]
         x_resample = best_x[idxr, :]
@@ -417,7 +420,6 @@ def train(
             y = y[feasible, :]
             if logger is not None:
                 logger.info(f"Found {len(feasible)} feasible solutions")
-
 
     x, y = MOEA.remove_duplicates(x, y)
 

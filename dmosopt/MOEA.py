@@ -441,9 +441,11 @@ def remove_worst(
     return population_parm[0:pop, :], population_obj[0:pop, :], rank[0:pop]
 
 
-def get_duplicates(X, eps=1e-16):
-    D = cdist(X, X)
-    D[np.triu_indices(len(X))] = np.inf
+def get_duplicates(X, Y=None, eps=1e-16):
+    if Y is None:
+        Y = X
+    D = cdist(X, Y)
+    D[np.triu_indices(len(X), m=len(Y))] = np.inf
     D[np.isnan(D)] = np.inf
 
     is_duplicate = np.zeros((len(X),), dtype=bool)
