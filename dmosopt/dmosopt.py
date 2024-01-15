@@ -195,9 +195,6 @@ class DistOptStrategy:
         if self.c is not None:
             self.c = self.c[~is_duplicates]
 
-        if self.f.ndim == 1:
-            self.f = self.f[:, None] 
-
     def _reduce_evals(self):
 
         self._remove_duplicate_evals()
@@ -207,9 +204,9 @@ class DistOptStrategy:
         self.x = self.x[perm[0 : self.population_size], :]
         self.y = self.y[perm[0 : self.population_size], :]
         if self.c is not None:
-            self.c = self.c[perm[0 : self.population_size], :]
+            self.c = self.c[perm[0 : self.population_size]]
         if self.f is not None:
-            self.f = self.f[perm[0 : self.population_size], :]
+            self.f = self.f[perm[0 : self.population_size]]
 
     def _update_evals(self):
         result = None
