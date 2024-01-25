@@ -200,11 +200,13 @@ def epoch(
     optimizer_kwargs={},
     surrogate_method_name="gpr",
     surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
+    surrogate_custom_training=None,
     sensitivity_method_name=None,
     sensitivity_method_kwargs={},
     termination=None,
     local_random=None,
     logger=None,
+    file_path=None,
 ):
     """
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -252,7 +254,10 @@ def epoch(
 
     sm = None
     if surrogate_method_name is not None:
-        sm = train(
+        training_method = train
+        if surrogate_custom_training is not None:
+            training_method = import_object_by_path(surrogate_custom_training)
+        sm = training_method(
             nInput,
             nOutput,
             xlb,
@@ -263,6 +268,7 @@ def epoch(
             surrogate_method_name=surrogate_method_name,
             surrogate_method_kwargs=surrogate_method_kwargs,
             logger=logger,
+            file_path=file_path,
         )
 
     optimizer_kwargs_ = {
@@ -397,6 +403,7 @@ def train(
     surrogate_method_name="gpr",
     surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
     logger=None,
+    file_path=None,
 ):
     """
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
