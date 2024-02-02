@@ -273,7 +273,7 @@ def epoch(
 
     # objective
     if surrogate_method_name is not None and mdl.objective is not None:    
-        mdl.objective = training_method(
+        mdl.objective = train(
             nInput,
             nOutput,
             xlb,
@@ -292,7 +292,7 @@ def epoch(
         class S:
             def __init__(self):
                 self.di_dict = analyze_sensitivity(
-                    sm,
+                    mdl.objective,
                     xlb,
                     xub,
                     param_names,
