@@ -386,7 +386,7 @@ def epoch(
             else:
                 x_gen = res
 
-    if surrogate_method_name is not None:
+    if mdl.objective is not None:
         is_duplicate = MOEA.get_duplicates(best_x, x_0)
         best_x = best_x[~is_duplicate]
         best_y = best_y[~is_duplicate]
