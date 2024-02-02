@@ -832,7 +832,7 @@ class DistOptimizer:
                 optimizer_name=self.optimizer_name,
                 optimizer_kwargs=self.optimizer_kwargs,
                 feasibility_method_name=self.feasibility_method_name,
-                feasibility_method_kwargs=feasibility_method_kwargs,
+                feasibility_method_kwargs=self.feasibility_method_kwargs,
                 termination_conditions=self.termination_conditions,
                 local_random=self.local_random,
                 logger=self.logger,
