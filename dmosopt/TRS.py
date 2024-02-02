@@ -45,7 +45,7 @@ class TRS(MOEA):
         popsize: int,
         nInput: int,
         nOutput: int,
-        feasibility_model: Optional[Any],
+        model: Optional[Any],
         **kwargs,
     ):
         """Trust Region Search"""
@@ -57,10 +57,10 @@ class TRS(MOEA):
             **kwargs,
         )
 
-        self.feasibility_model = feasibility_model
+        self.model = model
         self.x_distance_metrics = None
-        if self.feasibility_model is not None:
-            self.x_distance_metrics = [self.feasibility_model.rank]
+        if self.model.feasibility is not None:
+            self.x_distance_metrics = [self.model.feasibility.rank]
         self.indicator = Hypervolume
 
     @property

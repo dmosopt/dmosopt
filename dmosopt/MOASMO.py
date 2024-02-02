@@ -26,7 +26,6 @@ def optimize(
     xub,
     popsize=100,
     initial=None,
-    feasibility_model=False,
     termination=None,
     local_random=None,
     logger=None,
@@ -52,10 +51,10 @@ def optimize(
     bounds = np.column_stack((xlb, xub))
 
     x = optimizer.generate_initial(bounds, local_random)
-    if model is None:
+    if model.objective is None:
         y = yield x
     else:
-        y = model.evaluate(x).astype(np.float32)
+        y = model.objective.evaluate(x).astype(np.float32)
 
     x_initial = None
     y_initial = None
@@ -98,10 +97,10 @@ def optimize(
                 ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()
 
-        if model is None:
+        if model.objective is None:
             y_gen = yield x_gen
         else:
-            y_gen = model.evaluate(x_gen)
+            y_gen = model.objective.evaluate(x_gen)
 
         optimizer.update(x_gen, y_gen, state_gen)
         count = x_gen.shape[0]
@@ -236,28 +235,45 @@ def epoch(
 
     x_0 = Xinit.copy().astype(np.float32)
     y_0 = Yinit.copy().astype(np.float32)
-
-    fsbm = None
+    
+    mdl = model.Model()
+    if surrogate_custom_training is not None:
+        # custom initialization
+        custom_training = import_object_by_path(surrogate_custom_training)
+        mdl = custom_training(
+            Xinit, 
+            Yinit, 
+            C, 
+            xlb, 
+            xub, 
+            file_path,
+            options={
+                "surrogate_method_name": surrogate_method_name,
+                "surrogate_method_kwargs": surrogate_method_kwargs,
+                "feasibility_model": feasibility_model,
+                "sensitivity_method_name": sensitivity_method_name,
+                "sensitivity_method_kwargs": sensitivity_method_kwargs,
+            }
+        )
+    
+    # feasiblity
     if C is not None:
         feasible = np.argwhere(np.all(C > 0.0, axis=1))
         if len(feasible) > 0:
             feasible = feasible.ravel()
             try:
-                if feasibility_model:
+                if feasibility_model and mdl.feasibility is not None:
                     logger.info(f"Constructing feasibility model...")
-                    fsbm = LogisticFeasibilityModel(x, C)
+                    mdl.feasibility = LogisticFeasibilityModel(x, C)
                 x_0 = x_0[feasible, :]
                 y_0 = y_0[feasible, :]
             except:
                 e = sys.exc_info()[0]
                 logger.warning(f"Unable to fit feasibility model: {e}")
 
-    sm = None
-    if surrogate_method_name is not None:
-        training_method = train
-        if surrogate_custom_training is not None:
-            training_method = import_object_by_path(surrogate_custom_training)
-        sm = training_method(
+    # objective
+    if surrogate_method_name is not None and mdl.objective is not None:    
+        mdl.objective = training_method(
             nInput,
             nOutput,
             xlb,
@@ -271,6 +287,24 @@ def epoch(
             file_path=file_path,
         )
 
+    # sensitivity
+    if sensitivity_method_name is not None and mdl.sensitivity is not None:
+        class S:
+            def __init__(self):
+                self.di_dict = analyze_sensitivity(
+                    sm,
+                    xlb,
+                    xub,
+                    param_names,
+                    objective_names,
+                    sensitivity_method_name=sensitivity_method_name,
+                    sensitivity_method_kwargs=sensitivity_method_kwargs,
+                    logger=logger,
+                )
+            def evaluate(self):
+                return self.di_dict
+        mdl.sensitivity = S()
+
     optimizer_kwargs_ = {
         "sampling_method": "slh",
         "mutation_rate": None,
@@ -278,17 +312,8 @@ def epoch(
     }
     optimizer_kwargs_.update(optimizer_kwargs)
 
-    if sensitivity_method_name is not None:
-        di_dict = analyze_sensitivity(
-            sm,
-            xlb,
-            xub,
-            param_names,
-            objective_names,
-            sensitivity_method_name=sensitivity_method_name,
-            sensitivity_method_kwargs=sensitivity_method_kwargs,
-            logger=logger,
-        )
+    if mdl.sensitivity is not None:
+        di_dict = mdl.sensitivity.evaluate()
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
 
@@ -302,7 +327,7 @@ def epoch(
         nInput=nInput,
         nOutput=nOutput,
         popsize=pop,
-        feasibility_model=fsbm,
+        model=mdl,
         distance_metric=None,
         **optimizer_kwargs_,
     )
@@ -310,13 +335,12 @@ def epoch(
     opt_gen = optimize(
         num_generations,
         optimizer,
-        sm,
+        mdl,
         nInput,
         nOutput,
         xlb,
         xub,
         initial=(x_0, y_0),
-        feasibility_model=fsbm,
         logger=logger,
         popsize=pop,
         local_random=local_random,
@@ -340,8 +364,8 @@ def epoch(
         while True:
 
             y_gen, c_gen = None, None
-            if sm is not None:
-                y_gen = sm.evaluate(x_gen)
+            if mdl.objective is not None:
+                y_gen = mdl.objective.evaluate(x_gen)
             else:
                 item_eval = yield x_gen, True
                 _, y_gen, c_gen = item_eval

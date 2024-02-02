@@ -22,7 +22,7 @@ class SMPSO(MOEA):
         popsize: int,
         nInput: int,
         nOutput: int,
-        feasibility_model: Optional[Any],
+        model: Optional[Any],
         distance_metric: Optional[Any],
         **kwargs,
     ):
@@ -45,7 +45,7 @@ class SMPSO(MOEA):
             [range(p * popsize, (p + 1) * popsize) for p in range(swarm_size)]
         )
 
-        self.feasibility_model = feasibility_model
+        self.model = model
         self.distance_metric = distance_metric
 
         self.y_distance_metrics = None
@@ -53,8 +53,8 @@ class SMPSO(MOEA):
             self.y_distance_metrics = []
             self.y_distance_metrics.append(distance_metric)
         self.x_distance_metrics = None
-        if self.feasibility_model is not None:
-            x_distance_metrics = [self.feasibility_model.rank]
+        if self.model.feasibility is not None:
+            x_distance_metrics = [self.model.feasibility.rank]
 
         di_mutation = self.opt_params.di_mutation
         if np.isscalar(di_mutation):

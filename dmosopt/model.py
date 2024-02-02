@@ -594,6 +594,13 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         return scale
 
 
+class Model:
+    def __init__(self, objective=None, feasibility=None,  sensitivity=None):
+        self.objective = objective
+        self.feasibility = feasibility
+        self.sensitivity = sensitivity
+
+
 class MDSPP_Matern:
     def __init__(
         self,
