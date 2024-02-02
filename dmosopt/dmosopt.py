@@ -62,7 +62,8 @@ class DistOptStrategy:
             "crossover_prob": 0.9,
             "mutation_prob": 0.1,
         },
-        feasibility_model=False,
+        feasibility_method_name=None,
+        feasibility_method_kwargs={},
         termination_conditions=None,
         local_random=None,
         logger=None,
@@ -73,7 +74,8 @@ class DistOptStrategy:
         self.local_random = local_random
         self.logger = logger
         self.file_path = file_path
-        self.feasibility_model = feasibility_model
+        self.feasibility_method_name = feasibility_method_name
+        self.feasibility_method_kwargs = feasibility_method_kwargs
         self.surrogate_method_kwargs = surrogate_method_kwargs
         self.surrogate_method_name = surrogate_method_name
         self.surrogate_custom_training = surrogate_custom_training
@@ -297,7 +299,8 @@ class DistOptStrategy:
             surrogate_custom_training=self.surrogate_custom_training,
             sensitivity_method_name=self.sensitivity_method_name,
             sensitivity_method_kwargs=self.sensitivity_method_kwargs,
-            feasibility_model=self.feasibility_model,
+            feasibility_method_name=self.feasibility_method_name,
+            feasibility_method_kwargs=self.feasibility_method_kwargs,
             termination=self.termination,
             local_random=self.local_random,
             logger=self.logger,
@@ -536,7 +539,8 @@ class DistOptimizer:
         sensitivity_method_kwargs={},
         local_random=None,
         random_seed=None,
-        feasibility_model=False,
+        feasibility_method_name=None,
+        feasibility_method_kwargs=None,
         termination_conditions=None,
         controller: Optional[distwq.MPIController] = None,
         **kwargs,
@@ -604,7 +608,8 @@ class DistOptimizer:
             else (optimizer_kwargs,)
         )
 
-        self.feasibility_model = feasibility_model
+        self.feasibility_method_name = feasibility_method_name
+        self.feasibility_method_kwargs = feasibility_method_kwargs
         self.termination_conditions = termination_conditions
         self.metadata = metadata
         self.local_random = local_random
@@ -826,7 +831,8 @@ class DistOptimizer:
                 sensitivity_method_kwargs=self.sensitivity_method_kwargs,
                 optimizer_name=self.optimizer_name,
                 optimizer_kwargs=self.optimizer_kwargs,
-                feasibility_model=self.feasibility_model,
+                feasibility_method_name=self.feasibility_method_name,
+                feasibility_method_kwargs=feasibility_method_kwargs,
                 termination_conditions=self.termination_conditions,
                 local_random=self.local_random,
                 logger=self.logger,

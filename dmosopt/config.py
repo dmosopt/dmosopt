@@ -44,3 +44,7 @@ default_sa_methods = {
     "dgsm": "dmosopt.sa.SA_DGSM",
     "fast": "dmosopt.sa.SA_FAST",
 }
+
+default_feasibility_methods = {
+    'logreg': "dmosopt.feasibility.LogisticFeasibilityModel"
+}

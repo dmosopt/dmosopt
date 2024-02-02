@@ -4,8 +4,7 @@ import sys, itertools
 import numpy as np
 from numpy.random import default_rng
 from typing import Any, Union, Dict, List, Tuple, Optional
-from dmosopt import MOEA, model, sa
-from dmosopt.feasibility import LogisticFeasibilityModel
+from dmosopt import MOEA, model
 from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.config import (
     import_object_by_path,
@@ -13,6 +12,7 @@ from dmosopt.config import (
     default_sampling_methods,
     default_surrogate_methods,
     default_sa_methods,
+    default_feasibility_methods
 )
 
 
@@ -194,7 +194,8 @@ def epoch(
     C,
     pop=100,
     sampling_method_name=None,
-    feasibility_model=False,
+    feasibility_method_name=None,
+    feasibility_method_kwargs={},
     optimizer_name="nsga2",
     optimizer_kwargs={},
     surrogate_method_name="gpr",
@@ -250,26 +251,25 @@ def epoch(
             options={
                 "surrogate_method_name": surrogate_method_name,
                 "surrogate_method_kwargs": surrogate_method_kwargs,
-                "feasibility_model": feasibility_model,
+                "feasibility_method_name": feasibility_method_name,
+                "feasibility_method_kwargs": feasibility_method_kwargs,
                 "sensitivity_method_name": sensitivity_method_name,
                 "sensitivity_method_kwargs": sensitivity_method_kwargs,
             }
         )
     
-    # feasiblity
-    if C is not None:
-        feasible = np.argwhere(np.all(C > 0.0, axis=1))
-        if len(feasible) > 0:
-            feasible = feasible.ravel()
-            try:
-                if feasibility_model and mdl.feasibility is not None:
-                    logger.info(f"Constructing feasibility model...")
-                    mdl.feasibility = LogisticFeasibilityModel(x, C)
-                x_0 = x_0[feasible, :]
-                y_0 = y_0[feasible, :]
-            except:
-                e = sys.exc_info()[0]
-                logger.warning(f"Unable to fit feasibility model: {e}")
+    # feasiblity       
+    if feasibility_method_name is not None and mdl.feasibility is not None:
+        # resolve shorthands
+        if feasibility_method_name in default_feasibility_methods:
+            feasibility_method_name = default_feasibility_methods[feasibility_method_name]
+        try:
+            logger.info(f"Constructing feasibility model...")
+            feasibility_method_cls = import_object_by_path(feasibility_method_name)
+            mdl.feasibility =  feasibility_method_cls(x, C)
+        except:
+            e = sys.exc_info()[0]
+            logger.warning(f"Unable to fit feasibility model: {e}")
 
     # objective
     if surrogate_method_name is not None and mdl.objective is not None:    
@@ -331,6 +331,14 @@ def epoch(
         distance_metric=None,
         **optimizer_kwargs_,
     )
+    
+    # filter out infeasible solutions before passing them to optimizer
+    if C is not None:
+        feasible = np.argwhere(np.all(C > 0.0, axis=1))
+        if len(feasible) > 0:
+            feasible = feasible.ravel()
+            x_0 = x_0[feasible, :]
+            y_0 = y_0[feasible, :]
 
     opt_gen = optimize(
         num_generations,
