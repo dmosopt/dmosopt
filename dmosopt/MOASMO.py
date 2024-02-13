@@ -259,7 +259,7 @@ def epoch(
         )
     
     # feasiblity       
-    if feasibility_method_name is not None and mdl.feasibility is not None:
+    if feasibility_method_name is not None and mdl.feasibility is None:
         # resolve shorthands
         if feasibility_method_name in default_feasibility_methods:
             feasibility_method_name = default_feasibility_methods[feasibility_method_name]
@@ -272,7 +272,7 @@ def epoch(
             logger.warning(f"Unable to fit feasibility model: {e}")
 
     # objective
-    if surrogate_method_name is not None and mdl.objective is not None:    
+    if surrogate_method_name is not None and mdl.objective is None:    
         mdl.objective = train(
             nInput,
             nOutput,
@@ -288,7 +288,7 @@ def epoch(
         )
 
     # sensitivity
-    if sensitivity_method_name is not None and mdl.sensitivity is not None:
+    if sensitivity_method_name is not None and mdl.sensitivity is None:
         class S:
             def __init__(self):
                 self.di_dict = analyze_sensitivity(
