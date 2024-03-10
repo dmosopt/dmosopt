@@ -2744,7 +2744,7 @@ class GPR_Matern:
 
         N = xin.shape[0]
         x = np.zeros_like(xin)
-        y = np.copy(yin)
+        y = np.nan_to_num(np.copy(yin))
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrg
         if nOutput == 1:
