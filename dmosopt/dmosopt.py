@@ -54,6 +54,7 @@ class DistOptStrategy:
             "optimizer": "sceua",
         },
         surrogate_custom_training: Optional[str] = None,
+        surrogate_custom_training_kwargs: Optional[Dict] = None,
         sensitivity_method_name: Optional[str] = None,
         sensitivity_method_kwargs={},
         distance_metric=None,
@@ -79,6 +80,7 @@ class DistOptStrategy:
         self.surrogate_method_kwargs = surrogate_method_kwargs
         self.surrogate_method_name = surrogate_method_name
         self.surrogate_custom_training = surrogate_custom_training
+        self.surrogate_custom_training_kwargs = surrogate_custom_training_kwargs
         self.sensitivity_method_kwargs = sensitivity_method_kwargs
         self.sensitivity_method_name = sensitivity_method_name
         self.optimizer_name = (
@@ -297,6 +299,7 @@ class DistOptStrategy:
             surrogate_method_name=self.surrogate_method_name,
             surrogate_method_kwargs=self.surrogate_method_kwargs,
             surrogate_custom_training=self.surrogate_custom_training,
+            surrogate_custom_training_kwargs=self.surrogate_custom_training_kwargs,
             sensitivity_method_name=self.sensitivity_method_name,
             sensitivity_method_kwargs=self.sensitivity_method_kwargs,
             feasibility_method_name=self.feasibility_method_name,
@@ -530,6 +533,7 @@ class DistOptimizer:
         surrogate_method_name="gpr",
         surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
         surrogate_custom_training=None,
+        surrogate_custom_training_kwargs=None,
         optimizer_name="nsga2",
         optimizer_kwargs={
             "mutation_prob": 0.1,
@@ -594,6 +598,7 @@ class DistOptimizer:
         self.surrogate_method_name = surrogate_method_name
         self.surrogate_method_kwargs = surrogate_method_kwargs
         self.surrogate_custom_training = surrogate_custom_training
+        self.surrogate_custom_training_kwargs = surrogate_custom_training_kwargs
         self.sensitivity_method_name = sensitivity_method_name
         self.sensitivity_method_kwargs = sensitivity_method_kwargs
         self.optimizer_name = (
@@ -827,6 +832,7 @@ class DistOptimizer:
                 surrogate_method_name=self.surrogate_method_name,
                 surrogate_method_kwargs=self.surrogate_method_kwargs,
                 surrogate_custom_training=self.surrogate_custom_training,
+                surrogate_custom_training_kwargs=self.surrogate_custom_training_kwargs,
                 sensitivity_method_name=self.sensitivity_method_name,
                 sensitivity_method_kwargs=self.sensitivity_method_kwargs,
                 optimizer_name=self.optimizer_name,
