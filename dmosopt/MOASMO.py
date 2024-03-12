@@ -319,7 +319,7 @@ def epoch(
                     logger=logger,
                 )
 
-            def evaluate(self):
+            def di_dict(self):
                 return self.di_dict
 
         mdl.sensitivity = S()
@@ -332,7 +332,7 @@ def epoch(
     optimizer_kwargs_.update(optimizer_kwargs)
 
     if mdl.sensitivity is not None:
-        di_dict = mdl.sensitivity.evaluate()
+        di_dict = mdl.sensitivity.di_dict()
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
 
