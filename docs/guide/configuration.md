@@ -101,6 +101,8 @@ The effectiveness of the optimization will greatly depend on the [sampling strat
 
 dmosopt supports evaluating different problems with the same set of parameters. Use `problem_ids` to specify a set of problem IDs (otherwise, it defaults to `set([0])`). The objective function must return a dictionary of the form `{ problem_id: ... }` for each ID.
 
+Furthermore, it is possible to implement dynamic sampling strategies via the `dynamic_initial_sampling` option (and `dynamic_initial_sampling_kwargs`). [Learn more](./sampling)
+
 ### Surrogate strategy
 
 [Surrogate models](./surrogates) can greatly improve sampling effectiveness and convergence. Use `surrogate_method_name` to point to a strategy; method specific options can be passed via `surrogate_method_kwargs`. Moreover, to use a custom training method, you can pass its Python import path to `surrogate_custom_training` (and additional arguments to `surrogate_custom_training_kwargs`).
