@@ -1284,7 +1284,7 @@ class DistOptimizer:
             distopt = self.optimizer_dict[problem_id]
 
             # dynamic sampling
-            if self.dynamic_initial_sampling is not None:
+            if self.dynamic_initial_sampling is not None and self.epoch_count == 0:
                 dynamic_initial_sampler = import_object_by_path(
                     self.dynamic_initial_sampling
                 )
