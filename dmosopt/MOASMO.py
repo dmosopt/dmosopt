@@ -1,6 +1,7 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
 
 import sys, itertools
+import time
 import numpy as np
 from numpy.random import default_rng
 from typing import Any, Union, Dict, List, Tuple, Optional
@@ -245,6 +246,10 @@ def epoch(
     optimizer_cls = import_object_by_path(optimizer_name)
 
     # surrogate
+    timings = {}
+    
+    timings['model_init_start'] = time.time()
+    
     mdl = model.Model()
     if surrogate_custom_training is not None:
         # custom initialization
@@ -335,6 +340,8 @@ def epoch(
         di_dict = mdl.sensitivity.di_dict()
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
+        
+    timings['model_init_end'] = time.time()
 
     optimizer = optimizer_cls(
         nInput=nInput,
@@ -423,6 +430,7 @@ def epoch(
             "x_sm": x,
             "y_sm": y,
             "optimizer": optimizer,
+            "timings": timings,
         }
     else:
         return_dict = {
@@ -432,6 +440,7 @@ def epoch(
             "x": x,
             "y": y,
             "optimizer": optimizer,
+            "timings": timings,
         }
 
     return return_dict

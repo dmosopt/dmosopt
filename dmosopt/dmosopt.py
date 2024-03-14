@@ -7,6 +7,7 @@ from types import GeneratorType
 import numpy as np
 from numpy.random import default_rng
 import distwq
+import time
 from dmosopt.config import import_object_by_path
 from dmosopt import MOEA
 import dmosopt.MOASMO as opt
@@ -100,6 +101,7 @@ class DistOptStrategy:
         self.prob = prob
         self.completed = []
         self.reqs = []
+        self.t = None
         if initial is None:
             self.x = None
             self.y = None
@@ -150,6 +152,8 @@ class DistOptStrategy:
                 )
         self.opt_gen = None
         self.epoch_index = -1
+        
+        self.timings = {}
 
     def append_request(self, req):
         if isinstance(self.reqs, Iterator):
@@ -182,10 +186,10 @@ class DistOptStrategy:
                 pass
         return req
 
-    def complete_request(self, x, y, epoch=None, f=None, c=None, pred=None):
+    def complete_request(self, x, y, epoch=None, f=None, c=None, pred=None, time=-1.):
         assert x.shape[0] == self.prob.dim
         assert y.shape[0] == self.prob.n_objectives
-        entry = EvalEntry(epoch, x, y, f, c, pred)
+        entry = EvalEntry(epoch, x, y, f, c, pred, time)
         self.completed.append(entry)
         return entry
 
@@ -245,7 +249,7 @@ class DistOptStrategy:
             assert y_completed.shape[1] == self.prob.n_objectives
             if self.prob.n_constraints is not None:
                 assert c_completed.shape[1] == self.prob.n_constraints
-
+            
             if self.x is None:
                 self.x = x_completed
                 self.y = y_completed
@@ -259,6 +263,22 @@ class DistOptStrategy:
                     self.f = np.concatenate((self.f, f_completed))
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
+                    
+            t_completed = np.vstack([x.time for x in self.completed])
+            if self.t is None:
+                self.t = t_completed
+            else:
+                self.t = np.vstack((self.t, t_completed))
+            ts = self.t[self.t > 0.]
+            self.timings.update({
+                'eval_min': np.min(ts),
+                'eval_max': np.max(ts),
+                'eval_mean': np.mean(ts),
+                'eval_std': np.std(ts),
+                'eval_sum': np.sum(ts),
+                'eval_median': np.median(ts),
+            })
+            
             self._remove_duplicate_evals()
             self.completed = []
             result = x_completed, y_completed, y_predicted, f_completed, c_completed
@@ -351,6 +371,8 @@ class DistOptStrategy:
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
+                
+                self.timings.update(result_dict.get('timings', {}))
 
                 if "best_x" in result_dict:
                     best_x = result_dict["best_x"]
@@ -409,6 +431,8 @@ class DistOptStrategy:
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
+
+                self.timings.update(result_dict.get('timings', {}))
 
                 x_resample = None
                 y_pred = None
@@ -789,6 +813,26 @@ class DistOptimizer:
                     self.file_path,
                 )
 
+        self.timings = {}
+        
+    def get_timings(self):
+        for problem_id in self.problem_ids:
+            if problem_id in self.optimizer_dict:
+                self.timings.update({
+                    f"{problem_id}_{k}" if problem_id > 0 else k: v for k, v in self.optimizer_dict[problem_id].timings.items()
+                })
+        
+        result = {}
+        for key in self.timings:
+            if not key.endswith('_start') and not key.endswith('_end'):
+                result[key] = self.timings[key]
+                continue
+            name, period = key.rsplit('_', 1)
+            if period == 'start':
+                if f'{name}_end' in self.timings:
+                    result[name] = self.timings[f'{name}_end'] - self.timings[key]
+        return result
+
     def initialize_strategy(self):
         opt_prob = OptProblem(
             self.param_names,
@@ -1048,7 +1092,6 @@ class DistOptimizer:
                 rets = self.controller.probe_all_next_results()
                 for ret in rets:
                     task_id, res = ret
-
                     if self.reduce_fun is None:
                         rres = res
                     else:
@@ -1057,6 +1100,7 @@ class DistOptimizer:
                         else:
                             rres = self.reduce_fun(res, *self.reduce_fun_args)
 
+                    t = rres.pop("time", -1.)
                     for problem_id in rres:
                         eval_req = self.eval_reqs[problem_id][task_id]
                         eval_x = eval_req.parameters
@@ -1073,6 +1117,7 @@ class DistOptimizer:
                                 c=rres[problem_id][2],
                                 pred=eval_pred,
                                 epoch=eval_epoch,
+                                time=t,
                             )
                             self.storage_dict[problem_id].append(entry)
                         elif self.feature_names is not None:
@@ -1082,6 +1127,7 @@ class DistOptimizer:
                                 f=rres[problem_id][1],
                                 pred=eval_pred,
                                 epoch=eval_epoch,
+                                time=t,
                             )
                             self.storage_dict[problem_id].append(entry)
                         elif self.constraint_names is not None:
@@ -1091,6 +1137,7 @@ class DistOptimizer:
                                 c=rres[problem_id][1],
                                 pred=eval_pred,
                                 epoch=eval_epoch,
+                                time=t,
                             )
                             self.storage_dict[problem_id].append(entry)
                         else:
@@ -1099,6 +1146,7 @@ class DistOptimizer:
                                 rres[problem_id],
                                 pred=eval_pred,
                                 epoch=eval_epoch,
+                                time=t,
                             )
                             self.storage_dict[problem_id].append(entry)
                         prms = list(zip(self.param_names, list(eval_x.T)))
@@ -1222,15 +1270,16 @@ class DistOptimizer:
             raise RuntimeError(
                 "DistOptimizer: method epoch cannot be executed when controller is not set."
             )
-
+        
         controller = self.controller
         epoch = self.epoch_count + self.start_epoch
         gen = None
         advance_epoch = self.epoch_count < self.n_epochs - 1
         completed_epoch = False
 
+        self.timings['init_sampling_start'] = time.time()
         eval_count, saved_eval_count = self._process_requests()
-
+    
         for problem_id in self.problem_ids:
             distopt = self.optimizer_dict[problem_id]
 
@@ -1282,6 +1331,8 @@ class DistOptimizer:
                     dyn_sample_iter_count += 1
 
             distopt.initialize_epoch(epoch)
+            
+        self.timings['init_sampling_end'] = time.time()
 
         while not completed_epoch:
             eval_count, saved_eval_count = self._process_requests()
@@ -1293,6 +1344,7 @@ class DistOptimizer:
                 ].update_epoch(resample=advance_epoch)
                 completed_epoch = strategy_state == StrategyState.CompletedEpoch
                 if completed_epoch:
+                    
                     res = strategy_value
 
                     ## Compute prediction accuracy of completed evaluations
@@ -2009,9 +2061,9 @@ def eval_obj_fun_sp(
 
     if obj_fun_args is None:
         obj_fun_args = ()
-
+    t = time.time()
     result = obj_fun(pp, *obj_fun_args)
-    return {problem_id: result}
+    return {problem_id: result, 'time': time.time() - t}
 
 
 def eval_obj_fun_mp(
@@ -2032,7 +2084,10 @@ def eval_obj_fun_mp(
     if obj_fun_args is None:
         obj_fun_args = ()
 
+    t = time.time()
     result_dict = obj_fun(mpp, *obj_fun_args)
+    result_dict['time']= time.time() - t
+    
     return result_dict
 
 
@@ -2105,6 +2160,19 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     start_epoch = dopt.start_epoch
     while dopt.epoch_count < dopt.n_epochs:
         dopt.run_epoch()
+        
+        timings = dopt.get_timings()
+        with h5py.File(dopt.file_path, "a") as f:
+            dtype = np.dtype(
+                {"names": [k for k in timings], "formats": [np.float64] * len(timings)}
+            )
+            dset = h5_get_dataset(
+                f[dopt_params['opt_id']],
+                "timings",
+                maxshape=(None,),
+                dtype=dtype,
+            )
+            h5_concat_dataset(dset, np.array([tuple(timings.values())], dtype=dtype))
 
 
 def dopt_work(worker, dopt_params, verbose=False, debug=False):

@@ -51,6 +51,7 @@ EvalEntry = namedtuple(
         "features",
         "constraints",
         "prediction",
+        "time",
     ],
 )
 
