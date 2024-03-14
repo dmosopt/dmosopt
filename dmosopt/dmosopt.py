@@ -513,6 +513,8 @@ class DistOptimizer:
         n_initial=10,
         initial_maxiter=5,
         initial_method="slh",
+        dynamic_initial_sampling=None,
+        dynamic_initial_sampling_kwargs=None,
         verbose=False,
         reduce_fun=None,
         reduce_fun_args=None,
@@ -595,6 +597,8 @@ class DistOptimizer:
         self.num_generations = num_generations
         self.resample_fraction = resample_fraction
         self.distance_metric = distance_metric
+        self.dynamic_initial_sampling = dynamic_initial_sampling
+        self.dynamic_initial_sampling_kwargs = dynamic_initial_sampling_kwargs
         self.surrogate_method_name = surrogate_method_name
         self.surrogate_method_kwargs = surrogate_method_kwargs
         self.surrogate_custom_training = surrogate_custom_training
@@ -1203,12 +1207,12 @@ class DistOptimizer:
                         self.eval_reqs[problem_id][task_id] = eval_req_dict[problem_id]
 
         if (
-                self.save
-                and (self.eval_count > 0)
-                and (self.saved_eval_count < self.eval_count)
-            ):
-                self.save_evals()
-                self.saved_eval_count = self.eval_count
+            self.save
+            and (self.eval_count > 0)
+            and (self.saved_eval_count < self.eval_count)
+        ):
+            self.save_evals()
+            self.saved_eval_count = self.eval_count
 
         assert len(task_ids) == 0
         return self.eval_count, self.saved_eval_count
@@ -1228,7 +1232,56 @@ class DistOptimizer:
         eval_count, saved_eval_count = self._process_requests()
 
         for problem_id in self.problem_ids:
-            self.optimizer_dict[problem_id].initialize_epoch(epoch)
+            distopt = self.optimizer_dict[problem_id]
+
+            # dynamic sampling
+            if self.dynamic_initial_sampling is not None:
+                dynamic_initial_sampler = import_object_by_path(
+                    self.dynamic_initial_sampling
+                )
+
+                dyn_sample_iter_count = 0
+                while True:
+                    more_samples = dynamic_initial_sampler(
+                        iteration=dyn_sample_iter_count,
+                        evaluated_samples=distopt.completed,
+                        next_samples=opt.xinit(
+                            self.n_initial,
+                            distopt.prob.param_names,
+                            distopt.prob.lb,
+                            distopt.prob.ub,
+                            nPrevious=None,
+                            maxiter=self.initial_maxiter,
+                            method=self.initial_method,
+                            local_random=self.local_random,
+                            logger=self.logger,
+                        ),
+                        sampler={
+                            'n_initial': self.n_initial,
+                            'maxiter': self.initial_maxiter,
+                            'method': self.initial_method,
+                            "param_names": distopt.prob.param_names,
+                            "xlb": distopt.prob.lb,
+                            "xub": distopt.prob.ub,
+                        },
+                        **(self.dynamic_initial_sampling_kwargs or {}),
+                    )
+
+                    if more_samples is None:
+                        break
+
+                    distopt.reqs.extend(
+                        [
+                            EvalRequest(more_samples[i, :], None, 0)
+                            for i in range(more_samples.shape[0])
+                        ]
+                    )
+
+                    self._process_requests()
+
+                    dyn_sample_iter_count += 1
+
+            distopt.initialize_epoch(epoch)
 
         while not completed_epoch:
             eval_count, saved_eval_count = self._process_requests()
