@@ -103,7 +103,7 @@ dmosopt supports evaluating different problems with the same set of parameters. 
 
 ### Surrogate strategy
 
-[Surrogate models](./surrogates) can greatly improve sampling effectiveness and convergence. Use `surrogate_method_name` to point to a strategy; method specific options can be passed via `surrogate_method_kwargs`.
+[Surrogate models](./surrogates) can greatly improve sampling effectiveness and convergence. Use `surrogate_method_name` to point to a strategy; method specific options can be passed via `surrogate_method_kwargs`. Moreover, to use a custom training method, you can pass its Python import path to `surrogate_custom_training` (and additional arguments to `surrogate_custom_training_kwargs`).
 
 ## Sensitivity
 

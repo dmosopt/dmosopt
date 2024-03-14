@@ -4,8 +4,7 @@ import sys, itertools
 import numpy as np
 from numpy.random import default_rng
 from typing import Any, Union, Dict, List, Tuple, Optional
-from dmosopt import MOEA, model, sa
-from dmosopt.feasibility import LogisticFeasibilityModel
+from dmosopt import MOEA, model
 from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.config import (
     import_object_by_path,
@@ -13,6 +12,7 @@ from dmosopt.config import (
     default_sampling_methods,
     default_surrogate_methods,
     default_sa_methods,
+    default_feasibility_methods,
 )
 
 
@@ -26,7 +26,6 @@ def optimize(
     xub,
     popsize=100,
     initial=None,
-    feasibility_model=False,
     termination=None,
     local_random=None,
     logger=None,
@@ -52,10 +51,10 @@ def optimize(
     bounds = np.column_stack((xlb, xub))
 
     x = optimizer.generate_initial(bounds, local_random)
-    if model is None:
+    if model.objective is None:
         y = yield x
     else:
-        y = model.evaluate(x).astype(np.float32)
+        y = model.objective.evaluate(x).astype(np.float32)
 
     x_initial = None
     y_initial = None
@@ -98,10 +97,10 @@ def optimize(
                 ## optimizer generate-update
         x_gen, state_gen = optimizer.generate()
 
-        if model is None:
+        if model.objective is None:
             y_gen = yield x_gen
         else:
-            y_gen = model.evaluate(x_gen)
+            y_gen = model.objective.evaluate(x_gen)
 
         optimizer.update(x_gen, y_gen, state_gen)
         count = x_gen.shape[0]
@@ -195,16 +194,20 @@ def epoch(
     C,
     pop=100,
     sampling_method_name=None,
-    feasibility_model=False,
+    feasibility_method_name=None,
+    feasibility_method_kwargs={},
     optimizer_name="nsga2",
     optimizer_kwargs={},
     surrogate_method_name="gpr",
     surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
+    surrogate_custom_training=None,
+    surrogate_custom_training_kwargs=None,
     sensitivity_method_name=None,
     sensitivity_method_kwargs={},
     termination=None,
     local_random=None,
     logger=None,
+    file_path=None,
 ):
     """
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -235,24 +238,58 @@ def epoch(
     x_0 = Xinit.copy().astype(np.float32)
     y_0 = Yinit.copy().astype(np.float32)
 
-    fsbm = None
-    if C is not None:
-        feasible = np.argwhere(np.all(C > 0.0, axis=1))
-        if len(feasible) > 0:
-            feasible = feasible.ravel()
-            try:
-                if feasibility_model:
-                    logger.info(f"Constructing feasibility model...")
-                    fsbm = LogisticFeasibilityModel(x, C)
-                x_0 = x_0[feasible, :]
-                y_0 = y_0[feasible, :]
-            except:
-                e = sys.exc_info()[0]
-                logger.warning(f"Unable to fit feasibility model: {e}")
+    # optimizer
+    if optimizer_name in default_optimizers:
+        optimizer_name = default_optimizers[optimizer_name]
 
-    sm = None
-    if surrogate_method_name is not None:
-        sm = train(
+    optimizer_cls = import_object_by_path(optimizer_name)
+
+    # surrogate
+    mdl = model.Model()
+    if surrogate_custom_training is not None:
+        # custom initialization
+        custom_training = import_object_by_path(surrogate_custom_training)
+        optimizer_cls, mdl.objective, mdl.feasibility, mdl.sensitivity = (
+            custom_training(
+                optimizer_cls,
+                Xinit,
+                Yinit,
+                C,
+                xlb,
+                xub,
+                file_path,
+                options={
+                    "optimizer_name": optimizer_name,
+                    "optimizer_kwargs": optimizer_kwargs,
+                    "surrogate_method_name": surrogate_method_name,
+                    "surrogate_method_kwargs": surrogate_method_kwargs,
+                    "feasibility_method_name": feasibility_method_name,
+                    "feasibility_method_kwargs": feasibility_method_kwargs,
+                    "sensitivity_method_name": sensitivity_method_name,
+                    "sensitivity_method_kwargs": sensitivity_method_kwargs,
+                },
+                **(surrogate_custom_training_kwargs or {}),
+            )
+        )
+
+    # feasiblity
+    if feasibility_method_name is not None and mdl.feasibility is None:
+        # resolve shorthands
+        if feasibility_method_name in default_feasibility_methods:
+            feasibility_method_name = default_feasibility_methods[
+                feasibility_method_name
+            ]
+        try:
+            logger.info(f"Constructing feasibility model...")
+            feasibility_method_cls = import_object_by_path(feasibility_method_name)
+            mdl.feasibility = feasibility_method_cls(x, C)
+        except:
+            e = sys.exc_info()[0]
+            logger.warning(f"Unable to fit feasibility model: {e}")
+
+    # objective
+    if surrogate_method_name is not None and mdl.objective is None:
+        mdl.objective = train(
             nInput,
             nOutput,
             xlb,
@@ -263,7 +300,29 @@ def epoch(
             surrogate_method_name=surrogate_method_name,
             surrogate_method_kwargs=surrogate_method_kwargs,
             logger=logger,
+            file_path=file_path,
         )
+
+    # sensitivity
+    if sensitivity_method_name is not None and mdl.sensitivity is None:
+
+        class S:
+            def __init__(self):
+                self.di_dict = analyze_sensitivity(
+                    mdl.objective,
+                    xlb,
+                    xub,
+                    param_names,
+                    objective_names,
+                    sensitivity_method_name=sensitivity_method_name,
+                    sensitivity_method_kwargs=sensitivity_method_kwargs,
+                    logger=logger,
+                )
+
+            def di_dict(self):
+                return self.di_dict
+
+        mdl.sensitivity = S()
 
     optimizer_kwargs_ = {
         "sampling_method": "slh",
@@ -272,45 +331,37 @@ def epoch(
     }
     optimizer_kwargs_.update(optimizer_kwargs)
 
-    if sensitivity_method_name is not None:
-        di_dict = analyze_sensitivity(
-            sm,
-            xlb,
-            xub,
-            param_names,
-            objective_names,
-            sensitivity_method_name=sensitivity_method_name,
-            sensitivity_method_kwargs=sensitivity_method_kwargs,
-            logger=logger,
-        )
+    if mdl.sensitivity is not None:
+        di_dict = mdl.sensitivity.di_dict()
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
-
-    # resolve shorthands
-    if optimizer_name in default_optimizers:
-        optimizer_name = default_optimizers[optimizer_name]
-
-    optimizer_cls = import_object_by_path(optimizer_name)
 
     optimizer = optimizer_cls(
         nInput=nInput,
         nOutput=nOutput,
         popsize=pop,
-        feasibility_model=fsbm,
+        model=mdl,
         distance_metric=None,
         **optimizer_kwargs_,
     )
 
+    # filter out infeasible solutions before passing them to optimizer
+    if C is not None:
+        feasible = np.argwhere(np.all(C > 0.0, axis=1))
+        if len(feasible) > 0:
+            feasible = feasible.ravel()
+            x_0 = x_0[feasible, :]
+            y_0 = y_0[feasible, :]
+
     opt_gen = optimize(
         num_generations,
         optimizer,
-        sm,
+        mdl,
         nInput,
         nOutput,
         xlb,
         xub,
         initial=(x_0, y_0),
-        feasibility_model=fsbm,
         logger=logger,
         popsize=pop,
         local_random=local_random,
@@ -334,8 +385,8 @@ def epoch(
         while True:
 
             y_gen, c_gen = None, None
-            if sm is not None:
-                y_gen = sm.evaluate(x_gen)
+            if mdl.objective is not None:
+                y_gen = mdl.objective.evaluate(x_gen)
             else:
                 item_eval = yield x_gen, True
                 _, y_gen, c_gen = item_eval
@@ -356,7 +407,7 @@ def epoch(
             else:
                 x_gen = res
 
-    if surrogate_method_name is not None:
+    if mdl.objective is not None:
         is_duplicate = MOEA.get_duplicates(best_x, x_0)
         best_x = best_x[~is_duplicate]
         best_y = best_y[~is_duplicate]
@@ -397,6 +448,7 @@ def train(
     surrogate_method_name="gpr",
     surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
     logger=None,
+    file_path=None,
 ):
     """
     Multi-Objective Adaptive Surrogate Modelling-based Optimization

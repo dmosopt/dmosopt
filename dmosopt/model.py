@@ -594,6 +594,13 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         return scale
 
 
+class Model:
+    def __init__(self, objective=None, feasibility=None,  sensitivity=None):
+        self.objective = objective
+        self.feasibility = feasibility
+        self.sensitivity = sensitivity
+
+
 class MDSPP_Matern:
     def __init__(
         self,
@@ -2737,7 +2744,7 @@ class GPR_Matern:
 
         N = xin.shape[0]
         x = np.zeros_like(xin)
-        y = np.copy(yin)
+        y = np.nan_to_num(np.copy(yin))
         for i in range(N):
             x[i, :] = (xin[i, :] - self.xlb) / self.xrg
         if nOutput == 1:
