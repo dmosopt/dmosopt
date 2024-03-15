@@ -599,6 +599,19 @@ class Model:
         self.objective = objective
         self.feasibility = feasibility
         self.sensitivity = sensitivity
+        self.stats = {}
+
+    def get_stats(self):
+        if self.objective is not None:
+            self.stats.update(getattr(self.objective, 'stats', {}))
+
+        if self.feasibility is not None:
+            self.stats.update(getattr(self.feasibility, 'stats', {}))
+
+        if self.sensitivity is not None:
+            self.stats.update(getattr(self.sensitivity, 'stats', {}))
+
+        return self.stats.copy()
 
 
 class MDSPP_Matern:

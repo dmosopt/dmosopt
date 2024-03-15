@@ -246,9 +246,9 @@ def epoch(
     optimizer_cls = import_object_by_path(optimizer_name)
 
     # surrogate
-    timings = {}
+    stats = {}
     
-    timings['model_init_start'] = time.time()
+    stats['model_init_start'] = time.time()
     
     mdl = model.Model()
     if surrogate_custom_training is not None:
@@ -341,7 +341,8 @@ def epoch(
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
         
-    timings['model_init_end'] = time.time()
+    stats['model_init_end'] = time.time()
+    stats.update(mdl.get_stats())
 
     optimizer = optimizer_cls(
         nInput=nInput,
@@ -430,7 +431,7 @@ def epoch(
             "x_sm": x,
             "y_sm": y,
             "optimizer": optimizer,
-            "timings": timings,
+            "stats": stats,
         }
     else:
         return_dict = {
@@ -440,7 +441,7 @@ def epoch(
             "x": x,
             "y": y,
             "optimizer": optimizer,
-            "timings": timings,
+            "stats": stats,
         }
 
     return return_dict

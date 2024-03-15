@@ -153,7 +153,7 @@ class DistOptStrategy:
         self.opt_gen = None
         self.epoch_index = -1
         
-        self.timings = {}
+        self.stats = {}
 
     def append_request(self, req):
         if isinstance(self.reqs, Iterator):
@@ -270,7 +270,7 @@ class DistOptStrategy:
             else:
                 self.t = np.vstack((self.t, t_completed))
             ts = self.t[self.t > 0.]
-            self.timings.update({
+            self.stats.update({
                 'eval_min': np.min(ts),
                 'eval_max': np.max(ts),
                 'eval_mean': np.mean(ts),
@@ -372,7 +372,7 @@ class DistOptStrategy:
 
                 result_dict = ex.args[0]
                 
-                self.timings.update(result_dict.get('timings', {}))
+                self.stats.update(result_dict.get('stats', {}))
 
                 if "best_x" in result_dict:
                     best_x = result_dict["best_x"]
@@ -432,7 +432,7 @@ class DistOptStrategy:
 
                 result_dict = ex.args[0]
 
-                self.timings.update(result_dict.get('timings', {}))
+                self.stats.update(result_dict.get('stats', {}))
 
                 x_resample = None
                 y_pred = None
@@ -813,24 +813,24 @@ class DistOptimizer:
                     self.file_path,
                 )
 
-        self.timings = {}
+        self.stats = {}
         
-    def get_timings(self):
+    def get_stats(self):
         for problem_id in self.problem_ids:
             if problem_id in self.optimizer_dict:
-                self.timings.update({
-                    f"{problem_id}_{k}" if problem_id > 0 else k: v for k, v in self.optimizer_dict[problem_id].timings.items()
+                self.stats.update({
+                    f"{problem_id}_{k}" if problem_id > 0 else k: v for k, v in self.optimizer_dict[problem_id].stats.items()
                 })
         
         result = {}
-        for key in self.timings:
+        for key in self.stats:
             if not key.endswith('_start') and not key.endswith('_end'):
-                result[key] = self.timings[key]
+                result[key] = self.stats[key]
                 continue
             name, period = key.rsplit('_', 1)
             if period == 'start':
-                if f'{name}_end' in self.timings:
-                    result[name] = self.timings[f'{name}_end'] - self.timings[key]
+                if f'{name}_end' in self.stats:
+                    result[name] = self.stats[f'{name}_end'] - self.stats[key]
         return result
 
     def initialize_strategy(self):
@@ -1277,7 +1277,7 @@ class DistOptimizer:
         advance_epoch = self.epoch_count < self.n_epochs - 1
         completed_epoch = False
 
-        self.timings['init_sampling_start'] = time.time()
+        self.stats['init_sampling_start'] = time.time()
         eval_count, saved_eval_count = self._process_requests()
     
         for problem_id in self.problem_ids:
@@ -1332,7 +1332,7 @@ class DistOptimizer:
 
             distopt.initialize_epoch(epoch)
             
-        self.timings['init_sampling_end'] = time.time()
+        self.stats['init_sampling_end'] = time.time()
 
         while not completed_epoch:
             eval_count, saved_eval_count = self._process_requests()
@@ -2161,18 +2161,18 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     while dopt.epoch_count < dopt.n_epochs:
         dopt.run_epoch()
         
-        timings = dopt.get_timings()
+        stats = dopt.get_stats()
         with h5py.File(dopt.file_path, "a") as f:
             dtype = np.dtype(
-                {"names": [k for k in timings], "formats": [np.float64] * len(timings)}
+                {"names": [k for k in stats], "formats": [np.float64] * len(stats)}
             )
             dset = h5_get_dataset(
                 f[dopt_params['opt_id']],
-                "timings",
+                "stats",
                 maxshape=(None,),
                 dtype=dtype,
             )
-            h5_concat_dataset(dset, np.array([tuple(timings.values())], dtype=dtype))
+            h5_concat_dataset(dset, np.array([tuple(map(float, stats.values()))], dtype=dtype))
 
 
 def dopt_work(worker, dopt_params, verbose=False, debug=False):
