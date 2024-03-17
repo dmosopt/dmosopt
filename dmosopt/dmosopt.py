@@ -1292,6 +1292,7 @@ class DistOptimizer:
                 dyn_sample_iter_count = 0
                 while True:
                     more_samples = dynamic_initial_sampler(
+                        file_path=self.file_path,
                         iteration=dyn_sample_iter_count,
                         evaluated_samples=distopt.completed,
                         next_samples=opt.xinit(

@@ -14,12 +14,13 @@ You may also point to your custom implementations by specifying a Python import 
 
 ## Dynamic sampling
 
-By default, the number of samples is pre-determined via the `n_initial` parameter. However, dmosopt supports dynamic sampling strategies that generate samples until custom criteria are met. To implement a dynamic sampling strategy, you can point `dynamic_initial_sampling` to a callable object (with optional parameters `dynamic_initial_sampling_kwargs`). The callable receives the iteration count, the sampler options, the evaluated samples up to this point, as well as an unevaluated next batch of samples. It must return a new set of samples or `None` to end the dynamic sampling process. For example:
+By default, the number of samples is pre-determined via the `n_initial` parameter. However, dmosopt supports dynamic sampling strategies that generate samples until custom criteria are met. To implement a dynamic sampling strategy, you can point `dynamic_initial_sampling` to a callable object (with optional parameters `dynamic_initial_sampling_kwargs`). The callable receives the filepath, iteration count, the sampler options, the evaluated samples up to this point, as well as an unevaluated next batch of samples. It must return a new set of samples or `None` to end the dynamic sampling process. For example:
 
 ```python
 from dmosopt.datatypes import EvalEntry
 
 def dynamic_sampling(
+    file_path: str,
     interation: int,
     evaluated_samples: list[EvalEntry], 
     next_samples: list, 
