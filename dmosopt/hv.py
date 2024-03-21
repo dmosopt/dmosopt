@@ -14,11 +14,13 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import numpy as np
+from typing import Any, Union, Dict, List, Tuple, Optional
+from itertools import product
+from scipy.stats import norm
 
-__author__ = "Simon Wessing"
 
-
-class HyperVolume:
+class HyperVolumeDimensionSweep:
     """
     Hypervolume computation based on variant 3 of the algorithm in the paper:
     C. M. Fonseca, L. Paquete, and M. Lopez-Ibanez. An improved dimension-sweep
@@ -277,9 +279,174 @@ class MultiList:
                 bounds[i] = node.cargo[i]
 
 
+class HyperVolumeBoxDecomposition:
+    def __init__(
+        self,
+        partition_bounds: Tuple[np.ndarray, np.ndarray],
+        local_random: Optional[np.random.Generator] = None,
+    ):
+        r"""Expected Hyper-volume (HV) calculation using Eq. 44 of:
+
+        Efficient Computation of Expected Hypervolume Improvement
+        Using Box Decomposition Algorithms. Yang et al., 2019.
+
+        The expected hypervolume improvement calculation in the
+        non-dominated region can be decomposed into sub-calculations
+        based on each partitioned cell.  For easier calculation, this
+        sub-calculation can be reformulated as a combination of two
+        generalized expected improvements, corresponding to Psi
+        (Eq. 44) and Nu (Eq. 45) function calculations, respectively.
+
+        Note:
+
+        1. As the Psi and nu function in the original paper are
+        defined for maximization problems, we inverse our minimization
+        problem (to also be a maximization), allowing use of the
+        original notation and equations.
+
+        """
+        print(f"partition_bounds[0].shape[-1]: {partition_bounds[0].shape[-1]}")
+        self._lb_points = np.asarray(partition_bounds[0]).reshape(
+            (1, -1)
+        )  # , shape=(None, partition_bounds[0].shape[-1])
+        self._ub_points = np.asarray(partition_bounds[1]).reshape(
+            (1, -1)
+        )  # , shape=(None, partition_bounds[1].shape[-1])
+        print(f"_lb_points: {self._lb_points}")
+        print(f"_ub_points: {self._ub_points}")
+        self._cross_index = np.asarray(
+            list(product(*[[0, 1]] * self._lb_points.shape[-1]))
+        )  # [2^d, indices_at_dim]
+        print(f"cross_index: {self._cross_index}")
+
+        self.local_random = local_random
+
+    def update(self, partition_bounds: Tuple[np.ndarray, np.ndarray]) -> None:
+        """Update the acquisition function with new partition bounds."""
+        self._lb_points[:] = partition_bounds[0]
+        self._ub_points[:] = partition_bounds[1]
+
+    def compute(
+        self, candidate_mean: np.ndarray, candidate_var: Optional[np.ndarray] = None
+    ) -> np.ndarray:
+
+        if candidate_var is None:
+            candidate_var = np.ones_like(candidate_mean)
+
+        normal_var = norm(loc=0.0, scale=1.0)
+
+        def Psi(
+            a: np.ndarray, b: np.ndarray, mean: np.ndarray, std: np.ndarray
+        ) -> np.ndarray:
+            return std * normal_var.pdf((b - mean) / std) + (mean - a) * (
+                1 - normal_var.cdf((b - mean) / std)
+            )
+
+        def nu(
+            lb: np.ndarray, ub: np.ndarray, mean: np.ndarray, std: np.ndarray
+        ) -> np.ndarray:
+            return (ub - lb) * (1 - normal_var.cdf((ub - mean) / std))
+
+        def ehvi_based_on_partitioned_cell(
+            neg_pred_mean: np.ndarray, pred_std: np.ndarray
+        ) -> np.ndarray:
+            r"""
+            Calculate the ehvi based on cell i.
+            """
+
+            neg_lb_points, neg_ub_points = -self._ub_points, -self._lb_points
+
+            neg_ub_points = np.minimum(
+                neg_ub_points, 1.0e10
+            )  # clip to improve numerical stability
+
+            psi_lb = Psi(
+                neg_lb_points, neg_lb_points, neg_pred_mean, pred_std
+            )  # [..., num_cells, out_dim]
+            psi_ub = Psi(
+                neg_lb_points, neg_ub_points, neg_pred_mean, pred_std
+            )  # [..., num_cells, out_dim]
+
+            psi_lb2ub = np.maximum(psi_lb - psi_ub, 0.0)  # [..., num_cells, out_dim]
+            nu_contrib = nu(neg_lb_points, neg_ub_points, neg_pred_mean, pred_std)
+
+            print(f"neg_pred_mean = {neg_pred_mean}")
+            print(f"psi_lb = {psi_lb}")
+            print(f"psi_ub = {psi_ub}")
+            print(f"psi_lb2ub = {psi_lb2ub}")
+
+            print(f"neg_lb_points.shape = {neg_lb_points.shape}")
+            print(f"neg_pred_mean.shape = {neg_pred_mean.shape}")
+            print(f"psi_lb.shape = {psi_lb.shape}")
+            print(f"psi_ub.shape = {psi_ub.shape}")
+            print(f"psi_lb2ub.shape = {psi_lb2ub.shape}")
+            print(f"nu_contrib.shape = {nu_contrib.shape}")
+            print(
+                f"expand_dims(nu_contrib.shape, -2) = {np.expand_dims(nu_contrib, -2).shape}"
+            )
+            stacked_factors = np.concatenate(
+                [np.expand_dims(psi_lb2ub, -2), np.expand_dims(nu_contrib, -2)],
+                axis=-2
+                # stacked_factors = np.concatenate(
+                #    [psi_lb2ub, nu_contrib], axis=-2
+            )  # Take the cross product of psi_diff and nu across all outcomes
+            # [..., num_cells, 2(operation_num, refer Eq. 45), num_obj]
+
+            print(f"_cross_index.shape = {self._cross_index.shape}")
+            print(f"stacked_factors.shape = {stacked_factors.shape}")
+            print(f"stacked_factors = {stacked_factors}")
+            print(
+                f"take stacked_factors shape = {np.take(stacked_factors, self._cross_index, axis=-2).shape}"
+            )
+            # tf.linalg.diag_part(
+            factor_combinations = np.diagonal(
+                np.take(stacked_factors, self._cross_index, axis=-2), axis1=-2, axis2=-1
+            ).copy()  # [..., num_cells, 2^d, 2(operation_num), num_obj]
+            print(f"factor_combinations.shape = {factor_combinations.shape}")
+
+            return np.sum(np.prod(factor_combinations, axis=-1), axis=-1)
+
+        candidate_std = np.sqrt(candidate_var)
+        print(f"candidate_std = {candidate_std}")
+
+        neg_candidate_mean = -np.expand_dims(candidate_mean, 1)  # [..., 1, out_dim]
+        candidate_std = np.expand_dims(candidate_std, 1)  # [..., 1, out_dim]
+
+        print(f"candidate_mean = {candidate_mean}")
+
+        ehvi_cells_based = ehvi_based_on_partitioned_cell(
+            neg_candidate_mean, candidate_std
+        )
+
+        print(f"ehvi_cells_based = {ehvi_cells_based}")
+        print(f"ehvi_cells_based.shape = {ehvi_cells_based.shape}")
+
+        return np.prod(
+            ehvi_cells_based,
+            axis=-2,
+            keepdims=True,
+        )
+
+
 if __name__ == "__main__":
     # Example:
     referencePoint = [2, 2, 2]
-    hv = HyperVolume(referencePoint)
+    hv = HyperVolumeDimensionSweep(referencePoint)
     front = [[1, 0, 1], [0, 1, 0]]
     volume = hv.compute(front)
+    print(volume)
+    #    front = [(a, a) for a in np.arange(1, 0, -0.01)]
+    #    referencePoint = np.array([2, 2])
+    #    hv = HyperVolumeDimensionSweep(referencePoint)
+    #    volume = hv.compute(front)
+    #    print(volume)
+    hv = HyperVolumeBoxDecomposition(
+        partition_bounds=[
+            np.asarray([0, 0, 0]),
+            np.asarray([2, 2, 2]),
+        ]
+    )
+
+    front = np.vstack([[1, 0, 1], [0, 1, 0]])
+    volume = hv.compute(front)
+    print(volume)
