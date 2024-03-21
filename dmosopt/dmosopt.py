@@ -152,7 +152,7 @@ class DistOptStrategy:
                 )
         self.opt_gen = None
         self.epoch_index = -1
-        
+
         self.stats = {}
 
     def append_request(self, req):
@@ -186,7 +186,7 @@ class DistOptStrategy:
                 pass
         return req
 
-    def complete_request(self, x, y, epoch=None, f=None, c=None, pred=None, time=-1.):
+    def complete_request(self, x, y, epoch=None, f=None, c=None, pred=None, time=-1.0):
         assert x.shape[0] == self.prob.dim
         assert y.shape[0] == self.prob.n_objectives
         entry = EvalEntry(epoch, x, y, f, c, pred, time)
@@ -249,7 +249,7 @@ class DistOptStrategy:
             assert y_completed.shape[1] == self.prob.n_objectives
             if self.prob.n_constraints is not None:
                 assert c_completed.shape[1] == self.prob.n_constraints
-            
+
             if self.x is None:
                 self.x = x_completed
                 self.y = y_completed
@@ -263,22 +263,24 @@ class DistOptStrategy:
                     self.f = np.concatenate((self.f, f_completed))
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
-                    
+
             t_completed = np.vstack([x.time for x in self.completed])
             if self.t is None:
                 self.t = t_completed
             else:
                 self.t = np.vstack((self.t, t_completed))
-            ts = self.t[self.t > 0.]
-            self.stats.update({
-                'eval_min': np.min(ts),
-                'eval_max': np.max(ts),
-                'eval_mean': np.mean(ts),
-                'eval_std': np.std(ts),
-                'eval_sum': np.sum(ts),
-                'eval_median': np.median(ts),
-            })
-            
+            ts = self.t[self.t > 0.0]
+            self.stats.update(
+                {
+                    "eval_min": np.min(ts),
+                    "eval_max": np.max(ts),
+                    "eval_mean": np.mean(ts),
+                    "eval_std": np.std(ts),
+                    "eval_sum": np.sum(ts),
+                    "eval_median": np.median(ts),
+                }
+            )
+
             self._remove_duplicate_evals()
             self.completed = []
             result = x_completed, y_completed, y_predicted, f_completed, c_completed
@@ -371,8 +373,8 @@ class DistOptStrategy:
                 self.opt_gen = None
 
                 result_dict = ex.args[0]
-                
-                self.stats.update(result_dict.get('stats', {}))
+
+                self.stats.update(result_dict.get("stats", {}))
 
                 if "best_x" in result_dict:
                     best_x = result_dict["best_x"]
@@ -432,7 +434,7 @@ class DistOptStrategy:
 
                 result_dict = ex.args[0]
 
-                self.stats.update(result_dict.get('stats', {}))
+                self.stats.update(result_dict.get("stats", {}))
 
                 x_resample = None
                 y_pred = None
@@ -814,23 +816,26 @@ class DistOptimizer:
                 )
 
         self.stats = {}
-        
+
     def get_stats(self):
         for problem_id in self.problem_ids:
             if problem_id in self.optimizer_dict:
-                self.stats.update({
-                    f"{problem_id}_{k}" if problem_id > 0 else k: v for k, v in self.optimizer_dict[problem_id].stats.items()
-                })
-        
+                self.stats.update(
+                    {
+                        f"{problem_id}_{k}" if problem_id > 0 else k: v
+                        for k, v in self.optimizer_dict[problem_id].stats.items()
+                    }
+                )
+
         result = {}
         for key in self.stats:
-            if not key.endswith('_start') and not key.endswith('_end'):
+            if not key.endswith("_start") and not key.endswith("_end"):
                 result[key] = self.stats[key]
                 continue
-            name, period = key.rsplit('_', 1)
-            if period == 'start':
-                if f'{name}_end' in self.stats:
-                    result[name] = self.stats[f'{name}_end'] - self.stats[key]
+            name, period = key.rsplit("_", 1)
+            if period == "start":
+                if f"{name}_end" in self.stats:
+                    result[name] = self.stats[f"{name}_end"] - self.stats[key]
         return result
 
     def initialize_strategy(self):
@@ -975,6 +980,18 @@ class DistOptimizer:
             self.logger,
         )
 
+    def save_stats(self, problem_id, epoch):
+
+        stats = self.get_stats()
+        save_stats_to_h5(
+            self.opt_id,
+            problem_id,
+            epoch,
+            self.file_path,
+            self.logger,
+            stats,
+        )
+
     def get_best(self, feasible=True, return_features=False, return_constraints=False):
         best_results = {}
         for problem_id in self.problem_ids:
@@ -1100,7 +1117,7 @@ class DistOptimizer:
                         else:
                             rres = self.reduce_fun(res, *self.reduce_fun_args)
 
-                    t = rres.pop("time", -1.)
+                    t = rres.pop("time", -1.0)
                     for problem_id in rres:
                         eval_req = self.eval_reqs[problem_id][task_id]
                         eval_x = eval_req.parameters
@@ -1270,16 +1287,16 @@ class DistOptimizer:
             raise RuntimeError(
                 "DistOptimizer: method epoch cannot be executed when controller is not set."
             )
-        
+
         controller = self.controller
         epoch = self.epoch_count + self.start_epoch
         gen = None
         advance_epoch = self.epoch_count < self.n_epochs - 1
         completed_epoch = False
 
-        self.stats['init_sampling_start'] = time.time()
+        self.stats["init_sampling_start"] = time.time()
         eval_count, saved_eval_count = self._process_requests()
-    
+
         for problem_id in self.problem_ids:
             distopt = self.optimizer_dict[problem_id]
 
@@ -1307,9 +1324,9 @@ class DistOptimizer:
                             logger=self.logger,
                         ),
                         sampler={
-                            'n_initial': self.n_initial,
-                            'maxiter': self.initial_maxiter,
-                            'method': self.initial_method,
+                            "n_initial": self.n_initial,
+                            "maxiter": self.initial_maxiter,
+                            "method": self.initial_method,
                             "param_names": distopt.prob.param_names,
                             "xlb": distopt.prob.lb,
                             "xub": distopt.prob.ub,
@@ -1332,8 +1349,8 @@ class DistOptimizer:
                     dyn_sample_iter_count += 1
 
             distopt.initialize_epoch(epoch)
-            
-        self.stats['init_sampling_end'] = time.time()
+
+        self.stats["init_sampling_end"] = time.time()
 
         while not completed_epoch:
             eval_count, saved_eval_count = self._process_requests()
@@ -1345,7 +1362,7 @@ class DistOptimizer:
                 ].update_epoch(resample=advance_epoch)
                 completed_epoch = strategy_state == StrategyState.CompletedEpoch
                 if completed_epoch:
-                    
+
                     res = strategy_value
 
                     ## Compute prediction accuracy of completed evaluations
@@ -1395,6 +1412,7 @@ class DistOptimizer:
                                 optimizer.name,
                                 optimizer.opt_parameters,
                             )
+        self.save_stats(problem_id, epoch)
 
         self.epoch_count = self.epoch_count + 1
         return self.epoch_count
@@ -2008,6 +2026,48 @@ def save_surrogate_evals_to_h5(
     f.close()
 
 
+def save_stats_to_h5(
+    opt_id,
+    problem_id,
+    epoch,
+    fpath,
+    logger,
+    stats,
+):
+    """
+    Save optimizer statistics to an HDF5 file 'fpath'.
+    """
+
+    f = h5py.File(fpath, "a")
+
+    opt_grp = h5_get_group(f, opt_id)
+
+    dtype = np.dtype(
+        {"names": [k for k in sorted(stats)], "formats": [np.float64] * len(stats)}
+    )
+
+    opt_stats_grp = h5_get_group(opt_grp, "optimizer_stats")
+    opt_stats_epoch_grp = h5_get_group(opt_stats_grp, f"{epoch}")
+
+    if logger is not None:
+        logger.info(
+            f"Saving optimizer stats for problem id {problem_id} epoch {epoch} to {fpath}."
+        )
+
+    dset = h5_get_dataset(
+        opt_stats_epoch_grp,
+        "stats",
+        maxshape=(None,),
+        dtype=dtype,
+    )
+    h5_concat_dataset(
+        dset,
+        np.array([tuple(map(float, [stats[k] for k in sorted(stats)]))], dtype=dtype),
+    )
+
+    f.close()
+
+
 def init_h5(
     opt_id,
     problem_ids,
@@ -2064,7 +2124,7 @@ def eval_obj_fun_sp(
         obj_fun_args = ()
     t = time.time()
     result = obj_fun(pp, *obj_fun_args)
-    return {problem_id: result, 'time': time.time() - t}
+    return {problem_id: result, "time": time.time() - t}
 
 
 def eval_obj_fun_mp(
@@ -2087,8 +2147,8 @@ def eval_obj_fun_mp(
 
     t = time.time()
     result_dict = obj_fun(mpp, *obj_fun_args)
-    result_dict['time']= time.time() - t
-    
+    result_dict["time"] = time.time() - t
+
     return result_dict
 
 
@@ -2161,19 +2221,6 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     start_epoch = dopt.start_epoch
     while dopt.epoch_count < dopt.n_epochs:
         dopt.run_epoch()
-        
-        stats = dopt.get_stats()
-        with h5py.File(dopt.file_path, "a") as f:
-            dtype = np.dtype(
-                {"names": [k for k in stats], "formats": [np.float64] * len(stats)}
-            )
-            dset = h5_get_dataset(
-                f[dopt_params['opt_id']],
-                "stats",
-                maxshape=(None,),
-                dtype=dtype,
-            )
-            h5_concat_dataset(dset, np.array([tuple(map(float, stats.values()))], dtype=dtype))
 
 
 def dopt_work(worker, dopt_params, verbose=False, debug=False):
