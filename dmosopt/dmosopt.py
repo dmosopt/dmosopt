@@ -836,6 +836,35 @@ class DistOptimizer:
             if period == "start":
                 if f"{name}_end" in self.stats:
                     result[name] = self.stats[f"{name}_end"] - self.stats[key]
+
+        if self.controller is not None:
+            controller_stats = self.controller.stats
+            n_processed = self.controller.n_processed
+            total_time = self.controller.total_time
+
+            call_times = np.array([s["this_time"] for s in controller_stats])
+            call_quotients = np.array([s["time_over_est"] for s in controller_stats])
+            cvar_call_quotients = call_quotients.std() / call_quotients.mean()
+
+            result["results_collected"] = n_processed[1:].sum()
+            result["total_evaluation_time"] = call_times.sum()
+            result["mean_time_per_call"] = call_times.mean()
+            result["stdev_time_per_call"] = call_times.std()
+            result["cvar_actual_over_estd_time_per_call"] = cvar_call_quotients
+
+            if self.controller.workers_available:
+                total_time_est = self.controller.total_time_est
+                worker_quotients = total_time / total_time_est
+                cvar_worker_quotients = worker_quotients.std() / worker_quotients.mean()
+
+                result["mean_calls_per_worker"] = n_processed[1:].mean()
+                result["stdev_calls_per_worker"] = n_processed[1:].std()
+                result["min_calls_per_worker"] = n_processed[1:].min()
+                result["max_calls_per_worker"] = n_processed[1:].max()
+                result["mean_time_per_worker"] = total_time.mean()
+                result["stdev_time_per_worker"] = total_time.std()
+                result["cvar_actual_over_estd_time_per_worker"] = cvar_worker_quotients
+
         return result
 
     def initialize_strategy(self):
@@ -983,6 +1012,7 @@ class DistOptimizer:
     def save_stats(self, problem_id, epoch):
 
         stats = self.get_stats()
+
         save_stats_to_h5(
             self.opt_id,
             problem_id,
