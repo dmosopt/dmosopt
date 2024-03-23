@@ -51,7 +51,9 @@ EvalEntry = namedtuple(
         "features",
         "constraints",
         "prediction",
+        "time",
     ],
+    defaults=[None, None, None, None, None, None, -1.0],
 )
 
 EvalRequest = namedtuple(
