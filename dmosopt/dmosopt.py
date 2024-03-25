@@ -270,16 +270,28 @@ class DistOptStrategy:
             else:
                 self.t = np.vstack((self.t, t_completed))
             ts = self.t[self.t > 0.0]
-            self.stats.update(
-                {
-                    "eval_min": np.min(ts),
-                    "eval_max": np.max(ts),
-                    "eval_mean": np.mean(ts),
-                    "eval_std": np.std(ts),
-                    "eval_sum": np.sum(ts),
-                    "eval_median": np.median(ts),
-                }
-            )
+            if len(ts) > 0:
+                self.stats.update(
+                    {
+                        "eval_min": np.min(ts),
+                        "eval_max": np.max(ts),
+                        "eval_mean": np.mean(ts),
+                        "eval_std": np.std(ts),
+                        "eval_sum": np.sum(ts),
+                        "eval_median": np.median(ts),
+                    }
+                )
+            else:
+                self.stats.update(
+                    {
+                        "eval_min": -1,
+                        "eval_max": -1,
+                        "eval_mean": -1,
+                        "eval_std": -1,
+                        "eval_sum": -1,
+                        "eval_median": -1,
+                    }
+                )
 
             self._remove_duplicate_evals()
             self.completed = []
@@ -2192,6 +2204,8 @@ def dopt_init(
     objfun = None
     objfun_name = dopt_params.get("obj_fun_name", None)
     if distwq.is_worker:
+        import time
+        #time.sleep(10)
         if objfun_name is not None:
             objfun = import_object_by_path(objfun_name)
         else:
