@@ -2204,8 +2204,6 @@ def dopt_init(
     objfun = None
     objfun_name = dopt_params.get("obj_fun_name", None)
     if distwq.is_worker:
-        import time
-        #time.sleep(10)
         if objfun_name is not None:
             objfun = import_object_by_path(objfun_name)
         else:
