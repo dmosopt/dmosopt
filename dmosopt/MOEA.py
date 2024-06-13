@@ -348,6 +348,31 @@ def orderMO(
     return perm, rank, y_dists
 
 
+def top_k_MO(x, y, top_k=None):
+    """Returns the top_k elements ordered by a non-dominated sort for multi-objective optimization
+    x: input parameter matrix
+    y: output objectives matrix
+    top_k: number of top elements. If None, all elements will be returned
+    """
+    if not isinstance(top_k, int):
+        return x, y
+
+    if x.shape[0] <= top_k:
+        return x, y
+
+    x_, y_, *_ = sortMO(x, y)
+    if x_.shape[0] >= top_k:
+        x = x_[:top_k]
+        y = y_[:top_k]
+    else:
+        # if sortMO yields less than top-k
+        #  we fall back on regular top-k
+        x = x[-top_k:]
+        y = y[-top_k:]
+
+    return x, y
+
+
 def crowding_distance(Y):
     """Crowding distance metric.
     Y is the output data matrix
