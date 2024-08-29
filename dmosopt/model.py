@@ -632,7 +632,7 @@ class MDSPP_Matern:
         xub,
         num_hidden_dims=3,
         Q=8,
-        num_inducing_points=None,
+        num_inducing_points=128,
         seed=None,
         gp_lengthscale_bounds=None,
         gp_likelihood_sigma=None,
