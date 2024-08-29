@@ -10,7 +10,7 @@
 #   universal: false
 
 -e file:.
-distwq @ git+https://github.com/iraikov/distwq.git@13aa4ab823d15a334a6e2761b6d2fa2a55125bc5
+distwq @ git+https://github.com/iraikov/distwq.git@60bc19ee5cbfd5f8385e380fb8bcc297f7bd5009
     # via dmosopt
 h5py==3.11.0
     # via dmosopt
@@ -19,7 +19,7 @@ joblib==1.4.2
 mpi4py==4.0.0
     # via distwq
     # via dmosopt
-numpy==2.1.0
+numpy==1.26.4
     # via distwq
     # via h5py
     # via scikit-learn

@@ -14,7 +14,7 @@ cfgv==3.4.0
     # via pre-commit
 distlib==0.3.8
     # via virtualenv
-distwq @ git+https://github.com/iraikov/distwq.git@13aa4ab823d15a334a6e2761b6d2fa2a55125bc5
+distwq @ git+https://github.com/iraikov/distwq.git@60bc19ee5cbfd5f8385e380fb8bcc297f7bd5009
     # via dmosopt
 filelock==3.15.4
     # via virtualenv
@@ -29,7 +29,7 @@ mpi4py==4.0.0
     # via dmosopt
 nodeenv==1.9.1
     # via pre-commit
-numpy==2.1.0
+numpy==1.26.4
     # via distwq
     # via h5py
     # via scikit-learn
