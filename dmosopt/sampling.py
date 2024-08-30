@@ -153,7 +153,7 @@ def GoodLatticePointsDesignDecorrelation(n, s, local_random, maxiter=5):
     return x
 
 
-def mc(n, s, local_random):
+def mc(n, s, local_random, maxiter=0):
     """short name of MonteCarloDesign"""
     return MonteCarloDesign(n, s, local_random)
 
@@ -182,6 +182,6 @@ def glp(n, s, local_random, maxiter=0):
         return GoodLatticePointsDesignDecorrelation(n, s, local_random, maxiter)
 
 
-def sobol(n, s, local_random):
+def sobol(n, s, local_random, maxiter=0):
     """short name of SobolDesign"""
     return SobolDesign(n, s, local_random)
