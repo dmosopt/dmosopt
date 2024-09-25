@@ -1324,7 +1324,7 @@ class DistOptimizer:
         assert len(task_ids) == 0
         return self.eval_count, self.saved_eval_count
 
-    def run_epoch(self):
+    def run_epoch(self, completed_epoch=False):
         if self.controller is None:
             raise RuntimeError(
                 "DistOptimizer: method epoch cannot be executed when controller is not set."
@@ -1334,8 +1334,7 @@ class DistOptimizer:
         epoch = self.epoch_count + self.start_epoch
         gen = None
         advance_epoch = self.epoch_count < self.n_epochs - 1
-        completed_epoch = False
-
+        
         self.stats["init_sampling_start"] = time.time()
         eval_count, saved_eval_count = self._process_requests()
 
@@ -2261,6 +2260,11 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     )
     logger.info(f"Optimizing for {dopt.n_epochs} epochs...")
     start_epoch = dopt.start_epoch
+    
+    if dopt.n_epochs <= 0:
+        # initial sampling only
+        return dopt.run_epoch(completed_epoch=True)
+    
     while dopt.epoch_count < dopt.n_epochs:
         dopt.run_epoch()
 
