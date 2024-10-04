@@ -8,13 +8,13 @@ authors = [
 dependencies = [
     "mpi4py>=4.0.0",
     "h5py>=3.11.0",
-    "scipy>=1.14.1",
     "scikit-learn>=1.5.1",
-    "distwq @ git+https://github.com/iraikov/distwq.git@use-rye",
+    "distwq @ git+https://github.com/iraikov/distwq.git",
+    "scipy>=1.13.1",
 ]
 license = "GPL-3.0-or-later"
 readme = "README.md"
-requires-python = ">= 3.8"
+requires-python = ">= 3.9"
 
 [project.scripts]
 # Main functions
