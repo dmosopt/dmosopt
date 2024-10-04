@@ -1,40 +1,46 @@
-[tool.poetry]
+[project]
 name = "dmosopt"
 version = "0.45.5"
 description = "Distributed multi-objective surrogate optimization algorithm."
-authors = ["Ivan Raikov <ivan.g.raikov@gmail.com>"]
+authors = [
+    { name = "Ivan Raikov", email = "ivan.g.raikov@gmail.com" }
+]
+dependencies = [
+    "mpi4py>=4.0.0",
+    "h5py>=3.11.0",
+    "scikit-learn>=1.5.1",
+    "distwq @ git+https://github.com/iraikov/distwq.git",
+    "scipy>=1.13.1",
+]
 license = "GPL-3.0-or-later"
 readme = "README.md"
+requires-python = ">= 3.9"
 
-[tool.poetry.dependencies]
-python = ">=3.8,<4.0"
-mpi4py = ">=3.1.4"
-numpy = ">=1.23.5"
-h5py = ">=3.7.0"
-scipy = ">=1.9.3"
-scikit-learn = ">=1.1.3"
-distwq = ">=1.1.0"
-
-[tool.poetry.group.dev.dependencies]
-black = "^22.8.0"
-pre-commit = "^2.20.0"
-
-
-[tool.poetry.group.extras.dependencies]
-gpytorch = "^1.9.0"
-salib = "^1.4.6.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.extras]
-gpflow = ["gpflow"]
-gpytorch = ["gpytorch"]
-sensitivity = ["SALib"]
-
-[tool.poetry.scripts]
+[project.scripts]
 # Main functions
 dmosopt-analyze = "dmosopt.dmosopt_analyze:main"
 dmosopt-train = "dmosopt.dmosopt_train:main"
 dmosopt-onestep = "dmosopt.dmosopt_onestep:main"
+
+[project.optional-dependencies]
+extras = [
+    "gpytorch>=1.12",
+    "salib>=1.5.1",
+    "gpflow>=2.9.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+dev-dependencies = [
+    "pre-commit>=3.8.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["dmosopt"]
