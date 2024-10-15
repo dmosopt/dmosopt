@@ -197,7 +197,6 @@ class DistOptStrategy:
         return len(self.completed) > 0
 
     def _remove_duplicate_evals(self):
-
         is_duplicates = MOEA.get_duplicates(self.x)
 
         self.x = self.x[~is_duplicates]
@@ -208,7 +207,6 @@ class DistOptStrategy:
             self.c = self.c[~is_duplicates]
 
     def _reduce_evals(self):
-
         self._remove_duplicate_evals()
 
         perm, _, _ = MOEA.orderMO(self.x, self.y)
@@ -379,7 +377,6 @@ class DistOptStrategy:
                 else:
                     item, reduce_evals = next(self.opt_gen)
             except StopIteration as ex:
-
                 if isinstance(self.opt_gen, GeneratorType):
                     self.opt_gen.close()
                 self.opt_gen = None
@@ -1022,7 +1019,6 @@ class DistOptimizer:
         )
 
     def save_stats(self, problem_id, epoch):
-
         stats = self.get_stats()
 
         save_stats_to_h5(
@@ -1334,7 +1330,7 @@ class DistOptimizer:
         epoch = self.epoch_count + self.start_epoch
         gen = None
         advance_epoch = self.epoch_count < self.n_epochs - 1
-        
+
         self.stats["init_sampling_start"] = time.time()
         eval_count, saved_eval_count = self._process_requests()
 
@@ -1403,7 +1399,6 @@ class DistOptimizer:
                 ].update_epoch(resample=advance_epoch)
                 completed_epoch = strategy_state == StrategyState.CompletedEpoch
                 if completed_epoch:
-
                     res = strategy_value
 
                     ## Compute prediction accuracy of completed evaluations
@@ -2007,10 +2002,10 @@ def save_optimizer_params_to_h5(
         logger.info(
             f"Saving optimizer hyper-parameters for problem id {problem_id} epoch {epoch} to {fpath}."
         )
-
-    opt_params_epoch_grp["optimizer_name"] = optimizer_name
+    if "optimizer_name" not in opt_params_epoch_grp:
+        opt_params_epoch_grp["optimizer_name"] = optimizer_name
     for k, v in optimizer_params.items():
-        if v is not None:
+        if v is not None and k not in opt_params_epoch_grp:
             opt_params_epoch_grp[k] = v
 
     f.close()
@@ -2260,11 +2255,11 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     )
     logger.info(f"Optimizing for {dopt.n_epochs} epochs...")
     start_epoch = dopt.start_epoch
-    
+
     if dopt.n_epochs <= 0:
         # initial sampling only
         return dopt.run_epoch(completed_epoch=True)
-    
+
     while dopt.epoch_count < dopt.n_epochs:
         dopt.run_epoch()
 
