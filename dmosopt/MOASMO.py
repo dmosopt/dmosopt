@@ -2,6 +2,7 @@
 
 import sys, itertools
 import time
+from scipy import stats
 import numpy as np
 from numpy.random import default_rng
 from typing import Any, Union, Dict, List, Tuple, Optional
@@ -670,3 +671,61 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     epc_arrs = (uniq_epc, epc_idx, epc_cnt)
 
     return perm_arrs, rnk_arrs, epc_arrs, rnk_epc_idx
+
+
+def epsilon_get_best(
+    x,
+    y,
+    f,
+    c,
+    feasible=True,
+    delete_duplicates=True,
+    epsilons=None,
+):
+    if feasible and c is not None:
+        feasible = np.argwhere(np.all(c > 0.0, axis=1)).ravel()
+        if len(feasible) > 0:
+            feasible = feasible.ravel()
+            x = x[feasible, :]
+            y = y[feasible, :]
+            if f is not None:
+                f = f[feasible]
+            c = c[feasible, :]
+
+    if delete_duplicates:
+        is_duplicate = MOEA.get_duplicates(y)
+
+        x = x[~is_duplicate]
+        y = y[~is_duplicate]
+        if f is not None:
+            f = f[~is_duplicate]
+        if c is not None:
+            c = c[~is_duplicate]
+
+    if epsilons is None:
+        epsilons = [1e-9] * y.shape[1]
+    elif isinstance(epsilons, (int, float)):
+        epsilons = [float(epsilons)] * y.shape[1]
+    elif epsilons == "auto":
+        # 5% of IQR
+        epsilons = 0.05 * stats.iqr(y, axis=0)
+
+    if y.shape[0] == 0:
+        return x, y, f, c, epsilons
+
+    sorter = MOEA.EpsilonSort(epsilons)
+
+    for i in range(y.shape[0]):
+        sorter.sortinto(y[i], tagalong=i)
+
+    m = np.array(sorter.tagalongs)
+
+    best_f = None
+    if f is not None:
+        best_f = f[m]
+
+    best_c = None
+    if c is not None:
+        best_c = c[m]
+
+    return x[m], y[m], best_f, best_c, epsilons
