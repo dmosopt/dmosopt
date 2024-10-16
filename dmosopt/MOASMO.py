@@ -693,8 +693,6 @@ def epsilon_get_best(
             c = c[feasible, :]
 
     if delete_duplicates:
-        from dmosopt import MOEA
-
         is_duplicate = MOEA.get_duplicates(y)
 
         x = x[~is_duplicate]
