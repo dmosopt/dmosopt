@@ -1254,7 +1254,7 @@ class MEGP_Matern:
         )
         self.logger = logger
 
-        xin, yin = top_k_MO(xin, yin)
+        xin, yin = top_k_MO(xin, yin, top_k)
         
         yin = np.nan_to_num(yin)
 
