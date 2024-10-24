@@ -667,6 +667,8 @@ class MDSPP_Matern:
         self.logger = logger
 
         xin, yin = top_k_MO(xin, yin, top_k)
+        
+        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -961,6 +963,8 @@ class MDGP_Matern:
         self.logger = logger
 
         xin, yin = top_k_MO(xin, yin, top_k)
+        
+        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -1250,7 +1254,9 @@ class MEGP_Matern:
         )
         self.logger = logger
 
-        xin, yin = top_k_MO(xin, yin, top_k)
+        xin, yin = top_k_MO(xin, yin)
+        
+        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -1279,10 +1285,11 @@ class MEGP_Matern:
         # Remove mean and make unit variance
         yn = np.column_stack(
             tuple(
-                (yin[:, i] - self.y_train_mean[i]) / self.y_train_std[i]
+                (yin[:, i] - self.y_train_mean[i]) / (self.y_train_std[i] + 1e-12)
                 for i in range(yin.shape[1])
             )
         )
+        
         train_x = torch.from_numpy(xn)
 
         if logger is not None:
@@ -1533,6 +1540,8 @@ class EGP_Matern:
         self.logger = logger
 
         xin, yin = top_k_MO(xin, yin, top_k)
+        
+        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -1815,6 +1824,8 @@ class CRV_Matern:
         self.logger = logger
 
         xin, yin = top_k_MO(xin, yin, top_k)
+        
+        yin = np.nan_to_num(yin)
 
         N = xin.shape[0]
         D = xin.shape[1]
@@ -2026,6 +2037,8 @@ class SIV_Matern:
         self.logger = logger
 
         xin, yin = top_k_MO(xin, yin, top_k)
+        
+        yin = np.nan_to_num(yin)
 
         N = xin.shape[0]
         D = xin.shape[1]
