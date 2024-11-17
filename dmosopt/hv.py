@@ -1,3 +1,9 @@
+import numpy as np
+from typing import Any, Union, Dict, List, Tuple, Optional
+from itertools import product
+from scipy.stats import norm
+from typing import List, Tuple, Optional
+
 #    Copyright (C) 2010 Simon Wessing
 #    TU Dortmund University
 #
@@ -13,11 +19,6 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-import numpy as np
-from typing import Any, Union, Dict, List, Tuple, Optional
-from itertools import product
-from scipy.stats import norm
 
 
 class HyperVolumeDimensionSweep:
@@ -36,7 +37,7 @@ class HyperVolumeDimensionSweep:
         self.referencePoint = referencePoint
         self.list = []
 
-    def compute(self, front):
+    def compute_hypervolume(self, front):
         """Returns the hypervolume that is dominated by a non-dominated front.
 
         Before the HV computation, front and reference point are translated, so
@@ -279,7 +280,7 @@ class MultiList:
                 bounds[i] = node.cargo[i]
 
 
-class HyperVolumeBoxDecomposition:
+class HyperVolumeBoxDecompositionYang:
     def __init__(
         self,
         partition_bounds: Tuple[np.ndarray, np.ndarray],
@@ -326,7 +327,7 @@ class HyperVolumeBoxDecomposition:
         self._lb_points[:] = partition_bounds[0]
         self._ub_points[:] = partition_bounds[1]
 
-    def compute(
+    def compute_ehvi(
         self, candidate_mean: np.ndarray, candidate_var: Optional[np.ndarray] = None
     ) -> np.ndarray:
 
@@ -427,26 +428,585 @@ class HyperVolumeBoxDecomposition:
             keepdims=True,
         )
 
+        contribution = 1.0
 
-if __name__ == "__main__":
-    # Example:
-    referencePoint = [2, 2, 2]
-    hv = HyperVolumeDimensionSweep(referencePoint)
-    front = [[1, 0, 1], [0, 1, 0]]
-    volume = hv.compute(front)
-    print(volume)
-    #    front = [(a, a) for a in np.arange(1, 0, -0.01)]
-    #    referencePoint = np.array([2, 2])
-    #    hv = HyperVolumeDimensionSweep(referencePoint)
-    #    volume = hv.compute(front)
-    #    print(volume)
-    hv = HyperVolumeBoxDecomposition(
-        partition_bounds=[
-            np.asarray([0, 0, 0]),
-            np.asarray([2, 2, 2]),
+        for i in range(self.n_objectives):
+            mean, var = means[i], variances[i]
+            std = np.sqrt(var)
+
+            # Compute probability of improvement over reference point
+            prob = 1 - norm.cdf((self.ref_point[i] - mean) / std)
+
+            # Compute partial expectation
+            partial_exp = std * norm.pdf((self.ref_point[i] - mean) / std) + mean * prob
+
+            contribution *= partial_exp
+
+        return contribution
+
+
+""" 
+Implementation of hypervolume and Expected Hypervolume Improvement
+(EHVI) computation using box decomposition algorithms.
+
+The implementation provides two main functionalities:
+1. Hypervolume Computation: Calculates the hypervolume dominated by a set of Pareto-optimal points
+2. EHVI Computation: Calculates the expected improvement in hypervolume for a new point with 
+   uncertain objective values (represented by Gaussian distributions)
+
+Key Concepts:
+------------
+1. Hypervolume: 
+   - Measures the volume of the objective space dominated by a Pareto front
+   - Computed using a recursive slicing algorithm
+   
+2. Expected Hypervolume Improvement (EHVI):
+   - Extends hypervolume to handle uncertainty in predictions
+   - Computed using box decomposition and integration over Gaussian distributions
+
+Algorithm Details:
+-----------------
+1. Hypervolume Computation:
+   - Uses a recursive slicing algorithm
+   - Processes dimensions one at a time
+   - For each dimension:
+     * Sorts points by current dimension
+     * Computes contribution of each slice
+     * Recursively processes remaining dimensions
+     
+2. EHVI Computation:
+   - Decomposes non-dominated space into boxes
+   - For each box:
+     * Computes probability of improvement in each dimension
+     * Calculates expected improvement contribution
+     * Combines dimensional contributions
+"""
+
+
+class HyperVolumeBoxDecomposition:
+    def __init__(self, ref_point: np.ndarray):
+        """
+        Initialize box decomposition algorithm for hypervolume and EHVI computation.
+
+        Args:
+            ref_point: Reference point for hypervolume calculation. This point should
+                      dominate all Pareto front points. For minimization problems,
+                      it should be larger than all Pareto front points in all dimensions.
+
+        The reference point defines the upper bounds of the hypervolume computation
+        and significantly impacts the resulting values. It should be chosen carefully
+        based on the problem context.
+        """
+        self.ref_point = ref_point
+        self.n_objectives = len(ref_point)
+
+    def compute_hypervolume(self, pareto_front: np.ndarray) -> float:
+        """
+        Compute the hypervolume dominated by a Pareto front.
+
+        Args:
+            pareto_front: Array of shape (n_points, n_objectives) containing
+                         the coordinates of Pareto-optimal points.
+
+        Returns:
+            float: The hypervolume dominated by the Pareto front
+
+        The hypervolume is computed using a recursive slicing algorithm:
+        1. Start with the highest dimension
+        2. Sort points by current dimension
+        3. For each point:
+           - Compute the slice volume between current and previous point
+           - Recursively compute volume in lower dimensions
+           - Multiply and accumulate results
+
+        The algorithm handles special cases:
+        - Empty Pareto front: Returns 0
+        - Points outside reference point: Filters invalid points
+        - Single point: Computes simple box volume
+        """
+        if len(pareto_front) == 0:
+            return 0.0
+
+        # Ensure all points are dominated by reference point
+        if not np.all(pareto_front <= self.ref_point):
+            valid_points = pareto_front[np.all(pareto_front <= self.ref_point, axis=1)]
+            if len(valid_points) == 0:
+                return 0.0
+            pareto_front = valid_points
+
+        def recursive_hypervolume(
+            points: np.ndarray, ref_point: np.ndarray, dimension: int
+        ) -> float:
+            """
+            Recursively compute hypervolume for a specific dimension.
+
+            Args:
+                points: Array of points to process
+                ref_point: Current reference point
+                dimension: Current dimension being processed
+
+            Returns:
+                float: Hypervolume contribution for this dimension
+
+            The recursive algorithm:
+            1. Base case: dimension 0
+               - Return difference between reference point and minimum value
+            2. Recursive case:
+               - Sort points by current dimension
+               - For each point:
+                 * Compute slice between current point and previous slice
+                 * Recursively compute volume in remaining dimensions
+                 * Multiply by height difference
+            """
+            if len(points) == 0:
+                return 0.0
+
+            if dimension == 0:
+                return ref_point[0] - np.min(points[:, 0])
+
+            # Sort points by current dimension (descending)
+            sorted_indices = np.argsort(-points[:, dimension])
+            sorted_points = points[sorted_indices]
+
+            hv = 0.0
+            prev_point = ref_point.copy()
+
+            for point in sorted_points:
+                if point[dimension] < prev_point[dimension]:
+                    # Update reference point for recursive call
+                    curr_ref = prev_point.copy()
+                    curr_ref[dimension] = point[dimension]
+
+                    # Find points that are still relevant for this slice
+                    relevant_points = points[np.all(points <= curr_ref, axis=1)]
+
+                    # Compute hypervolume of this slice
+                    slice_hv = recursive_hypervolume(
+                        relevant_points, curr_ref, dimension - 1
+                    )
+                    hv += slice_hv * (prev_point[dimension] - point[dimension])
+
+                    prev_point[dimension] = point[dimension]
+
+            return hv
+
+        return recursive_hypervolume(
+            pareto_front, self.ref_point.copy(), self.n_objectives - 1
+        )
+
+    def compute_ehvi(
+        self,
+        pareto_front: np.ndarray,
+        means: np.ndarray,
+        variances: Optional[np.ndarray] = None,
+    ) -> float:
+        """
+        Compute Expected Hypervolume Improvement for a new point.
+
+        Args:
+            pareto_front: Current Pareto front points
+            means: Predicted mean values for new point
+            variances: Predicted variance values for new point
+
+        Returns:
+            float: Expected hypervolume improvement value
+
+        The EHVI computation process:
+        1. If Pareto front is empty:
+           - Compute simple expected improvement from reference point
+        2. Otherwise:
+           - Decompose non-dominated space into boxes
+           - For each box:
+             * Compute probability of improvement in each dimension
+             * Calculate expected improvement contribution
+             * Combine contributions across dimensions
+        """
+        if variances is None:
+            variances = np.ones_like(means)
+
+        if len(pareto_front) == 0:
+            return self._compute_empty_ehvi(means, variances)
+
+        boxes = self._decompose_dominated_space(pareto_front)
+        total_ehvi = 0.0
+
+        for box in boxes:
+            total_ehvi += self._compute_box_contribution(box, means, variances)
+
+        return total_ehvi
+
+    def _decompose_dominated_space(
+        self, pareto_front: np.ndarray
+    ) -> List[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Decompose the non-dominated space into boxes for EHVI computation.
+
+        Args:
+            pareto_front: Array of Pareto front points
+
+        Returns:
+            List of tuples (lower, upper) defining boxes
+
+        Box Decomposition Process:
+        1. Sort points by first objective
+        2. Create boxes between consecutive points
+        3. Handle special cases:
+           - First box: From -infinity to first point
+           - Last box: From last point to reference point
+           - Middle boxes: Between consecutive points
+
+        Each box represents a region where improvement is possible.
+        The algorithm ensures:
+        - Complete coverage of non-dominated space
+        - No overlap between boxes
+        - Proper handling of infinities
+        """
+        boxes = []
+        n_points = len(pareto_front)
+
+        # Sort points by first objective
+        sorted_indices = np.argsort(pareto_front[:, 0])
+        sorted_front = pareto_front[sorted_indices]
+
+        for i in range(n_points + 1):
+            if i == 0:
+                lower = np.array([-np.inf] * self.n_objectives)
+                upper = sorted_front[0]
+            elif i == n_points:
+                lower = sorted_front[-1]
+                upper = self.ref_point
+            else:
+                lower = sorted_front[i - 1]
+                upper = sorted_front[i]
+
+            if np.all(upper > lower):
+                boxes.append((lower, upper))
+
+        return boxes
+
+    def _compute_box_contribution(
+        self,
+        box: Tuple[np.ndarray, np.ndarray],
+        means: np.ndarray,
+        variances: np.ndarray,
+    ) -> float:
+        """
+        Compute the EHVI contribution of a single box.
+
+        Args:
+            box: Tuple of (lower, upper) corners of the box
+            means: Predicted mean values
+            variances: Predicted variance values
+
+        Returns:
+            float: Box contribution to total EHVI
+
+        For each dimension:
+        1. Compute probability of improvement:
+           - P(x > lower) - P(x > upper)
+        2. Compute expected improvement:
+           - Integrate x*P(x) over the box bounds
+        3. Multiply contributions across dimensions
+
+        Handles special cases:
+        - Infinite bounds
+        - Zero variances
+        - Numerical stability issues
+        """
+        lower, upper = box
+        contribution = 1.0
+
+        for i in range(self.n_objectives):
+            mean, var = means[i], variances[i]
+            std = np.sqrt(var)
+
+            # Handle infinite bounds
+            if np.isinf(lower[i]):
+                lower_prob = 0.0
+            else:
+                lower_prob = norm.cdf((lower[i] - mean) / std)
+
+            if np.isinf(upper[i]):
+                upper_prob = 1.0
+            else:
+                upper_prob = norm.cdf((upper[i] - mean) / std)
+
+            # Compute partial expectation
+            partial_exp = std * (
+                norm.pdf((lower[i] - mean) / std) - norm.pdf((upper[i] - mean) / std)
+            ) + mean * (upper_prob - lower_prob)
+
+            contribution *= partial_exp
+
+        return contribution
+
+    def _compute_empty_ehvi(self, means: np.ndarray, variances: np.ndarray) -> float:
+        """
+        Compute EHVI when there are no existing Pareto front points.
+
+        Args:
+            means: Predicted mean values
+            variances: Predicted variance values
+
+        Returns:
+            float: EHVI value for empty Pareto front case
+
+        Special case handling when Pareto front is empty:
+        1. Compute improvement probability relative to reference point
+        2. Calculate expected improvement in each dimension
+        3. Multiply contributions across dimensions
+
+        This case is simpler because there's only one box to consider:
+        from negative infinity to the reference point.
+        """
+        contribution = 1.0
+
+        for i in range(self.n_objectives):
+            mean, var = means[i], variances[i]
+            std = np.sqrt(var)
+
+            # Compute probability of improvement over reference point
+            prob = 1 - norm.cdf((self.ref_point[i] - mean) / std)
+
+            # Compute partial expectation
+            partial_exp = std * norm.pdf((self.ref_point[i] - mean) / std) + mean * prob
+
+            contribution *= partial_exp
+
+        return contribution
+
+
+def run_basic_test_cases():
+    print("\n=== 2D Test Cases ===")
+
+    # 2D reference point
+    ref_point_2d = np.array([10.0, 10.0])
+    bd_2d = HyperVolumeBoxDecomposition(ref_point_2d)
+
+    # Test 2D cases
+    pareto_2d = np.array([[2.0, 8.0], [4.0, 4.0], [8.0, 2.0]])
+    hv_2d = bd_2d.compute_hypervolume(pareto_2d)
+    print(f"2D Basic case hypervolume: {hv_2d}")
+
+    # Single 2D point
+    single_point_2d = np.array([[5.0, 5.0]])
+    hv_single_2d = bd_2d.compute_hypervolume(single_point_2d)
+    print(f"2D Single point hypervolume: {hv_single_2d}")
+
+    print("\n=== 3D Test Cases ===")
+
+    # 3D reference point
+    ref_point_3d = np.array([10.0, 10.0, 10.0])
+    bd_3d = HyperVolumeBoxDecomposition(ref_point_3d)
+
+    # Test Case 1: Simple 3D Pareto front
+    pareto_3d_simple_1 = np.array([[2.0, 8.0, 8.0], [8.0, 2.0, 8.0], [8.0, 8.0, 2.0]])
+    hv_3d_simple_1 = bd_3d.compute_hypervolume(pareto_3d_simple_1)
+    print(f"3D Simple case 1 hypervolume: {hv_3d_simple_1}")
+
+    # Test Case 2: Simple 3D Pareto front
+    pareto_3d_simple_2 = np.array([[1, 0, 1], [0, 1, 0]])
+    hv_3d_simple_2 = bd_3d.compute_hypervolume(pareto_3d_simple_2)
+    print(f"3D Simple case 2 hypervolume: {hv_3d_simple_2}")
+
+    # Test Case 2: Single 3D point
+    single_point_3d = np.array([[5.0, 5.0, 5.0]])
+    hv_3d_single = bd_3d.compute_hypervolume(single_point_3d)
+    print(f"3D Single point hypervolume: {hv_3d_single}")
+    # Expected: (10-5)*(10-5)*(10-5) = 125
+
+    # Test Case 3: More complex 3D Pareto front
+    pareto_3d_complex = np.array(
+        [
+            [2.0, 8.0, 8.0],
+            [3.0, 3.0, 8.0],
+            [8.0, 2.0, 8.0],
+            [8.0, 8.0, 2.0],
+            [3.0, 8.0, 3.0],
+            [8.0, 3.0, 3.0],
         ]
     )
+    hv_3d_complex = bd_3d.compute_hypervolume(pareto_3d_complex)
+    print(f"3D Complex case hypervolume: {hv_3d_complex}")
 
-    front = np.vstack([[1, 0, 1], [0, 1, 0]])
-    volume = hv.compute(front)
-    print(volume)
+    # Test Case 4: 3D points with dominated points
+    pareto_3d_dominated = np.array(
+        [
+            [2.0, 8.0, 8.0],
+            [3.0, 7.0, 7.0],  # dominated by first point
+            [8.0, 2.0, 8.0],
+            [8.0, 8.0, 2.0],
+        ]
+    )
+    hv_3d_dominated = bd_3d.compute_hypervolume(pareto_3d_dominated)
+    print(f"3D Case with dominated points hypervolume: {hv_3d_dominated}")
+
+    # Test Case 5: 3D points outside reference point
+    pareto_3d_invalid = np.array(
+        [
+            [11.0, 5.0, 5.0],  # invalid in first dimension
+            [5.0, 11.0, 5.0],  # invalid in second dimension
+            [5.0, 5.0, 5.0],  # valid point
+            [5.0, 5.0, 11.0],  # invalid in third dimension
+        ]
+    )
+    hv_3d_invalid = bd_3d.compute_hypervolume(pareto_3d_invalid)
+    print(f"3D Case with invalid points hypervolume: {hv_3d_invalid}")
+
+    # Test Case 6: Corner cases in 3D
+    pareto_3d_corners = np.array([[0.0, 0.0, 10.0], [0.0, 10.0, 0.0], [10.0, 0.0, 0.0]])
+    hv_3d_corners = bd_3d.compute_hypervolume(pareto_3d_corners)
+    print(f"3D Corner cases hypervolume: {hv_3d_corners}")
+
+    # Test Case 7: Empty 3D front
+    empty_front_3d = np.array([])
+    hv_3d_empty = bd_3d.compute_hypervolume(empty_front_3d)
+    print(f"3D Empty front hypervolume: {hv_3d_empty}")
+
+    return {
+        "2d_basic": hv_2d,
+        "2d_single": hv_single_2d,
+        "3d_simple_1": hv_3d_simple_1,
+        "3d_simple_2": hv_3d_simple_2,
+        "3d_single": hv_3d_single,
+        "3d_complex": hv_3d_complex,
+        "3d_dominated": hv_3d_dominated,
+        "3d_invalid": hv_3d_invalid,
+        "3d_corners": hv_3d_corners,
+        "3d_empty": hv_3d_empty,
+    }
+
+
+def run_analytical_test_cases():
+    """
+    Run test cases with known analytical solutions.
+    Returns dictionary of test results with computed and expected values.
+    """
+    results = {}
+
+    print("\n=== 2D Analytical Test Cases ===")
+
+    # 2D Test Case 1: Single Point
+    # Reference point: [4,4], Point: [1,1]
+    # Expected volume: (4-1)*(4-1) = 3*3 = 9
+    ref_point_2d = np.array([4.0, 4.0])
+    bd_2d = HyperVolumeBoxDecomposition(ref_point_2d)
+
+    single_point_2d = np.array([[1.0, 1.0]])
+    hv_2d_single = bd_2d.compute_hypervolume(single_point_2d)
+    expected_2d_single = 9.0
+    print(f"2D Single point:")
+    print(f"Computed: {hv_2d_single:.6f}")
+    print(f"Expected: {expected_2d_single}")
+    print(f"Error: {abs(hv_2d_single - expected_2d_single):.6f}")
+    results["2d_single"] = (hv_2d_single, expected_2d_single)
+
+    # 2D Test Case 2: Two Non-Dominated Points
+    # Points: [1,3], [3,1]
+    # Expected volume: 5
+    two_points_2d = np.array([[1.0, 3.0], [3.0, 1.0]])
+    hv_2d_two = bd_2d.compute_hypervolume(two_points_2d)
+    expected_2d_two = 5.0
+    print(f"\n2D Two points:")
+    print(f"Computed: {hv_2d_two:.6f}")
+    print(f"Expected: {expected_2d_two}")
+    print(f"Error: {abs(hv_2d_two - expected_2d_two):.6f}")
+    results["2d_two"] = (hv_2d_two, expected_2d_two)
+
+    # 2D Test Case 3: Rectangle
+    # Points: [1,3], [1,1], [3,1]
+    # Expected volume: 9
+    rectangle_2d = np.array([[1.0, 3.0], [1.0, 1.0], [3.0, 1.0]])
+    hv_2d_rect = bd_2d.compute_hypervolume(rectangle_2d)
+    expected_2d_rect = 9.0
+    print(f"\n2D Rectangle:")
+    print(f"Computed: {hv_2d_rect:.6f}")
+    print(f"Expected: {expected_2d_rect}")
+    print(f"Error: {abs(hv_2d_rect - expected_2d_rect):.6f}")
+    results["2d_rect"] = (hv_2d_rect, expected_2d_rect)
+
+    print("\n=== 3D Analytical Test Cases ===")
+
+    # 3D Test Case 1: Single Point
+    # Reference point: [4,4,4], Point: [1,1,1]
+    # Expected volume: (4-1)*(4-1)*(4-1) = 27
+    ref_point_3d = np.array([4.0, 4.0, 4.0])
+    bd_3d = HyperVolumeBoxDecomposition(ref_point_3d)
+
+    single_point_3d = np.array([[1.0, 1.0, 1.0]])
+    hv_3d_single = bd_3d.compute_hypervolume(single_point_3d)
+    expected_3d_single = 27.0
+    print(f"3D Single point:")
+    print(f"Computed: {hv_3d_single:.6f}")
+    print(f"Expected: {expected_3d_single}")
+    print(f"Error: {abs(hv_3d_single - expected_3d_single):.6f}")
+    results["3d_single"] = (hv_3d_single, expected_3d_single)
+
+    # 3D Test Case 2: Three Non-Dominated Points forming a plane
+    # Points: [1,1,3], [1,3,1], [3,1,1]
+    # Expected volume: 19
+    plane_points_3d = np.array([[1.0, 1.0, 3.0], [1.0, 3.0, 1.0], [3.0, 1.0, 1.0]])
+    hv_3d_plane = bd_3d.compute_hypervolume(plane_points_3d)
+    expected_3d_plane = 19.0
+    print(f"\n3D Plane points:")
+    print(f"Computed: {hv_3d_plane:.6f}")
+    print(f"Expected: {expected_3d_plane}")
+    print(f"Error: {abs(hv_3d_plane - expected_3d_plane):.6f}")
+    results["3d_plane"] = (hv_3d_plane, expected_3d_plane)
+
+    # 3D Test Case 3: Regular Cuboid
+    # Points forming a regular cuboid with corner at [1,1,1] extending to [3,3,3]
+    # Expected volume: 19
+    ref_point_cuboid = np.array([4.0, 4.0, 4.0])
+    bd_cuboid = HyperVolumeBoxDecomposition(ref_point_cuboid)
+    cuboid_points = np.array(
+        [
+            [1.0, 1.0, 3.0],
+            [1.0, 3.0, 1.0],
+            [3.0, 1.0, 1.0],
+            [1.0, 3.0, 3.0],
+            [3.0, 1.0, 3.0],
+            [3.0, 3.0, 1.0],
+            [3.0, 3.0, 3.0],
+        ]
+    )
+    hv_3d_cuboid = bd_cuboid.compute_hypervolume(cuboid_points)
+    expected_3d_cuboid = 19.0
+    print(f"\n3D Cuboid:")
+    print(f"Computed: {hv_3d_cuboid:.6f}")
+    print(f"Expected: {expected_3d_cuboid}")
+    print(f"Error: {abs(hv_3d_cuboid - expected_3d_cuboid):.6f}")
+    results["3d_cuboid"] = (hv_3d_cuboid, expected_3d_cuboid)
+
+    # 3D Test Case 4: Layer
+    # Points forming a horizontal layer
+    # Expected volume: 27
+    layer_points = np.array(
+        [[1.0, 1.0, 1.0], [1.0, 3.0, 1.0], [3.0, 1.0, 1.0], [3.0, 3.0, 1.0]]
+    )
+    hv_3d_layer = bd_3d.compute_hypervolume(layer_points)
+    expected_3d_layer = 27.0
+    print(f"\n3D Layer:")
+    print(f"Computed: {hv_3d_layer:.6f}")
+    print(f"Expected: {expected_3d_layer}")
+    print(f"Error: {abs(hv_3d_layer - expected_3d_layer):.6f}")
+    results["3d_layer"] = (hv_3d_layer, expected_3d_layer)
+
+    # Summary of all errors
+    print("\n=== Summary of All Test Cases ===")
+    total_error = 0.0
+    for test_name, (computed, expected) in results.items():
+        error = abs(computed - expected)
+        total_error += error
+        print(f"{test_name}:")
+        print(f"  Computed: {computed:.6f}")
+        print(f"  Expected: {expected:.6f}")
+        print(f"  Error: {error:.6f}")
+
+    print(f"\nTotal absolute error across all tests: {total_error:.6f}")
+    return results
+
+
+if __name__ == "__main__":
+    results = run_basic_test_cases()
+    results = run_analytical_test_cases()

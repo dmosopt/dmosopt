@@ -14,7 +14,7 @@ from dmosopt.MOEA import (
     remove_duplicates,
 )
 from dmosopt.sampling import sobol
-from dmosopt.indicators import Hypervolume
+from dmosopt.indicators import HypervolumeImprovement
 from typing import Any, Union, Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
@@ -61,7 +61,7 @@ class TRS(MOEA):
         self.x_distance_metrics = None
         if self.model.feasibility is not None:
             self.x_distance_metrics = [self.model.feasibility.rank]
-        self.indicator = Hypervolume
+        self.indicator = HypervolumeImprovement
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
@@ -80,7 +80,7 @@ class TRS(MOEA):
         local_random: Optional[np.random.Generator] = None,
         **params,
     ):
-        order, rank = orderMO(x, y, x_distance_metrics=self.x_distance_metrics)
+        order, rank, _ = orderMO(x, y, x_distance_metrics=self.x_distance_metrics)
         population_parm = x[order][: self.popsize]
         population_obj = y[order][: self.popsize]
         rank = rank[: self.popsize]
@@ -198,7 +198,7 @@ class TRS(MOEA):
                 candidates_inds, dtype=bool
             )
 
-        order, rank = orderMO(
+        order, rank, _ = orderMO(
             candidates_x, candidates_y, x_distance_metrics=self.x_distance_metrics
         )
 
@@ -211,6 +211,7 @@ class TRS(MOEA):
         # for this front
         # The remaining fronts are explicitly not chosen
         full = False
+
         rmax = int(np.max(rank))
         chosen_count = 0
         for r in range(rmax + 1):
@@ -239,7 +240,9 @@ class TRS(MOEA):
                 return indicator.do(
                     np.concatenate(
                         (candidates_y[front[:i]], candidates_y[front[i + 1 :]])
-                    )
+                    ),
+                    np.asarray(candidates_y[front[i]]),
+                    None,
                 )
 
             contrib_values = np.fromiter(
@@ -248,8 +251,10 @@ class TRS(MOEA):
             )
             contrib_order = np.argsort(contrib_values)
 
-            chosen[mid_front[contrib_order[:k]]] = True
-            not_chosen[mid_front[contrib_order[k:]]] = True
+            n = mid_front.shape[0]
+            chosen[mid_front[contrib_order[n - k :]]] = True
+
+            not_chosen[mid_front[contrib_order[: n - k]]] = True
 
         return chosen, not_chosen
 
