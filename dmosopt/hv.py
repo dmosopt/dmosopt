@@ -3,6 +3,9 @@ from typing import Any, Union, Dict, List, Tuple, Optional
 from itertools import product
 from scipy.stats import norm
 from typing import List, Tuple, Optional
+from functools import lru_cache
+from dataclasses import dataclass
+import heapq
 
 #    Copyright (C) 2010 Simon Wessing
 #    TU Dortmund University
@@ -450,9 +453,13 @@ Implementation of hypervolume and Expected Hypervolume Improvement
 (EHVI) computation using box decomposition algorithms.
 
 The implementation provides two main functionalities:
-1. Hypervolume Computation: Calculates the hypervolume dominated by a set of Pareto-optimal points
-2. EHVI Computation: Calculates the expected improvement in hypervolume for a new point with 
-   uncertain objective values (represented by Gaussian distributions)
+
+1. Hypervolume Computation: Calculates the hypervolume dominated by a
+set of Pareto-optimal points
+
+2. EHVI Computation: Calculates the expected improvement in
+   hypervolume for a new point with uncertain objective values
+   (represented by Gaussian distributions)
 
 Key Concepts:
 ------------
@@ -483,7 +490,7 @@ Algorithm Details:
 """
 
 
-class HyperVolumeBoxDecomposition:
+class HyperVolumeBoxDecompositionR2:
     def __init__(self, ref_point: np.ndarray):
         """
         Initialize box decomposition algorithm for hypervolume and EHVI computation.
@@ -776,6 +783,319 @@ class HyperVolumeBoxDecomposition:
         return contribution
 
 
+@dataclass
+class Box:
+    lower: np.ndarray
+    upper: np.ndarray
+    _volume: float = None
+
+    @property
+    def volume(self) -> float:
+        if self._volume is None:
+            mask = ~np.isinf(self.lower) & ~np.isinf(self.upper)
+            if not np.any(mask):
+                self._volume = 0.0
+            else:
+                self._volume = np.prod(self.upper[mask] - self.lower[mask])
+        return self._volume
+
+
+class HyperVolumeBoxDecomposition:
+    def __init__(self, ref_point: np.ndarray):
+        self.ref_point = ref_point
+        self.n_objectives = len(ref_point)
+        self._hv_cache: Dict[Tuple, float] = {}
+
+    def select_candidates(
+        self,
+        pareto_front: np.ndarray,
+        candidate_means: np.ndarray,
+        candidate_variances: np.ndarray,
+        n_select: int = 1,
+        batch_size: int = 100,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Select the best candidate points based on EHVI.
+        """
+        n_candidates = len(candidate_means)
+
+        # Pre-compute boxes for the current Pareto front
+        if len(pareto_front) == 0:
+            boxes = []
+        else:
+            boxes = self._decompose_dominated_space_optimized(pareto_front)
+
+        # Compute EHVI for all candidates in batches
+        ehvi_values = np.zeros(n_candidates)
+
+        for batch_start in range(0, n_candidates, batch_size):
+            batch_end = min(batch_start + batch_size, n_candidates)
+            batch_means = candidate_means[batch_start:batch_end]
+            batch_variances = candidate_variances[batch_start:batch_end]
+
+            if len(boxes) == 0:
+                # Handle empty Pareto front case
+                for i, (means, variances) in enumerate(
+                    zip(batch_means, batch_variances)
+                ):
+                    ehvi_values[batch_start + i] = self._compute_empty_ehvi(
+                        means, variances
+                    )
+            else:
+                # Compute EHVI for the batch
+                batch_ehvi = self._compute_batch_ehvi(
+                    boxes, batch_means, batch_variances
+                )
+                ehvi_values[batch_start:batch_end] = batch_ehvi
+
+        # Select top n_select candidates
+        selected_indices = np.argsort(-ehvi_values)[:n_select]
+        return selected_indices, ehvi_values[selected_indices]
+
+    def _compute_batch_ehvi(
+        self, boxes: List[Box], batch_means: np.ndarray, batch_variances: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute EHVI for a batch of candidates efficiently.
+        Fixed broadcasting for vectorized operations.
+        """
+        batch_size = len(batch_means)
+        ehvi_values = np.zeros(batch_size)
+
+        # Prepare box bounds arrays
+        n_boxes = len(boxes)
+        lowers = np.array(
+            [box.lower for box in boxes]
+        )  # Shape: (n_boxes, n_objectives)
+        uppers = np.array(
+            [box.upper for box in boxes]
+        )  # Shape: (n_boxes, n_objectives)
+
+        # Compute contributions for each candidate
+        for i in range(batch_size):
+            means = batch_means[i]  # Shape: (n_objectives,)
+            variances = batch_variances[i]  # Shape: (n_objectives,)
+            std = np.sqrt(variances)  # Shape: (n_objectives,)
+
+            # Reshape for broadcasting
+            means = means[None, :]  # Shape: (1, n_objectives)
+            std = std[None, :]  # Shape: (1, n_objectives)
+
+            # Compute probabilities for all boxes
+            lower_probs = np.zeros_like(lowers, dtype=float)
+            upper_probs = np.ones_like(uppers, dtype=float)
+
+            # Handle finite bounds with proper broadcasting
+            finite_mask_lower = ~np.isinf(lowers)
+            finite_mask_upper = ~np.isinf(uppers)
+
+            if np.any(finite_mask_lower):
+                lower_probs[finite_mask_lower] = norm.cdf(
+                    (
+                        lowers[finite_mask_lower]
+                        - means.repeat(n_boxes, 0)[finite_mask_lower]
+                    )
+                    / std.repeat(n_boxes, 0)[finite_mask_lower]
+                )
+
+            if np.any(finite_mask_upper):
+                upper_probs[finite_mask_upper] = norm.cdf(
+                    (
+                        uppers[finite_mask_upper]
+                        - means.repeat(n_boxes, 0)[finite_mask_upper]
+                    )
+                    / std.repeat(n_boxes, 0)[finite_mask_upper]
+                )
+
+            # Compute partial expectations with proper broadcasting
+            partial_exp = std * (
+                norm.pdf((lowers - means) / std) - norm.pdf((uppers - means) / std)
+            ) + means * (upper_probs - lower_probs)
+
+            # Multiply along objectives dimension
+            contributions = np.prod(partial_exp, axis=1)
+            ehvi_values[i] = np.sum(contributions)
+
+        return ehvi_values
+
+    def _decompose_dominated_space_optimized(
+        self, pareto_front: np.ndarray
+    ) -> List[Box]:
+        n_points = len(pareto_front)
+        sorted_indices = np.argsort(pareto_front[:, 0])
+        sorted_front = pareto_front[sorted_indices]
+
+        lower_bounds = np.full((n_points + 1, self.n_objectives), -np.inf)
+        upper_bounds = np.full((n_points + 1, self.n_objectives), np.inf)
+
+        lower_bounds[1:] = sorted_front
+        upper_bounds[:-1] = sorted_front
+        upper_bounds[-1] = self.ref_point
+
+        valid_boxes = np.all(upper_bounds > lower_bounds, axis=1)
+        boxes = [
+            Box(lower_bounds[i], upper_bounds[i])
+            for i in range(n_points + 1)
+            if valid_boxes[i]
+        ]
+
+        return boxes
+
+    def _compute_empty_ehvi(self, means: np.ndarray, variances: np.ndarray) -> float:
+        contribution = 1.0
+
+        for i in range(self.n_objectives):
+            mean, var = means[i], variances[i]
+            std = np.sqrt(var)
+
+            prob = 1 - norm.cdf((self.ref_point[i] - mean) / std)
+            partial_exp = std * norm.pdf((self.ref_point[i] - mean) / std) + mean * prob
+
+            contribution *= partial_exp
+
+        return float(contribution)
+
+    def compute_hypervolume(self, pareto_front: np.ndarray) -> float:
+        """
+        Compute hypervolume with basic optimizations and correct caching.
+        """
+        if len(pareto_front) == 0:
+            return 0.0
+
+        # Ensure all points are dominated by reference point
+        valid_mask = np.all(pareto_front <= self.ref_point, axis=1)
+        if not np.any(valid_mask):
+            return 0.0
+        points = pareto_front[valid_mask]
+
+        # Convert points to tuples for initial cache lookup
+        points_tuple = tuple(map(tuple, points))
+        ref_tuple = tuple(self.ref_point)
+
+        return self._compute_hv_optimized(
+            points_tuple, ref_tuple, self.n_objectives - 1
+        )
+
+    @lru_cache(maxsize=1024)
+    def _compute_hv_optimized(
+        self,
+        points_tuple: Tuple[Tuple[float, ...], ...],
+        ref_tuple: Tuple[float, ...],
+        dimension: int,
+    ) -> float:
+        """
+        Recursive hypervolume computation with caching.
+        Works with tuples for hashability.
+        """
+        points = np.array(points_tuple)
+        ref_point = np.array(ref_tuple)
+
+        if len(points) == 0:
+            return 0.0
+
+        if dimension == 0:
+            return float(ref_point[0] - np.min(points[:, 0]))
+
+        # Sort points by current dimension (descending)
+        sorted_indices = np.argsort(-points[:, dimension])
+        sorted_points = points[sorted_indices]
+
+        hv = 0.0
+        prev_point = ref_point.copy()
+
+        for point in sorted_points:
+            if point[dimension] < prev_point[dimension]:
+                # Create reference point for this slice
+                curr_ref = prev_point.copy()
+                curr_ref[dimension] = point[dimension]
+
+                # Find points that are relevant for this slice
+                relevant_mask = np.all(sorted_points <= curr_ref, axis=1)
+                relevant_points = sorted_points[relevant_mask]
+
+                # Convert to tuples for recursive call
+                relevant_tuple = tuple(map(tuple, relevant_points))
+                curr_ref_tuple = tuple(curr_ref)
+
+                # Recursive call with updated reference point
+                slice_volume = self._compute_hv_optimized(
+                    relevant_tuple, curr_ref_tuple, dimension - 1
+                )
+                hv += slice_volume * (prev_point[dimension] - point[dimension])
+
+                prev_point[dimension] = point[dimension]
+
+        return float(hv)
+
+    def compute_ehvi(
+        self,
+        pareto_front: np.ndarray,
+        means: np.ndarray,
+        variances: np.ndarray,
+        batch_size: int = 1000,
+    ) -> float:
+        if len(pareto_front) == 0:
+            return self._compute_empty_ehvi(means, variances)
+
+        boxes = self._decompose_dominated_space_optimized(pareto_front)
+        total_ehvi = 0.0
+
+        for i in range(0, len(boxes), batch_size):
+            batch = boxes[i : i + batch_size]
+            total_ehvi += self._compute_batch_contribution(batch, means, variances)
+
+        return total_ehvi
+
+    def _compute_batch_contribution(
+        self,
+        boxes: List[Box],
+        means: np.ndarray,
+        variances: np.ndarray,
+        threshold: float = 1e-10,
+    ) -> float:
+        n_boxes = len(boxes)
+        if n_boxes == 0:
+            return 0.0
+
+        lowers = np.array([box.lower for box in boxes])
+        uppers = np.array([box.upper for box in boxes])
+
+        std = np.sqrt(variances)
+        finite_mask_lower = ~np.isinf(lowers)
+        finite_mask_upper = ~np.isinf(uppers)
+
+        lower_probs = np.zeros((n_boxes, self.n_objectives))
+        upper_probs = np.ones((n_boxes, self.n_objectives))
+
+        lower_probs[finite_mask_lower] = norm.cdf(
+            (lowers[finite_mask_lower] - means) / std
+        )
+        upper_probs[finite_mask_upper] = norm.cdf(
+            (uppers[finite_mask_upper] - means) / std
+        )
+
+        partial_exp = std * (
+            norm.pdf((lowers - means) / std) - norm.pdf((uppers - means) / std)
+        ) + means * (upper_probs - lower_probs)
+
+        contribution = np.prod(partial_exp, axis=1)
+        return float(np.sum(contribution[contribution > threshold]))
+
+    def _compute_empty_ehvi(self, means: np.ndarray, variances: np.ndarray) -> float:
+        contribution = 1.0
+
+        for i in range(self.n_objectives):
+            mean, var = means[i], variances[i]
+            std = np.sqrt(var)
+
+            prob = 1 - norm.cdf((self.ref_point[i] - mean) / std)
+            partial_exp = std * norm.pdf((self.ref_point[i] - mean) / std) + mean * prob
+
+            contribution *= partial_exp
+
+        return float(contribution)
+
+
 def run_basic_test_cases():
     print("\n=== 2D Test Cases ===")
 
@@ -1007,6 +1327,44 @@ def run_analytical_test_cases():
     return results
 
 
+def test_ehvi_candidates():
+    """
+    Example of how to use the BoxDecomposition class for candidate selection.
+    """
+    # Setup
+    n_objectives = 2
+    ref_point = np.array([10.0, 10.0])
+    bd = HyperVolumeBoxDecomposition(ref_point)
+
+    # Current Pareto front
+    pareto_front = np.array([[2.0, 8.0], [4.0, 4.0], [8.0, 2.0]])
+
+    # Generate some candidate points
+    n_candidates = 100
+    np.random.seed(42)
+
+    # Create candidate predictions (means and variances)
+    candidate_means = np.random.uniform(1, 9, size=(n_candidates, n_objectives))
+    candidate_variances = np.random.uniform(0.1, 0.5, size=(n_candidates, n_objectives))
+
+    # Select best candidates
+    n_select = 5
+    selected_indices, ehvi_values = bd.select_candidates(
+        pareto_front=pareto_front,
+        candidate_means=candidate_means,
+        candidate_variances=candidate_variances,
+        n_select=n_select,
+    )
+
+    print("\nTop candidate points:")
+    for idx, ehvi in zip(selected_indices, ehvi_values):
+        print(f"Candidate {idx}:")
+        print(f"  Means: {candidate_means[idx]}")
+        print(f"  Variances: {candidate_variances[idx]}")
+        print(f"  EHVI: {ehvi:.6f}")
+
+
 if __name__ == "__main__":
     results = run_basic_test_cases()
     results = run_analytical_test_cases()
+    results = test_ehvi_candidates()
