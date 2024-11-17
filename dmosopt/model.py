@@ -5,6 +5,7 @@ from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteKernel
 from scipy.cluster.vq import kmeans2
+from dmosopt.MOEA import top_k_MO
 
 try:
     import gpflow
@@ -148,18 +149,20 @@ try:
                 else gpytorch.means.LinearMean(input_dims)
             )
             self.covar_module = gpytorch.kernels.ScaleKernel(
-                gpytorch.kernels.MaternKernel(
-                    nu=2.5,
-                    batch_shape=batch_shape,
-                    ard_num_dims=ard_num_dims,
-                    lengthscale_constraint=lengthscale_constraint,
-                )
-                if not _has_pykeops
-                else gpytorch.kernels.keops.MaternKernel(
-                    nu=2.5,
-                    batch_shape=batch_shape,
-                    ard_num_dims=ard_num_dims,
-                    lengthscale_constraint=lengthscale_constraint,
+                (
+                    gpytorch.kernels.MaternKernel(
+                        nu=2.5,
+                        batch_shape=batch_shape,
+                        ard_num_dims=ard_num_dims,
+                        lengthscale_constraint=lengthscale_constraint,
+                    )
+                    if not _has_pykeops
+                    else gpytorch.kernels.keops.MaternKernel(
+                        nu=2.5,
+                        batch_shape=batch_shape,
+                        ard_num_dims=ard_num_dims,
+                        lengthscale_constraint=lengthscale_constraint,
+                    )
                 ),
                 batch_shape=batch_shape,
                 ard_num_dims=None,
@@ -320,18 +323,20 @@ try:
                 else gpytorch.means.LinearMean(input_dims)
             )
             self.covar_module = gpytorch.kernels.ScaleKernel(
-                gpytorch.kernels.MaternKernel(
-                    nu=2.5,
-                    batch_shape=batch_shape,
-                    ard_num_dims=ard_num_dims,
-                    lengthscale_constraint=lengthscale_constraint,
-                )
-                if not _has_pykeops
-                else gpytorch.kernels.keops.MaternKernel(
-                    nu=2.5,
-                    batch_shape=batch_shape,
-                    ard_num_dims=ard_num_dims,
-                    lengthscale_constraint=lengthscale_constraint,
+                (
+                    gpytorch.kernels.MaternKernel(
+                        nu=2.5,
+                        batch_shape=batch_shape,
+                        ard_num_dims=ard_num_dims,
+                        lengthscale_constraint=lengthscale_constraint,
+                    )
+                    if not _has_pykeops
+                    else gpytorch.kernels.keops.MaternKernel(
+                        nu=2.5,
+                        batch_shape=batch_shape,
+                        ard_num_dims=ard_num_dims,
+                        lengthscale_constraint=lengthscale_constraint,
+                    )
                 ),
                 batch_shape=batch_shape,
                 ard_num_dims=None,
@@ -523,9 +528,11 @@ try:
                     lengthscale_bounds[0], lengthscale_bounds[1]
                 )
             self.mean_module = gpytorch.means.MultitaskMean(
-                gpytorch.means.ConstantMean(batch_shape=batch_shape)
-                if linear_mean
-                else gpytorch.means.LinearMean(input_dims, batch_shape=batch_shape),
+                (
+                    gpytorch.means.ConstantMean(batch_shape=batch_shape)
+                    if linear_mean
+                    else gpytorch.means.LinearMean(input_dims, batch_shape=batch_shape)
+                ),
                 num_tasks=num_tasks,
             )
             self.covar_module = gpytorch.kernels.MultitaskKernel(
@@ -595,10 +602,23 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
 
 class Model:
-    def __init__(self, objective=None, feasibility=None,  sensitivity=None):
+    def __init__(self, objective=None, feasibility=None, sensitivity=None):
         self.objective = objective
         self.feasibility = feasibility
         self.sensitivity = sensitivity
+        self.stats = {}
+
+    def get_stats(self):
+        if self.objective is not None:
+            self.stats.update(getattr(self.objective, "stats", {}))
+
+        if self.feasibility is not None:
+            self.stats.update(getattr(self.feasibility, "stats", {}))
+
+        if self.sensitivity is not None:
+            self.stats.update(getattr(self.sensitivity, "stats", {}))
+
+        return self.stats.copy()
 
 
 class MDSPP_Matern:
@@ -612,7 +632,7 @@ class MDSPP_Matern:
         xub,
         num_hidden_dims=3,
         Q=8,
-        num_inducing_points=None,
+        num_inducing_points=128,
         seed=None,
         gp_lengthscale_bounds=None,
         gp_likelihood_sigma=None,
@@ -624,6 +644,7 @@ class MDSPP_Matern:
         min_loss_pct_change=1.0,
         batch_size=10,
         use_cuda=False,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpytorch:
@@ -644,6 +665,8 @@ class MDSPP_Matern:
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         n_devices = None
         if self.use_cuda:
@@ -915,6 +938,7 @@ class MDGP_Matern:
         min_loss_pct_change=1.0,
         batch_size=10,
         use_cuda=False,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpytorch:
@@ -935,6 +959,8 @@ class MDGP_Matern:
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         n_devices = None
         if self.use_cuda:
@@ -1202,6 +1228,7 @@ class MEGP_Matern:
         n_iter=5000,
         min_loss_pct_change=0.1,
         use_cuda=False,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpytorch:
@@ -1222,6 +1249,8 @@ class MEGP_Matern:
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         n_devices = None
         if self.use_cuda:
@@ -1481,6 +1510,7 @@ class EGP_Matern:
         min_loss_pct_change=0.1,
         batch_size=None,
         use_cuda=False,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpytorch:
@@ -1501,6 +1531,8 @@ class EGP_Matern:
         )
 
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         n_devices = None
         if self.use_cuda:
@@ -1764,6 +1796,7 @@ class CRV_Matern:
         n_iter=30000,
         min_elbo_pct_change=0.1,
         num_latent_gps=None,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpflow:
@@ -1780,6 +1813,8 @@ class CRV_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         N = xin.shape[0]
         D = xin.shape[1]
@@ -1972,6 +2007,7 @@ class SIV_Matern:
         n_iter=30000,
         min_elbo_pct_change=1.0,
         num_latent_gps=None,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpflow:
@@ -1988,6 +2024,8 @@ class SIV_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         N = xin.shape[0]
         D = xin.shape[1]
@@ -2169,6 +2207,7 @@ class SPV_Matern:
         n_iter=30000,
         min_elbo_pct_change=1.0,
         num_latent_gps=None,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpflow:
@@ -2185,6 +2224,8 @@ class SPV_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         N = xin.shape[0]
         D = xin.shape[1]
@@ -2368,6 +2409,7 @@ class SVGP_Matern:
         adam_lr=0.01,
         n_iter=30000,
         min_elbo_pct_change=1.0,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpflow:
@@ -2384,6 +2426,8 @@ class SVGP_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         N = xin.shape[0]
         D = xin.shape[1]
@@ -2567,6 +2611,7 @@ class VGP_Matern:
         adam_lr=0.01,
         n_iter=3000,
         min_elbo_pct_change=0.1,
+        top_k=None,
         logger=None,
     ):
         if not _has_gpflow:
@@ -2583,6 +2628,8 @@ class VGP_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         N = xin.shape[0]
         xn = np.zeros_like(xin)
@@ -2733,6 +2780,7 @@ class GPR_Matern:
         seed=None,
         length_scale_bounds=(1e-3, 100.0),
         anisotropic=False,
+        top_k=None,
         logger=None,
     ):
         self.nInput = nInput
@@ -2741,6 +2789,8 @@ class GPR_Matern:
         self.xub = xub
         self.xrg = xub - xlb
         self.logger = logger
+
+        xin, yin = top_k_MO(xin, yin, top_k)
 
         N = xin.shape[0]
         x = np.zeros_like(xin)

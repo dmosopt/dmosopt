@@ -2,7 +2,7 @@
 
 Distributed surrogate based multi-objective optimization.
 
-[Documentation](https://iraikov.github.io/dmosopt/)
+[Documentation](https://dmosopt.github.io/dmosopt/)
 
 
 ## Quick start example
