@@ -16,8 +16,9 @@ from dmosopt.MOEA import (
     remove_worst,
     remove_duplicates,
 )
-from dmosopt.indicators import Hypervolume
+from dmosopt.indicators import HypervolumeImprovement
 from typing import Any, Union, Dict, List, Tuple, Optional
+import sys
 
 
 class CMAES(MOEA):
@@ -74,7 +75,7 @@ class CMAES(MOEA):
             self.opt_params.di_mutation = np.asarray([di_mutation] * nInput)
 
         self.state = None
-        self.indicator = Hypervolume
+        self.indicator = HypervolumeImprovement
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
@@ -166,6 +167,7 @@ class CMAES(MOEA):
             )
 
         order, rank = sortMO(candidates_x, candidates_y, self.x_distance_metrics)
+        order_inv = np.argsort(order)
 
         chosen = np.zeros_like(candidates_inds, dtype=bool)
         not_chosen = np.zeros_like(candidates_inds, dtype=bool)
@@ -179,7 +181,7 @@ class CMAES(MOEA):
         rmax = int(np.max(rank))
         chosen_count = 0
         for r in range(rmax + 1):
-            front_r = np.argwhere(rank == r).ravel()
+            front_r = order_inv[np.argwhere(rank == r).ravel()]
             if chosen_count + len(front_r) <= popsize and not full:
                 chosen[front_r] = True
                 chosen_count += len(front_r)
@@ -198,23 +200,25 @@ class CMAES(MOEA):
             ref = np.max(candidates_y, axis=0) + 1
             indicator = self.indicator(ref_point=ref, nds=True)
 
-            def contribution(front, i):
-                # The contribution of point p_i in point set P
-                # is the hypervolume of P without p_i
-                return indicator.do(
-                    np.concatenate(
-                        (candidates_y[front[:i]], candidates_y[front[i + 1 :]])
-                    )
+            assert len(mid_front) > 0
+            if chosen_count > 0:
+                selected_indices = indicator.do(
+                    candidates_y[chosen],
+                    candidates_y[mid_front, :],
+                    np.ones_like(candidates_y[mid_front, :]),
+                    k,
                 )
+            else:
+                selected_indices = np.arange(k)
 
-            contrib_values = np.fromiter(
-                map(partial(contribution, mid_front), range(len(mid_front))),
-                dtype=np.float32,
-            )
-            contrib_order = np.argsort(contrib_values)
+            assert len(selected_indices) == k
+            chosen[mid_front[selected_indices]] = True
 
-            chosen[mid_front[contrib_order[:k]]] = True
-            not_chosen[mid_front[contrib_order[k:]]] = True
+            not_chosen_mask = np.ones(len(mid_front), np.bool)
+            not_chosen_mask[selected_indices] = False
+            not_chosen[mid_front[not_chosen_mask]] = True
+
+            indicator = None
 
         return chosen, not_chosen
 
@@ -406,9 +410,11 @@ class CMAES(MOEA):
         population_parm, population_obj = remove_duplicates(
             population_parm, population_obj
         )
-        population_parm, population_obj, _ = remove_worst(
-            population_parm, population_obj, self.popsize
-        )
+
+        if len(population_parm) > 0:
+            population_parm, population_obj, _ = remove_worst(
+                population_parm, population_obj, self.popsize
+            )
 
         return population_parm, population_obj
 

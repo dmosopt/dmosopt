@@ -3,10 +3,10 @@
 # https://github.com/anyoptimization/pymoo
 #
 from abc import abstractmethod
-
+import sys
 import numpy as np
 from dmosopt.normalization import PreNormalization
-from dmosopt.hv import HyperVolume as _HyperVolume
+from dmosopt.hv import HyperVolumeBoxDecomposition as _HyperVolume
 from dmosopt.dda import dda_non_dominated_sort
 
 
@@ -72,6 +72,22 @@ def derive_ideal_and_nadir_from_pf(pf, ideal=None, nadir=None):
             nadir = np.max(pf, axis=0)
 
     return ideal, nadir
+
+
+class SlidingWindow(list):
+    def __init__(self, size=None) -> None:
+        super().__init__()
+        self.size = size
+
+    def append(self, entry):
+        super().append(entry)
+
+        if self.size is not None:
+            while len(self) > self.size:
+                self.pop(0)
+
+    def is_full(self):
+        return self.size == len(self)
 
 
 class Indicator(PreNormalization):
@@ -183,6 +199,63 @@ class Hypervolume(Indicator):
             F = np.copy(F[non_dom, :])
 
         hv = _HyperVolume(self.ref_point)
-        val = hv.compute(F)
+        val = hv.compute_hypervolume(F)
 
         return val
+
+
+class HypervolumeImprovement(Indicator):
+    def __init__(
+        self,
+        ref_point=None,
+        pf=None,
+        nds=False,
+        norm_ref_point=True,
+        ideal=None,
+        nadir=None,
+        **kwargs
+    ):
+        pf = at_least_2d_array(pf, extend_as="row")
+        ideal, nadir = derive_ideal_and_nadir_from_pf(pf, ideal=ideal, nadir=nadir)
+
+        super().__init__(ideal=ideal, nadir=nadir, **kwargs)
+
+        self.default_if_empty = []
+
+        # whether the input should be checked for domination or not
+        self.nds = nds
+
+        # the reference point that shall be used - either derived from pf or provided
+        ref_point = ref_point
+        if ref_point is None:
+            if pf is not None:
+                ref_point = pf.max(axis=0)
+
+        # we also have to normalize the reference point to have the same scales
+        if norm_ref_point:
+            ref_point = self.normalization.forward(ref_point)
+
+        self.ref_point = ref_point
+        assert (
+            self.ref_point is not None
+        ), "For Hypervolume a reference point needs to be provided!"
+
+    def _do(self, F, means, variances, k):
+        assert k > 0
+        assert len(F) > 0
+
+        if self.nds:
+            rank = dda_non_dominated_sort(F)
+            non_dom = np.argwhere(rank == 0).ravel()
+            if len(non_dom) > 0:
+                F = np.copy(F[non_dom, :])
+
+        assert len(F) > 0
+
+        hv = _HyperVolume(self.ref_point)
+        selection, _ = np.asarray(
+            hv.select_candidates(F, means, variances, k), dtype=int
+        )
+
+        assert len(selection) > 0
+        return selection
