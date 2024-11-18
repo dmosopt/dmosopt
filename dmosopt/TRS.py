@@ -5,7 +5,6 @@ from functools import partial
 import numpy as np
 from numpy.random import default_rng
 from dmosopt.datatypes import OptHistory
-from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import (
     Struct,
     MOEA,
@@ -14,9 +13,9 @@ from dmosopt.MOEA import (
     remove_duplicates,
 )
 from dmosopt.sampling import sobol
-from dmosopt.indicators import HypervolumeImprovement
+from dmosopt.indicators import HypervolumeImprovement, SlidingWindow
 from typing import Any, Union, Dict, List, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -27,7 +26,6 @@ class TrState:
     length_init: float = 0.08
     length_min: float = 0.0001
     length_max: float = 1.0
-    success_counter: int = 0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
     success_tolerance: int = 0.6
     Y_best: np.ndarray = np.asarray([np.inf])  # Goal is minimization
@@ -68,6 +66,7 @@ class TRS(MOEA):
         """Returns default parameters of TRS strategy."""
         params = {
             "nchildren": 1,
+            "success_window_size": 64,
         }
 
         return params
@@ -86,6 +85,7 @@ class TRS(MOEA):
         rank = rank[: self.popsize]
 
         tr = TrState(dim=self.nInput)
+        success_window_size = self.opt_params.success_window_size
 
         state = Struct(
             bounds=bounds,
@@ -93,6 +93,7 @@ class TRS(MOEA):
             population_obj=population_obj,
             rank=rank,
             tr=tr,
+            success_window=SlidingWindow(success_window_size),
         )
 
         return state
@@ -167,8 +168,8 @@ class TRS(MOEA):
         candidates_x = np.vstack((x_gen, population_parm))
         candidates_y = np.vstack((y_gen, population_obj))
 
-        P = population_parm.shape[0]
         C = x_gen.shape[0]
+        P = population_parm.shape[0]
 
         candidates_offspring = np.concatenate(
             (
@@ -269,13 +270,10 @@ class TRS(MOEA):
 
         chosen, not_chosen = self.select_candidates(X_next, Y_next)
 
-        state.success_counter += np.count_nonzero(np.logical_and(is_offspring, chosen))
-        success_frac = state.success_counter / self.popsize
-        print(
-            f"update_state: before state.length = {state.length} "
-            f" success_counter = {state.success_counter}"
-            f" success_frac = {success_frac}"
-        )
+        success_counter = np.count_nonzero(np.logical_and(is_offspring, chosen))
+        self.state.success_window.append(success_counter)
+        success_mean = np.mean(self.state.success_window[:])
+        success_frac = success_mean / self.popsize
         if success_frac >= state.success_tolerance:  # Expand trust region
             state.length = min((1.0 + success_frac) * state.length, state.length_max)
             state.success_counter = 0
@@ -285,16 +283,14 @@ class TRS(MOEA):
         if state.length < state.length_min:
             state.restart = True
 
-        print(f"state.length = {state.length}")
-        sys.stdout.flush()
-
         return X_next[chosen], Y_next[chosen]
 
     def restart_state(self):
+        success_window_size = self.opt_params.success_window_size
         if self.state.tr.length_init > 4 * self.state.tr.length_min:
             self.state.tr.length_init /= 2.0
         self.state.tr.failure_counter = 0
-        self.state.tr.success_counter = 0
         self.state.tr.length = self.state.tr.length_init
         self.state.tr.Y_best = np.asarray([np.inf] * self.state.tr.dim).reshape((1, -1))
         self.state.tr.restart = False
+        self.state.success_window = SlidingWindow(success_window_size)
