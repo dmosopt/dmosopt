@@ -3,7 +3,7 @@
 # https://github.com/anyoptimization/pymoo
 #
 from abc import abstractmethod
-
+import sys
 import numpy as np
 from dmosopt.normalization import PreNormalization
 from dmosopt.hv import HyperVolumeBoxDecomposition as _HyperVolume
@@ -204,6 +204,8 @@ class HypervolumeImprovement(Indicator):
 
         super().__init__(ideal=ideal, nadir=nadir, **kwargs)
 
+        self.default_if_empty = []
+
         # whether the input should be checked for domination or not
         self.nds = nds
 
@@ -222,13 +224,22 @@ class HypervolumeImprovement(Indicator):
             self.ref_point is not None
         ), "For Hypervolume a reference point needs to be provided!"
 
-    def _do(self, F, means, variances):
+    def _do(self, F, means, variances, k):
+        assert k > 0
+        assert len(F) > 0
+
         if self.nds:
             rank = dda_non_dominated_sort(F)
             non_dom = np.argwhere(rank == 0).ravel()
-            F = np.copy(F[non_dom, :])
+            if len(non_dom) > 0:
+                F = np.copy(F[non_dom, :])
+
+        assert len(F) > 0
 
         hv = _HyperVolume(self.ref_point)
-        val = hv.compute_ehvi(F, means, variances)
+        selection, _ = np.asarray(
+            hv.select_candidates(F, means, variances, k), dtype=int
+        )
 
-        return val
+        assert len(selection) > 0
+        return selection

@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from typing import Any, Union, Dict, List, Tuple, Optional
 from itertools import product
 from scipy.stats import norm
@@ -849,7 +850,8 @@ class HyperVolumeBoxDecomposition:
                 ehvi_values[batch_start:batch_end] = batch_ehvi
 
         # Select top n_select candidates
-        selected_indices = np.argsort(-ehvi_values)[:n_select]
+        selected_indices = np.copy(np.argsort(-ehvi_values)[:n_select])
+
         return selected_indices, ehvi_values[selected_indices]
 
     def _compute_batch_ehvi(

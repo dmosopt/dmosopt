@@ -1,5 +1,5 @@
 # Trust Region Search, multi-objective local optimization algorithm.
-
+import sys
 import gc, itertools, math
 from functools import partial
 import numpy as np
@@ -25,11 +25,11 @@ class TrState:
     is_constrained: bool = False
     length: float = 0.08
     length_init: float = 0.08
-    length_min: float = 0.001
-    length_max: float = 1.6
+    length_min: float = 0.0001
+    length_max: float = 1.0
     success_counter: int = 0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
-    success_tolerance: int = 0.2
+    success_tolerance: int = 0.6
     Y_best: np.ndarray = np.asarray([np.inf])  # Goal is minimization
     constraint_violation = float("inf")
     restart: bool = False
@@ -105,10 +105,9 @@ class TRS(MOEA):
         xlb = self.state.bounds[:, 0]
         xub = self.state.bounds[:, 1]
 
-        population_parm = self.state.population_parm
-        population_obj = self.state.population_obj
-
-        parentidxs = local_random.integers(low=0, high=popsize, size=popsize)
+        population_parm, population_obj = remove_duplicates(
+            self.state.population_parm, self.state.population_obj
+        )
 
         # Create the trust region boundaries
         x_centers = population_parm
@@ -121,7 +120,7 @@ class TRS(MOEA):
         tr_ub = np.clip(x_centers + weights * self.state.tr.length / 2.0, xlb, xub)
 
         # Draw a Sobolev sequence in [lb, ub]
-        pert = sobol(popsize, self.nInput, local_random=local_random)
+        pert = sobol(x_centers.shape[0], self.nInput, local_random=local_random)
         pert = tr_lb + (tr_ub - tr_lb) * pert
 
         # Creates a perturbation mask; perturbing fewer dimensions at
@@ -140,6 +139,13 @@ class TRS(MOEA):
         # Create candidate points
         X_cand = x_centers.copy()
         X_cand[mask] = pert[mask]
+
+        if X_cand.shape[0] < popsize:
+            sample = sobol(
+                popsize - X_cand.shape[0], self.nInput, local_random=local_random
+            )
+            sample = xlb + (xub - xlb) * sample
+            X_cand = np.vstack((X_cand, sample))
 
         return X_cand, {}
 
@@ -174,8 +180,6 @@ class TRS(MOEA):
         population_parm, population_obj = self.update_state(
             candidates_x, candidates_y, candidates_offspring
         )
-        if self.state.tr.restart:
-            self.restart_state()
 
         self.state.population_parm[:] = population_parm
         self.state.population_obj[:] = population_obj
@@ -201,6 +205,7 @@ class TRS(MOEA):
         order, rank, _ = orderMO(
             candidates_x, candidates_y, x_distance_metrics=self.x_distance_metrics
         )
+        order_inv = np.argsort(order)
 
         chosen = np.zeros_like(candidates_inds, dtype=bool)
         not_chosen = np.zeros_like(candidates_inds, dtype=bool)
@@ -215,10 +220,11 @@ class TRS(MOEA):
         rmax = int(np.max(rank))
         chosen_count = 0
         for r in range(rmax + 1):
-            front_r = np.argwhere(rank == r).ravel()
+            front_r = order_inv[np.argwhere(rank == r).ravel()]
             if chosen_count + len(front_r) <= popsize and not full:
                 chosen[front_r] = True
                 chosen_count += len(front_r)
+                assert np.count_nonzero(chosen) == chosen_count
             elif mid_front is None and chosen_count < popsize:
                 mid_front = front_r.copy()
                 # With this front, we selected enough individuals
@@ -232,29 +238,25 @@ class TRS(MOEA):
             # reference point is chosen in the complete population
             # as the worst in each dimension +1
             ref = np.max(candidates_y, axis=0) + 1
-            indicator = self.indicator(ref_point=ref)
+            indicator = self.indicator(ref_point=ref, nds=True)
 
-            def contribution(front, i):
-                # The contribution of point p_i in point set P
-                # is the hypervolume of P without p_i
-                return indicator.do(
-                    np.concatenate(
-                        (candidates_y[front[:i]], candidates_y[front[i + 1 :]])
-                    ),
-                    np.asarray(candidates_y[front[i]]),
-                    None,
+            assert len(mid_front) > 0
+            if chosen_count > 0:
+                selected_indices = indicator.do(
+                    candidates_y[chosen],
+                    candidates_y[mid_front],
+                    np.ones_like(candidates_y[mid_front, :]),
+                    k,
                 )
+            else:
+                selected_indices = np.arange(k)
 
-            contrib_values = np.fromiter(
-                map(partial(contribution, mid_front), range(len(mid_front))),
-                dtype=np.float32,
-            )
-            contrib_order = np.argsort(contrib_values)
+            assert len(selected_indices) == k
+            chosen[mid_front[selected_indices]] = True
 
-            n = mid_front.shape[0]
-            chosen[mid_front[contrib_order[n - k :]]] = True
-
-            not_chosen[mid_front[contrib_order[: n - k]]] = True
+            not_chosen_mask = np.ones(len(mid_front), np.bool)
+            not_chosen_mask[selected_indices] = False
+            not_chosen[mid_front[not_chosen_mask]] = True
 
         return chosen, not_chosen
 
@@ -262,22 +264,29 @@ class TRS(MOEA):
 
         state = self.state.tr
 
+        if state.restart:
+            self.restart_state()
+
         chosen, not_chosen = self.select_candidates(X_next, Y_next)
 
-        state.success_counter += np.count_nonzero(is_offspring[chosen])
-
-        if (
-            state.success_counter / self.popsize >= state.success_tolerance
-        ):  # Expand trust region
-            state.length = min(2.0 * state.length, state.length_max)
+        state.success_counter += np.count_nonzero(np.logical_and(is_offspring, chosen))
+        success_frac = state.success_counter / self.popsize
+        print(
+            f"update_state: before state.length = {state.length} "
+            f" success_counter = {state.success_counter}"
+            f" success_frac = {success_frac}"
+        )
+        if success_frac >= state.success_tolerance:  # Expand trust region
+            state.length = min((1.0 + success_frac) * state.length, state.length_max)
             state.success_counter = 0
-        elif (
-            state.success_counter / self.popsize < state.failure_tolerance
-        ):  # Shrink trust region
+        elif success_frac <= state.failure_tolerance:  # Shrink trust region
             state.length /= 2.0
             state.success_counter = 0
         if state.length < state.length_min:
             state.restart = True
+
+        print(f"state.length = {state.length}")
+        sys.stdout.flush()
 
         return X_next[chosen], Y_next[chosen]
 
