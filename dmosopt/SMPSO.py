@@ -23,6 +23,7 @@ class SMPSO(MOEA):
         nOutput: int,
         model: Optional[Any],
         distance_metric: Optional[Any],
+        optimize_mean_variance: bool = False,
         **kwargs,
     ):
         """
@@ -61,6 +62,7 @@ class SMPSO(MOEA):
         mutation_rate = self.opt_params.mutation_rate
         if mutation_rate is None:
             self.opt_params.mutation_rate = 1.0 / float(nInput)
+        self.optimize_mean_variance = optimize_mean_variance
 
     @property
     def default_parameters(self) -> Dict[str, Any]:

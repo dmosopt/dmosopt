@@ -32,6 +32,7 @@ class AGEMOEA(MOEA):
         nInput: int,
         nOutput: int,
         model: Optional[Any],
+        optimize_mean_variance: bool = False,
         **kwargs,
     ):
         """AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry."""
@@ -64,6 +65,7 @@ class AGEMOEA(MOEA):
             self.opt_params.mutation_rate = 1.0 / float(nInput)
 
         self.opt_params.poolsize = int(round(popsize / 2.0))
+        self.optimize_mean_variance = optimize_mean_variance
 
     @property
     def default_parameters(self) -> Dict[str, Any]:

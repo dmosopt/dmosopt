@@ -28,6 +28,7 @@ class CMAES(MOEA):
         nInput: int,
         nOutput: int,
         model: Optional[Any],
+        optimize_mean_variance: bool = False,
         **kwargs,
     ):
         """
@@ -76,6 +77,7 @@ class CMAES(MOEA):
 
         self.state = None
         self.indicator = HypervolumeImprovement
+        self.optimize_mean_variance = optimize_mean_variance
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
