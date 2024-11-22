@@ -3,7 +3,6 @@
 ##
 
 import numpy as np
-from dmosopt.dda import dda_non_dominated_sort
 from dmosopt.MOEA import (
     Struct,
     MOEA,
