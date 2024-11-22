@@ -9,7 +9,7 @@
 
 from functools import partial
 import numpy as np
-from dmosopt.dda import dda_non_dominated_sort
+from dmosopt.dda import dda_ens
 from dmosopt.MOEA import (
     Struct,
     MOEA,
@@ -437,7 +437,7 @@ def sortMO(
             else:
                 raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
 
-    rank = dda_non_dominated_sort(y)
+    rank = dda_ens(y)
 
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
     rmax = int(rank.max())

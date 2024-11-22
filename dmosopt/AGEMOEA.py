@@ -13,7 +13,7 @@
 
 import numpy as np
 from functools import reduce
-from dmosopt.dda import dda_non_dominated_sort
+from dmosopt.dda import dda_ens
 from dmosopt.MOEA import (
     Struct,
     MOEA,
@@ -225,7 +225,7 @@ def sortMO(x, y):
     x: input parameter matrix
     y: output objectives matrix
     """
-    rank = dda_non_dominated_sort(y)
+    rank = dda_ens(y)
     idxr = rank.argsort()
     rank = rank[idxr]
     x = x[idxr, :]

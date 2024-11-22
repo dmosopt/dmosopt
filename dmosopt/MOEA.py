@@ -5,7 +5,7 @@
 import math
 import numpy as np
 from functools import reduce
-from dmosopt.dda import dda_non_dominated_sort
+from dmosopt.dda import dda_ens
 from dmosopt import sampling
 from scipy.spatial.distance import cdist
 from typing import Any, Union, Dict, List, Tuple, Optional
@@ -273,7 +273,7 @@ def sortMO(
             else:
                 raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
 
-    rank = dda_non_dominated_sort(y)
+    rank = dda_ens(y)
 
     y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
@@ -330,7 +330,7 @@ def orderMO(
             else:
                 raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
 
-    rank = dda_non_dominated_sort(y)
+    rank = dda_ens(y)
 
     y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
