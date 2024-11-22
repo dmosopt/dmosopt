@@ -67,6 +67,7 @@ class DistOptStrategy:
         feasibility_method_name=None,
         feasibility_method_kwargs={},
         termination_conditions=None,
+        optimize_mean_variance=False,
         local_random=None,
         logger=None,
         file_path=None,
@@ -95,6 +96,7 @@ class DistOptStrategy:
             if isinstance(optimizer_kwargs, Sequence)
             else (optimizer_kwargs,)
         )
+        self.optimize_mean_variance = optimize_mean_variance
 
         self.optimizer_iter = itertools.cycle(range(len(self.optimizer_name)))
         self.distance_metric = distance_metric
@@ -189,6 +191,9 @@ class DistOptStrategy:
     def complete_request(self, x, y, epoch=None, f=None, c=None, pred=None, time=-1.0):
         assert x.shape[0] == self.prob.dim
         assert y.shape[0] == self.prob.n_objectives
+        if self.optimize_mean_variance and pred is not None:
+            if pred.shape[0] == self.prob.n_objectives:
+                pred = np.column_stack((pred, np.zeros_like(pred)))
         entry = EvalEntry(epoch, x, y, f, c, pred, time)
         self.completed.append(entry)
         return entry
@@ -336,6 +341,7 @@ class DistOptStrategy:
             sensitivity_method_kwargs=self.sensitivity_method_kwargs,
             feasibility_method_name=self.feasibility_method_name,
             feasibility_method_kwargs=self.feasibility_method_kwargs,
+            optimize_mean_variance=self.optimize_mean_variance,
             termination=self.termination,
             local_random=self.local_random,
             logger=self.logger,
@@ -578,6 +584,7 @@ class DistOptimizer:
         },
         sensitivity_method_name=None,
         sensitivity_method_kwargs={},
+        optimize_mean_variance=False,
         local_random=None,
         random_seed=None,
         feasibility_method_name=None,
@@ -651,7 +658,7 @@ class DistOptimizer:
             if isinstance(optimizer_kwargs, Sequence)
             else (optimizer_kwargs,)
         )
-
+        self.optimize_mean_variance = optimize_mean_variance
         self.feasibility_method_name = feasibility_method_name
         self.feasibility_method_kwargs = feasibility_method_kwargs
         self.termination_conditions = termination_conditions
@@ -822,6 +829,7 @@ class DistOptimizer:
                     self.metadata,
                     self.random_seed,
                     self.file_path,
+                    surrogate_mean_variance=self.optimize_mean_variance,
                 )
 
         self.stats = {}
@@ -931,6 +939,7 @@ class DistOptimizer:
                 feasibility_method_name=self.feasibility_method_name,
                 feasibility_method_kwargs=self.feasibility_method_kwargs,
                 termination_conditions=self.termination_conditions,
+                optimize_mean_variance=self.optimize_mean_variance,
                 local_random=self.local_random,
                 logger=self.logger,
                 file_path=self.file_path,
@@ -950,10 +959,16 @@ class DistOptimizer:
                 epochs_completed = [x.epoch for x in storage_evals]
                 x_completed = [x.parameters for x in storage_evals]
                 y_completed = [x.objectives for x in storage_evals]
-                y_pred_completed = map(
-                    lambda x: [np.nan] * n if x is None else x,
-                    [x.prediction for x in storage_evals],
-                )
+                if self.optimize_mean_variance:
+                    y_pred_completed = map(
+                        lambda x: [np.nan] * 2 * n if x is None else x,
+                        [x.prediction for x in storage_evals],
+                    )
+                else:
+                    y_pred_completed = map(
+                        lambda x: [np.nan] * n if x is None else x,
+                        [x.prediction for x in storage_evals],
+                    )
                 f_completed = None
                 if self.feature_names is not None:
                     f_completed = [x.features for x in storage_evals]
@@ -986,6 +1001,7 @@ class DistOptimizer:
                 self.random_seed,
                 self.file_path,
                 self.logger,
+                surrogate_mean_variance=self.optimize_mean_variance,
             )
 
     def save_surrogate_evals(self, problem_id, epoch, gen_index, x_sm, y_sm):
@@ -1487,6 +1503,7 @@ def h5_init_types(
     constraint_names,
     problem_parameters,
     spec,
+    surrogate_mean_variance=False,
 ):
     opt_grp = h5_get_group(f, opt_id)
 
@@ -1511,6 +1528,22 @@ def h5_init_types(
         {"names": objective_names, "formats": [np.float32] * len(objective_names)}
     )
     opt_grp["objective_type"] = dt
+
+    if surrogate_mean_variance:
+        surrogate_objective_names = list(
+            [f"{name} mean" for name in objective_names]
+        ) + list([f"{name} variance" for name in objective_names])
+        surrogate_dt = np.dtype(
+            {
+                "names": surrogate_objective_names,
+                "formats": [np.float32] * len(surrogate_objective_names),
+            }
+        )
+    else:
+        surrogate_dt = np.dtype(
+            {"names": objective_names, "formats": [np.float32] * len(objective_names)}
+        )
+    opt_grp["surrogate_objective_type"] = surrogate_dt
 
     dset = h5_get_dataset(
         opt_grp,
@@ -1877,6 +1910,7 @@ def save_to_h5(
     random_seed,
     fpath,
     logger,
+    surrogate_mean_variance=False,
 ):
     """
     Save progress and settings to an HDF5 file 'fpath'.
@@ -1892,6 +1926,7 @@ def save_to_h5(
             problem_parameters,
             constraint_names,
             spec,
+            surrogate_mean_variance=surrogate_mean_variance,
         )
         opt_grp = h5_get_group(f, opt_id)
         if metadata is not None:
@@ -1968,10 +2003,15 @@ def save_to_h5(
             h5_concat_dataset(dset, data)
 
         dset = h5_get_dataset(
-            opt_prob, "predictions", maxshape=(None,), dtype=opt_grp["objective_type"]
+            opt_prob,
+            "predictions",
+            maxshape=(None,),
+            dtype=opt_grp["surrogate_objective_type"],
         )
+
         data = np.array(
-            [tuple(y) for y in prob_evals_y_pred], dtype=opt_grp["objective_type"]
+            [tuple(y) for y in prob_evals_y_pred],
+            dtype=opt_grp["surrogate_objective_type"],
         )
         h5_concat_dataset(dset, data)
 
@@ -2048,9 +2088,12 @@ def save_surrogate_evals_to_h5(
     h5_concat_dataset(dset, gen_index)
 
     dset = h5_get_dataset(
-        opt_sm, "objectives", maxshape=(None,), dtype=opt_grp["objective_type"]
+        opt_sm,
+        "objectives",
+        maxshape=(None,),
+        dtype=opt_grp["surrogate_objective_type"],
     )
-    data = np.array([tuple(y) for y in y_sm], dtype=opt_grp["objective_type"])
+    data = np.array([tuple(y) for y in y_sm], dtype=opt_grp["surrogate_objective_type"])
     h5_concat_dataset(dset, data)
 
     dset = h5_get_dataset(
@@ -2117,6 +2160,7 @@ def init_h5(
     metadata,
     random_seed,
     fpath,
+    surrogate_mean_variance=False,
 ):
     """
     Save progress and settings to an HDF5 file 'fpath'.
@@ -2133,6 +2177,7 @@ def init_h5(
             constraint_names,
             problem_parameters,
             spec,
+            surrogate_mean_variance=surrogate_mean_variance,
         )
         opt_grp = h5_get_group(f, opt_id)
         if has_problem_ids:

@@ -31,6 +31,7 @@ def optimize(
     termination=None,
     local_random=None,
     logger=None,
+    optimize_mean_variance=False,
     **kwargs,
 ):
     """
@@ -56,7 +57,11 @@ def optimize(
     if model.objective is None:
         y = yield x
     else:
-        y = model.objective.evaluate(x).astype(np.float32)
+        if optimize_mean_variance:
+            y_mean, y_variance = model.objective.evaluate(x)
+            y = np.column_stack((y_mean, np.round(y_variance, 6))).astype(np.float32)
+        else:
+            y = model.objective.evaluate(x).astype(np.float32)
 
     x_initial = None
     y_initial = None
@@ -102,7 +107,11 @@ def optimize(
         if model.objective is None:
             y_gen = yield x_gen
         else:
-            y_gen = model.objective.evaluate(x_gen)
+            if optimize_mean_variance:
+                y_gen_mean, y_gen_variance = model.objective.evaluate(x_gen)
+                y_gen = np.column_stack((y_gen_mean, np.round(y_gen_variance, 6)))
+            else:
+                y_gen = model.objective.evaluate(x_gen)
 
         optimizer.update(x_gen, y_gen, state_gen)
         count = x_gen.shape[0]
@@ -206,6 +215,7 @@ def epoch(
     surrogate_custom_training_kwargs=None,
     sensitivity_method_name=None,
     sensitivity_method_kwargs={},
+    optimize_mean_variance=False,
     termination=None,
     local_random=None,
     logger=None,
@@ -239,6 +249,8 @@ def epoch(
 
     x_0 = Xinit.copy().astype(np.float32)
     y_0 = Yinit.copy().astype(np.float32)
+    if optimize_mean_variance:
+        y_0 = np.column_stack((y_0, np.zeros_like(y_0)))
 
     # optimizer
     if optimizer_name in default_optimizers:
@@ -248,37 +260,41 @@ def epoch(
 
     # surrogate
     stats = {}
-    
-    stats['model_init_start'] = time.time()
-    
-    mdl = model.Model()
+
+    stats["model_init_start"] = time.time()
+
+    mdl = model.Model(return_mean_variance=optimize_mean_variance)
     if surrogate_custom_training is not None:
         # custom initialization
         custom_training = import_object_by_path(surrogate_custom_training)
-        optimizer_cls, mdl.objective, mdl.feasibility, mdl.sensitivity = (
-            custom_training(
-                optimizer_cls,
-                Xinit,
-                Yinit,
-                C,
-                xlb,
-                xub,
-                file_path,
-                options={
-                    "optimizer_name": optimizer_name,
-                    "optimizer_kwargs": optimizer_kwargs,
-                    "surrogate_method_name": surrogate_method_name,
-                    "surrogate_method_kwargs": surrogate_method_kwargs,
-                    "feasibility_method_name": feasibility_method_name,
-                    "feasibility_method_kwargs": feasibility_method_kwargs,
-                    "sensitivity_method_name": sensitivity_method_name,
-                    "sensitivity_method_kwargs": sensitivity_method_kwargs,
-                },
-                **(surrogate_custom_training_kwargs or {}),
-            )
+        (
+            optimizer_cls,
+            mdl.objective,
+            mdl.feasibility,
+            mdl.sensitivity,
+        ) = custom_training(
+            optimizer_cls,
+            Xinit,
+            Yinit,
+            C,
+            xlb,
+            xub,
+            file_path,
+            options={
+                "optimizer_name": optimizer_name,
+                "optimizer_kwargs": optimizer_kwargs,
+                "surrogate_method_name": surrogate_method_name,
+                "surrogate_method_kwargs": surrogate_method_kwargs,
+                "feasibility_method_name": feasibility_method_name,
+                "feasibility_method_kwargs": feasibility_method_kwargs,
+                "sensitivity_method_name": sensitivity_method_name,
+                "sensitivity_method_kwargs": sensitivity_method_kwargs,
+                "return_mean_variance": optimize_mean_variance,
+            },
+            **(surrogate_custom_training_kwargs or {}),
         )
 
-    # feasiblity
+    # feasibility
     if feasibility_method_name is not None and mdl.feasibility is None:
         # resolve shorthands
         if feasibility_method_name in default_feasibility_methods:
@@ -305,6 +321,7 @@ def epoch(
             C,
             surrogate_method_name=surrogate_method_name,
             surrogate_method_kwargs=surrogate_method_kwargs,
+            surrogate_return_mean_variance=optimize_mean_variance,
             logger=logger,
             file_path=file_path,
         )
@@ -341,8 +358,8 @@ def epoch(
         di_dict = mdl.sensitivity.di_dict()
         optimizer_kwargs_["di_mutation"] = di_dict["di_mutation"]
         optimizer_kwargs_["di_crossover"] = di_dict["di_crossover"]
-        
-    stats['model_init_end'] = time.time()
+
+    stats["model_init_end"] = time.time()
     stats.update(mdl.get_stats())
 
     optimizer = optimizer_cls(
@@ -351,6 +368,7 @@ def epoch(
         popsize=pop,
         model=mdl,
         distance_metric=None,
+        optimize_mean_variance=optimize_mean_variance,
         **optimizer_kwargs_,
     )
 
@@ -375,6 +393,7 @@ def epoch(
         popsize=pop,
         local_random=local_random,
         termination=termination,
+        optimize_mean_variance=optimize_mean_variance,
         **optimizer_kwargs_,
     )
 
@@ -393,9 +412,13 @@ def epoch(
         x_gen = item
         while True:
 
-            y_gen, c_gen = None, None
+            y_gen, y_var, c_gen = None, None, None
             if mdl.objective is not None:
-                y_gen = mdl.objective.evaluate(x_gen)
+                if mdl.return_mean_variance:
+                    y_mean, y_var = mdl.objective.evaluate(x_gen)
+                    y_gen = np.column_stack((y_mean, np.round(y_var, 6)))
+                else:
+                    y_gen = mdl.objective.evaluate(x_gen)
             else:
                 item_eval = yield x_gen, True
                 _, y_gen, c_gen = item_eval
@@ -458,6 +481,7 @@ def train(
     C,
     surrogate_method_name="gpr",
     surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
+    surrogate_return_mean_variance=False,
     logger=None,
     file_path=None,
 ):
@@ -500,6 +524,7 @@ def train(
         xub,
         **surrogate_method_kwargs,
         logger=logger,
+        return_mean_variance=surrogate_return_mean_variance,
     )
 
     return sm

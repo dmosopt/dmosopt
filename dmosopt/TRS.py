@@ -44,6 +44,7 @@ class TRS(MOEA):
         nInput: int,
         nOutput: int,
         model: Optional[Any],
+        optimize_mean_variance: bool = False,
         **kwargs,
     ):
         """Trust Region Search"""
@@ -60,6 +61,7 @@ class TRS(MOEA):
         if self.model.feasibility is not None:
             self.x_distance_metrics = [self.model.feasibility.rank]
         self.indicator = HypervolumeImprovement
+        self.optimize_mean_variance = optimize_mean_variance
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
