@@ -10,6 +10,59 @@ from dmosopt.hv import HyperVolumeBoxDecomposition as _HyperVolume
 from dmosopt.dda import dda_ens
 
 
+def crowding_distance_metric(Y):
+    """Crowding distance metric.
+    Y is the output data matrix
+    [n,d] = size(Y)
+    n: number of points
+    d: number of dimensions
+    """
+    n, d = Y.shape
+    lb = np.min(Y, axis=0, keepdims=True)
+    ub = np.max(Y, axis=0, keepdims=True)
+
+    if n == 1:
+        D = np.array([1.0])
+    else:
+        ub_minus_lb = ub - lb
+        ub_minus_lb[ub_minus_lb == 0.0] = 1.0
+
+        U = (Y - lb) / ub_minus_lb
+
+        D = np.zeros(n)
+        DS = np.zeros((n, d))
+
+        idx = U.argsort(axis=0)
+        US = np.zeros((n, d))
+        for i in range(d):
+            US[:, i] = U[idx[:, i], i]
+
+        DS[0, :] = 1.0
+        DS[n - 1, :] = 1.0
+
+        for i in range(1, n - 1):
+            for j in range(d):
+                DS[i, j] = US[i + 1, j] - US[i - 1, j]
+
+        for i in range(n):
+            for j in range(d):
+                D[idx[i, j]] += DS[i, j]
+        D[np.isnan(D)] = 0.0
+
+    return D
+
+
+def euclidean_distance_metric(Y):
+    """Row-wise euclidean distance."""
+    n, d = Y.shape
+    lb = np.min(Y, axis=0)
+    ub = np.max(Y, axis=0)
+    ub_minus_lb = ub - lb
+    ub_minus_lb[ub_minus_lb == 0.0] = 1.0
+    U = (Y - lb) / ub_minus_lb
+    return np.sqrt(np.sum(U**2, axis=1))
+
+
 def euclidean_distance(a, b, norm=None):
     return np.sqrt((((a - b) / norm) ** 2).sum(axis=1))
 
@@ -259,3 +312,25 @@ class HypervolumeImprovement(Indicator):
 
         assert len(selection) > 0
         return selection
+
+
+class PopulationDiversity(Indicator):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def _do(self, F, Y):
+        # Calculate diversity metric
+        front_0 = np.argwhere(F.flat == 0)
+
+        diversity = len(front_0) / len(F[0])
+
+        D = crowding_distance_metric(Y)
+
+        # Calculate crowding distance spread in first front
+        if len(front_0) > 1:
+            cd_values = D[front_0.flat]
+            cd_spread = np.std(cd_values) / np.mean(cd_values)
+        else:
+            cd_spread = 0
+
+        return diversity, cd_spread

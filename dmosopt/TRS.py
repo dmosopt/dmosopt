@@ -13,7 +13,11 @@ from dmosopt.MOEA import (
     remove_duplicates,
 )
 from dmosopt.sampling import sobol
-from dmosopt.indicators import HypervolumeImprovement, SlidingWindow
+from dmosopt.indicators import (
+    HypervolumeImprovement,
+    SlidingWindow,
+    PopulationDiversity,
+)
 from typing import Any, Union, Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 
@@ -22,9 +26,9 @@ from dataclasses import dataclass, field
 class TrState:
     dim: int
     is_constrained: bool = False
-    length: float = 0.08
-    length_init: float = 0.08
-    length_min: float = 0.0001
+    length: float = 0.05
+    length_init: float = 0.05
+    length_min: float = 0.00001
     length_max: float = 1.0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
     success_tolerance: int = 0.6
@@ -61,6 +65,7 @@ class TRS(MOEA):
         if self.model.feasibility is not None:
             self.x_distance_metrics = [self.model.feasibility.rank]
         self.indicator = HypervolumeImprovement
+        self.diversity_indicator = PopulationDiversity()
         self.optimize_mean_variance = optimize_mean_variance
 
     @property
@@ -69,6 +74,9 @@ class TRS(MOEA):
         params = {
             "nchildren": 1,
             "success_window_size": 64,
+            "max_population_size": 600,
+            "min_population_size": 100,
+            "adaptive_population_size": False,
         }
 
         return params
@@ -82,9 +90,9 @@ class TRS(MOEA):
         **params,
     ):
         order, rank, _ = orderMO(x, y, x_distance_metrics=self.x_distance_metrics)
-        population_parm = x[order][: self.popsize]
-        population_obj = y[order][: self.popsize]
-        rank = rank[: self.popsize]
+        population_parm = x[order][: self.opt_params.popsize]
+        population_obj = y[order][: self.opt_params.popsize]
+        rank = rank[: self.opt_params.popsize]
 
         tr = TrState(dim=self.nInput)
         success_window_size = self.opt_params.success_window_size
@@ -101,7 +109,7 @@ class TRS(MOEA):
         return state
 
     def generate_strategy(self, **params):
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         nchildren = self.opt_params.nchildren
 
         local_random = self.local_random
@@ -136,7 +144,7 @@ class TRS(MOEA):
         prob_perturb = min(20.0 / self.state.tr.dim, 1.0)
         perturb_selection = local_random.random((self.state.tr.dim,)) <= prob_perturb
         ind = np.nonzero(perturb_selection)[0]
-        mask = np.zeros((self.popsize, self.state.tr.dim), dtype=int)
+        mask = np.zeros((self.opt_params.popsize, self.state.tr.dim), dtype=int)
         mask[ind, local_random.integers(0, self.state.tr.dim - 1, size=len(ind))] = 1
 
         # Create candidate points
@@ -163,7 +171,7 @@ class TRS(MOEA):
         population_obj = self.state.population_obj
         rank = self.state.rank
 
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         nInput = self.nInput
         nOutput = self.nOutput
 
@@ -184,9 +192,17 @@ class TRS(MOEA):
             candidates_x, candidates_y, candidates_offspring
         )
 
-        self.state.population_parm[:] = population_parm
-        self.state.population_obj[:] = population_obj
-        self.state.rank[:] = rank
+        if self.opt_params.adaptive_population_size:
+            self.state.population_parm = population_parm
+            self.state.population_obj = population_obj
+            self.state.rank = rank
+        else:
+            self.state.population_parm[:] = population_parm
+            self.state.population_obj[:] = population_obj
+            self.state.rank[:] = rank
+
+        if self.opt_params.adaptive_population_size:
+            self.update_population_size()
 
     def get_population_strategy(self):
         pop_x = self.state.population_parm.copy()
@@ -196,7 +212,7 @@ class TRS(MOEA):
 
     def select_candidates(self, candidates_x, candidates_y):
 
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
 
         candidates_inds = np.asarray(range(candidates_x.shape[0]), dtype=np.int_)
 
@@ -275,7 +291,7 @@ class TRS(MOEA):
         success_counter = np.count_nonzero(np.logical_and(is_offspring, chosen))
         self.state.success_window.append(success_counter)
         success_mean = np.mean(self.state.success_window[:])
-        success_frac = success_mean / self.popsize
+        success_frac = min(1.0, success_mean / self.opt_params.popsize)
         if success_frac >= state.success_tolerance:  # Expand trust region
             state.length = min((1.0 + success_frac) * state.length, state.length_max)
             state.success_counter = 0
@@ -296,3 +312,25 @@ class TRS(MOEA):
         self.state.tr.Y_best = np.asarray([np.inf] * self.state.tr.dim).reshape((1, -1))
         self.state.tr.restart = False
         self.state.success_window = SlidingWindow(success_window_size)
+
+    def update_population_size(self):
+        """Adapt population size based on convergence and diversity."""
+        # Calculate diversity metric
+        diversity, cd_spread = self.diversity_indicator.do(
+            self.state.rank, self.state.population_obj
+        )
+        max_size = self.opt_params.max_population_size
+        min_size = self.opt_params.min_population_size
+        current_size = self.opt_params.popsize
+
+        # Adjust population size
+        if diversity < 0.1 or cd_spread < 2.0:
+            # Low diversity - increase population
+            new_size = min(max_size, int(current_size * 1.1))
+        elif diversity > 0.4 and cd_spread > 1.0:
+            # High diversity - decrease population
+            new_size = max(min_size, int(current_size * 0.9))
+        else:
+            new_size = current_size
+
+        self.opt_params.popsize = new_size

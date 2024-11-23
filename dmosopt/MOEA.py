@@ -5,10 +5,12 @@
 import math
 import numpy as np
 from functools import reduce
-from dmosopt.dda import dda_ens
-from dmosopt import sampling
 from scipy.spatial.distance import cdist
 from typing import Any, Union, Dict, List, Tuple, Optional
+from dmosopt.dda import dda_ens
+from dmosopt import sampling
+from dmosopt.indicators import crowding_distance_metric, euclidean_distance_metric
+
 
 # function sharedmoea(selfunc,μ,λ)
 #  \selfunc, selection function to be used.
@@ -257,11 +259,9 @@ def sortMO(
             if callable(distance_metric):
                 y_distance_functions.append(distance_metric)
             elif distance_metric == "crowding":
-                y_distance_functions.append(crowding_distance)
+                y_distance_functions.append(crowding_distance_metric)
             elif distance_metric == "euclidean":
-                y_distance_functions.append(euclidean_distance)
-            elif callable(distance_metric):
-                y_distance_functions.append(distance_metric)
+                y_distance_functions.append(euclidean_distance_metric)
             else:
                 raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
 
@@ -314,11 +314,9 @@ def orderMO(
             if callable(distance_metric):
                 y_distance_functions.append(distance_metric)
             elif distance_metric == "crowding":
-                y_distance_functions.append(crowding_distance)
+                y_distance_functions.append(crowding_distance_metric)
             elif distance_metric == "euclidean":
-                y_distance_functions.append(euclidean_distance)
-            elif callable(distance_metric):
-                y_distance_functions.append(distance_metric)
+                y_distance_functions.append(euclidean_distance_metric)
             else:
                 raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
 
@@ -374,59 +372,6 @@ def top_k_MO(x, y, top_k=None):
     return x, y
 
 
-def crowding_distance(Y):
-    """Crowding distance metric.
-    Y is the output data matrix
-    [n,d] = size(Y)
-    n: number of points
-    d: number of dimensions
-    """
-    n, d = Y.shape
-    lb = np.min(Y, axis=0, keepdims=True)
-    ub = np.max(Y, axis=0, keepdims=True)
-
-    if n == 1:
-        D = np.array([1.0])
-    else:
-        ub_minus_lb = ub - lb
-        ub_minus_lb[ub_minus_lb == 0.0] = 1.0
-
-        U = (Y - lb) / ub_minus_lb
-
-        D = np.zeros(n)
-        DS = np.zeros((n, d))
-
-        idx = U.argsort(axis=0)
-        US = np.zeros((n, d))
-        for i in range(d):
-            US[:, i] = U[idx[:, i], i]
-
-        DS[0, :] = 1.0
-        DS[n - 1, :] = 1.0
-
-        for i in range(1, n - 1):
-            for j in range(d):
-                DS[i, j] = US[i + 1, j] - US[i - 1, j]
-
-        for i in range(n):
-            for j in range(d):
-                D[idx[i, j]] += DS[i, j]
-        D[np.isnan(D)] = 0.0
-
-    return D
-
-
-def euclidean_distance(Y):
-    """Row-wise euclidean distance."""
-    n, d = Y.shape
-    lb = np.min(Y, axis=0)
-    ub = np.max(Y, axis=0)
-    ub_minus_lb = ub - lb
-    ub_minus_lb[ub_minus_lb == 0.0] = 1.0
-    U = (Y - lb) / ub_minus_lb
-    return np.sqrt(np.sum(U**2, axis=1))
-
-
 def tournament_prob(ax, i):
     p = ax[1]
     try:
@@ -456,15 +401,26 @@ def remove_worst(
     pop,
     x_distance_metrics=None,
     y_distance_metrics=None,
+    return_perm=False,
 ):
     """remove the worst individuals in the population"""
-    population_parm, population_obj, rank, _ = sortMO(
+    population_parm, population_obj, rank, _, perm = sortMO(
         population_parm,
         population_obj,
         x_distance_metrics=x_distance_metrics,
         y_distance_metrics=y_distance_metrics,
+        return_perm=True,
     )
-    return population_parm[0:pop, :], population_obj[0:pop, :], rank[0:pop]
+
+    result = (population_parm[0:pop, :], population_obj[0:pop, :], rank[0:pop])
+    if return_perm:
+        result = (
+            population_parm[0:pop, :],
+            population_obj[0:pop, :],
+            rank[0:pop],
+            perm[0:pop],
+        )
+    return result
 
 
 def get_duplicates(X, Y=None, eps=1e-16):
