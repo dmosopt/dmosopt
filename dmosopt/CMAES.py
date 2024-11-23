@@ -9,15 +9,16 @@
 
 from functools import partial
 import numpy as np
-from dmosopt.dda import dda_non_dominated_sort
+from dmosopt.dda import dda_ens
 from dmosopt.MOEA import (
     Struct,
     MOEA,
     remove_worst,
     remove_duplicates,
 )
-from dmosopt.indicators import Hypervolume
+from dmosopt.indicators import HypervolumeImprovement, PopulationDiversity
 from typing import Any, Union, Dict, List, Tuple, Optional
+import sys
 
 
 class CMAES(MOEA):
@@ -27,10 +28,11 @@ class CMAES(MOEA):
         nInput: int,
         nOutput: int,
         model: Optional[Any],
+        optimize_mean_variance: bool = False,
         **kwargs,
     ):
         """
-            Multiobjective Covariance Matrix-Assisted Evolutionary Strategy (CMAES) optimization.
+        Multiobjective Covariance Matrix-Assisted Evolutionary Strategy (CMAES) optimization.
         :param sigma: Coordinate-wise standard deviation (step size)
         :param mu: The number of parents to use in the evolution. When not
                    provided it defaults to *pop*. (optional)
@@ -74,7 +76,9 @@ class CMAES(MOEA):
             self.opt_params.di_mutation = np.asarray([di_mutation] * nInput)
 
         self.state = None
-        self.indicator = Hypervolume
+        self.indicator = HypervolumeImprovement
+        self.optimize_mean_variance = optimize_mean_variance
+        self.diversity_indicator = PopulationDiversity()
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
@@ -85,7 +89,7 @@ class CMAES(MOEA):
         popsize = self.popsize
 
         # Selection
-        sigma = 0.005
+        sigma = 0.001
         mu = popsize // 2
         lambda_ = 1
 
@@ -109,7 +113,10 @@ class CMAES(MOEA):
             "cc": cc,
             "ccov": ccov,
             "pthresh": pthresh,
-            "di_mutation": 1.0,
+            "di_mutation": 30.0,
+            "max_population_size": 600,
+            "min_population_size": 100,
+            "adaptive_population_size": False,
         }
 
         return params
@@ -123,7 +130,7 @@ class CMAES(MOEA):
         **params,
     ):
         dim = self.nInput
-        population_size = self.popsize
+        population_size = self.opt_params.popsize
         sigma = self.opt_params.sigma
         di_mutation = self.opt_params.di_mutation
         ptarg = self.opt_params.ptarg
@@ -143,6 +150,7 @@ class CMAES(MOEA):
         sorted_rank_idxs = order[:population_size]
         parents_x = x[sorted_rank_idxs].copy()
         parents_y = y[sorted_rank_idxs].copy()
+        rank = rank[sorted_rank_idxs].copy()
 
         state = Struct(
             bounds=bounds,
@@ -153,12 +161,13 @@ class CMAES(MOEA):
             Ainv=Ainv,
             pc=pc,
             psucc=psucc,
+            rank=rank,
         )
 
         return state
 
     def _select(self, candidates_x, candidates_y, candidates_ps, candidates_inds):
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
 
         if candidates_x.shape[0] <= popsize:
             return np.ones_like(candidates_inds, dtype=bool_), np.zeros_like(
@@ -166,6 +175,7 @@ class CMAES(MOEA):
             )
 
         order, rank = sortMO(candidates_x, candidates_y, self.x_distance_metrics)
+        order_inv = np.argsort(order)
 
         chosen = np.zeros_like(candidates_inds, dtype=bool)
         not_chosen = np.zeros_like(candidates_inds, dtype=bool)
@@ -179,7 +189,7 @@ class CMAES(MOEA):
         rmax = int(np.max(rank))
         chosen_count = 0
         for r in range(rmax + 1):
-            front_r = np.argwhere(rank == r).ravel()
+            front_r = order_inv[np.argwhere(rank == r).ravel()]
             if chosen_count + len(front_r) <= popsize and not full:
                 chosen[front_r] = True
                 chosen_count += len(front_r)
@@ -198,25 +208,27 @@ class CMAES(MOEA):
             ref = np.max(candidates_y, axis=0) + 1
             indicator = self.indicator(ref_point=ref, nds=True)
 
-            def contribution(front, i):
-                # The contribution of point p_i in point set P
-                # is the hypervolume of P without p_i
-                return indicator.do(
-                    np.concatenate(
-                        (candidates_y[front[:i]], candidates_y[front[i + 1 :]])
-                    )
+            assert len(mid_front) > 0
+            if chosen_count > 0:
+                selected_indices = indicator.do(
+                    candidates_y[chosen],
+                    candidates_y[mid_front, :],
+                    np.ones_like(candidates_y[mid_front, :]),
+                    k,
                 )
+            else:
+                selected_indices = np.arange(k)
 
-            contrib_values = np.fromiter(
-                map(partial(contribution, mid_front), range(len(mid_front))),
-                dtype=np.float32,
-            )
-            contrib_order = np.argsort(contrib_values)
+            assert len(selected_indices) == k
+            chosen[mid_front[selected_indices]] = True
 
-            chosen[mid_front[contrib_order[:k]]] = True
-            not_chosen[mid_front[contrib_order[k:]]] = True
+            not_chosen_mask = np.ones(len(mid_front), np.bool)
+            not_chosen_mask[selected_indices] = False
+            not_chosen[mid_front[not_chosen_mask]] = True
 
-        return chosen, not_chosen
+            indicator = None
+
+        return chosen, not_chosen, rank
 
     def generate_strategy(self, **params):
         """
@@ -296,7 +308,7 @@ class CMAES(MOEA):
             )
         )
         candidates_pidxs = np.concatenate((p_idxs, parent_pidxs))
-        chosen, not_chosen = self._select(
+        chosen, not_chosen, rank = self._select(
             candidates_x, candidates_y, candidates_offspring, candidates_pidxs
         )
 
@@ -371,6 +383,7 @@ class CMAES(MOEA):
 
         self.state.parents_x = candidates_x[chosen]
         self.state.parents_y = candidates_y[chosen]
+        self.state.rank = rank[chosen]
 
         self.state.sigmas = np.where(
             candidates_offspring[chosen].reshape((-1, 1)),
@@ -399,6 +412,9 @@ class CMAES(MOEA):
             self.state.psucc[candidates_pidxs[chosen]],
         )
 
+        if self.opt_params.adaptive_population_size:
+            self.update_population_size()
+
     def get_population_strategy(self):
         population_parm = self.state.parents_x.copy()
         population_obj = self.state.parents_y.copy()
@@ -406,11 +422,36 @@ class CMAES(MOEA):
         population_parm, population_obj = remove_duplicates(
             population_parm, population_obj
         )
-        population_parm, population_obj, _ = remove_worst(
-            population_parm, population_obj, self.popsize
-        )
+
+        if len(population_parm) > 0:
+            population_parm, population_obj, _ = remove_worst(
+                population_parm, population_obj, self.popsize
+            )
 
         return population_parm, population_obj
+
+    def update_population_size(self):
+        """Adapt population size based on convergence and diversity."""
+        # Calculate diversity metric
+        diversity, cd_spread = self.diversity_indicator.do(
+            self.state.rank, self.state.parents_y
+        )
+        max_size = self.opt_params.max_population_size
+        min_size = self.opt_params.min_population_size
+        current_size = self.opt_params.popsize
+
+        # Adjust population size
+        if diversity < 0.1 or cd_spread < 2.0:
+            # Low diversity - increase population
+            new_size = min(max_size, int(current_size * 1.1))
+        elif diversity > 0.4 and cd_spread > 1.0:
+            # High diversity - decrease population
+            new_size = max(min_size, int(current_size * 0.9))
+        else:
+            new_size = current_size
+
+        self.opt_params.popsize = new_size
+        self.opt_params.mu = self.opt_params.popsize // 2
 
 
 def sortMO(
@@ -431,7 +472,7 @@ def sortMO(
             else:
                 raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
 
-    rank = dda_non_dominated_sort(y)
+    rank = dda_ens(y)
 
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
     rmax = int(rank.max())

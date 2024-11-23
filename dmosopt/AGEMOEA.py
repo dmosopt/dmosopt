@@ -13,7 +13,7 @@
 
 import numpy as np
 from functools import reduce
-from dmosopt.dda import dda_non_dominated_sort
+from dmosopt.dda import dda_ens
 from dmosopt.MOEA import (
     Struct,
     MOEA,
@@ -22,6 +22,7 @@ from dmosopt.MOEA import (
     tournament_selection,
     remove_duplicates,
 )
+from dmosopt.indicators import PopulationDiversity
 from typing import Any, Union, Dict, List, Tuple, Optional
 
 
@@ -32,6 +33,7 @@ class AGEMOEA(MOEA):
         nInput: int,
         nOutput: int,
         model: Optional[Any],
+        optimize_mean_variance: bool = False,
         **kwargs,
     ):
         """AGE-MOEA, A multi-objective algorithm based on non-euclidean geometry."""
@@ -64,6 +66,8 @@ class AGEMOEA(MOEA):
             self.opt_params.mutation_rate = 1.0 / float(nInput)
 
         self.opt_params.poolsize = int(round(popsize / 2.0))
+        self.optimize_mean_variance = optimize_mean_variance
+        self.diversity_indicator = PopulationDiversity()
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
@@ -75,6 +79,9 @@ class AGEMOEA(MOEA):
             "nchildren": 1,
             "di_crossover": 1.0,
             "di_mutation": 20.0,
+            "max_population_size": 2000,
+            "min_population_size": 100,
+            "adaptive_population_size": False,
         }
 
         return params
@@ -91,16 +98,16 @@ class AGEMOEA(MOEA):
             local_random,
             x,
             y,
-            self.popsize,
+            self.opt_params.popsize,
             self.nInput,
             self.nOutput,
             logger=self.logger,
         )
 
-        population_parm = x[: self.popsize]
-        population_obj = y[: self.popsize]
-        rank = rank[: self.popsize]
-        crowd_dist = crowd_dist[: self.popsize]
+        population_parm = x[: self.opt_params.popsize]
+        population_obj = y[: self.opt_params.popsize]
+        rank = rank[: self.opt_params.popsize]
+        crowd_dist = crowd_dist[: self.opt_params.popsize]
 
         state = Struct(
             bounds=bounds,
@@ -113,7 +120,7 @@ class AGEMOEA(MOEA):
         return state
 
     def generate_strategy(self, **params):
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         poolsize = self.opt_params.poolsize
         crossover_prob = self.opt_params.crossover_prob
         mutation_prob = self.opt_params.mutation_prob
@@ -132,7 +139,7 @@ class AGEMOEA(MOEA):
         crowd_dist = self.state.crowd_dist
 
         pool_idxs = tournament_selection(
-            local_random, popsize, poolsize, -crowd_dist, rank
+            local_random, population_parm.shape[0], poolsize, -crowd_dist, rank
         )
         pool = population_parm[pool_idxs, :]
 
@@ -187,7 +194,7 @@ class AGEMOEA(MOEA):
         population_obj = self.state.population_obj
         rank = self.state.rank
 
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         nInput = self.nInput
         nOutput = self.nOutput
         local_random = self.local_random
@@ -208,10 +215,19 @@ class AGEMOEA(MOEA):
             logger=self.logger,
         )
 
-        self.state.population_parm[:] = population_parm
-        self.state.population_obj[:] = population_obj
-        self.state.rank[:] = rank
-        self.state.crowd_dist[:] = crowd_dist
+        if self.opt_params.adaptive_population_size:
+            self.state.population_parm = population_parm
+            self.state.population_obj = population_obj
+            self.state.rank = rank
+            self.state.crowd_dist = crowd_dist
+        else:
+            self.state.population_parm[:] = population_parm
+            self.state.population_obj[:] = population_obj
+            self.state.rank[:] = rank
+            self.state.crowd_dist[:] = crowd_dist
+
+        if self.opt_params.adaptive_population_size:
+            self.update_population_size()
 
     def get_population_strategy(self):
         pop_x = self.state.population_parm.copy()
@@ -219,13 +235,36 @@ class AGEMOEA(MOEA):
 
         return pop_x, pop_y
 
+    def update_population_size(self):
+        """Adapt population size based on convergence and diversity."""
+        # Calculate diversity metric
+        diversity, cd_spread = self.diversity_indicator.do(
+            self.state.rank, self.state.population_obj
+        )
+        max_size = self.opt_params.max_population_size
+        min_size = self.opt_params.min_population_size
+        current_size = self.opt_params.popsize
+
+        # Adjust population size
+        if diversity < 0.5 and cd_spread < 2.0:
+            # Low diversity - increase population
+            new_size = min(max_size, int(current_size * 1.2))
+        elif diversity > 0.9 or cd_spread > 1.0:
+            # High diversity - decrease population
+            new_size = max(min_size, int(current_size * 0.9))
+        else:
+            new_size = current_size
+
+        self.opt_params.popsize = new_size
+        self.opt_params.poolsize = int(round(self.opt_params.popsize / 2.0))
+
 
 def sortMO(x, y):
     """Non-dominated sort for multi-objective optimization
     x: input parameter matrix
     y: output objectives matrix
     """
-    rank = dda_non_dominated_sort(y)
+    rank = dda_ens(y)
     idxr = rank.argsort()
     rank = rank[idxr]
     x = x[idxr, :]

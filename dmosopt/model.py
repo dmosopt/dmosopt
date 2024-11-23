@@ -602,11 +602,18 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
 
 
 class Model:
-    def __init__(self, objective=None, feasibility=None, sensitivity=None):
+    def __init__(
+        self,
+        return_mean_variance=False,
+        objective=None,
+        feasibility=None,
+        sensitivity=None,
+    ):
         self.objective = objective
         self.feasibility = feasibility
         self.sensitivity = sensitivity
         self.stats = {}
+        self.return_mean_variance = return_mean_variance
 
     def get_stats(self):
         if self.objective is not None:
@@ -643,6 +650,7 @@ class MDSPP_Matern:
         n_iter=2000,
         min_loss_pct_change=1.0,
         batch_size=10,
+        return_mean_variance=False,
         use_cuda=False,
         top_k=None,
         logger=None,
@@ -665,6 +673,7 @@ class MDSPP_Matern:
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
         
@@ -915,7 +924,10 @@ class MDSPP_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class MDGP_Matern:
@@ -939,6 +951,7 @@ class MDGP_Matern:
         n_iter=2000,
         min_loss_pct_change=1.0,
         batch_size=10,
+        return_mean_variance=False,
         use_cuda=False,
         top_k=None,
         logger=None,
@@ -961,6 +974,7 @@ class MDGP_Matern:
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
         
@@ -1210,7 +1224,10 @@ class MDGP_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class MEGP_Matern:
@@ -1231,6 +1248,7 @@ class MEGP_Matern:
         fast_pred_var=False,
         n_iter=5000,
         min_loss_pct_change=0.1,
+        return_mean_variance=False,
         use_cuda=False,
         top_k=None,
         logger=None,
@@ -1253,6 +1271,7 @@ class MEGP_Matern:
             np.isclose(xub - xlb, 0.0, rtol=1e-6, atol=1e-6), 1.0, xub - xlb
         )
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
         
@@ -1495,7 +1514,10 @@ class MEGP_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class EGP_Matern:
@@ -1515,6 +1537,7 @@ class EGP_Matern:
         fast_pred_var=True,
         n_iter=5000,
         min_loss_pct_change=0.1,
+        return_mean_variance=False,
         batch_size=None,
         use_cuda=False,
         top_k=None,
@@ -1538,6 +1561,7 @@ class EGP_Matern:
         )
 
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
         
@@ -1782,7 +1806,10 @@ class EGP_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class CRV_Matern:
@@ -1804,6 +1831,7 @@ class CRV_Matern:
         adam_lr=0.01,
         n_iter=30000,
         min_elbo_pct_change=0.1,
+        return_mean_variance=False,
         num_latent_gps=None,
         top_k=None,
         logger=None,
@@ -1822,6 +1850,7 @@ class CRV_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
         
@@ -1995,7 +2024,10 @@ class CRV_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class SIV_Matern:
@@ -2017,6 +2049,7 @@ class SIV_Matern:
         adam_lr=0.01,
         n_iter=30000,
         min_elbo_pct_change=1.0,
+        return_mean_variance=False,
         num_latent_gps=None,
         top_k=None,
         logger=None,
@@ -2035,6 +2068,7 @@ class SIV_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
         
@@ -2197,7 +2231,10 @@ class SIV_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class SPV_Matern:
@@ -2220,6 +2257,7 @@ class SPV_Matern:
         n_iter=30000,
         min_elbo_pct_change=1.0,
         num_latent_gps=None,
+        return_mean_variance=False,
         top_k=None,
         logger=None,
     ):
@@ -2237,6 +2275,7 @@ class SPV_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2400,7 +2439,10 @@ class SPV_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class SVGP_Matern:
@@ -2422,6 +2464,7 @@ class SVGP_Matern:
         adam_lr=0.01,
         n_iter=30000,
         min_elbo_pct_change=1.0,
+        return_mean_variance=True,
         top_k=None,
         logger=None,
     ):
@@ -2439,6 +2482,7 @@ class SVGP_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2604,7 +2648,10 @@ class SVGP_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class VGP_Matern:
@@ -2624,6 +2671,7 @@ class VGP_Matern:
         adam_lr=0.01,
         n_iter=3000,
         min_elbo_pct_change=0.1,
+        return_mean_variance=False,
         top_k=None,
         logger=None,
     ):
@@ -2641,6 +2689,7 @@ class VGP_Matern:
         )
         self.batch_size = batch_size
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2777,7 +2826,10 @@ class VGP_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class GPR_Matern:
@@ -2793,6 +2845,7 @@ class GPR_Matern:
         seed=None,
         length_scale_bounds=(1e-3, 100.0),
         anisotropic=False,
+        return_mean_variance=False,
         top_k=None,
         logger=None,
     ):
@@ -2802,6 +2855,7 @@ class GPR_Matern:
         self.xub = xub
         self.xrg = xub - xlb
         self.logger = logger
+        self.return_mean_variance = return_mean_variance
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2861,7 +2915,10 @@ class GPR_Matern:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 class GPR_RBF:
@@ -2877,6 +2934,7 @@ class GPR_RBF:
         seed=None,
         length_scale_bounds=(1e-2, 100.0),
         anisotropic=False,
+        return_mean_variance=False,
         logger=None,
     ):
         self.nInput = nInput
@@ -2884,6 +2942,7 @@ class GPR_RBF:
         self.xlb = xlb
         self.xub = xub
         self.xrg = xub - xlb
+        self.return_mean_variance = return_mean_variance
         self.logger = logger
 
         N = x.shape[0]
@@ -2942,7 +3001,10 @@ class GPR_RBF:
 
     def evaluate(self, x):
         mean, var = self.predict(x)
-        return mean
+        if self.return_mean_variance:
+            return mean, var
+        else:
+            return mean
 
 
 def dlib_optimizer(logger, obj_func, initial_theta, bounds):
