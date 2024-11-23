@@ -12,6 +12,7 @@ from dmosopt.MOEA import (
     remove_worst,
     remove_duplicates,
 )
+from dmosopt.indicators import PopulationDiversity
 from typing import Any, Union, Dict, List, Tuple, Optional
 
 
@@ -63,6 +64,7 @@ class SMPSO(MOEA):
         if mutation_rate is None:
             self.opt_params.mutation_rate = 1.0 / float(nInput)
         self.optimize_mean_variance = optimize_mean_variance
+        self.diversity_indicator = PopulationDiversity()
 
     @property
     def default_parameters(self) -> Dict[str, Any]:
@@ -72,6 +74,12 @@ class SMPSO(MOEA):
             "nchildren": 1,
             "swarm_size": 5,
             "di_mutation": 20.0,
+            "max_population_size": 2000,
+            "min_population_size": 100,
+            "min_success_rate": 0.2,
+            "max_success_rate": 0.75,
+            "adaptive_population_size": False,
+            "adaptive_operator_rates": False,
         }
 
         return params
@@ -86,7 +94,7 @@ class SMPSO(MOEA):
     ):
         nInput = self.nInput
         nOutput = self.nOutput
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         swarm_size = self.opt_params.swarm_size
         pop_slices = self.pop_slices
 
@@ -127,12 +135,13 @@ class SMPSO(MOEA):
             population_obj=population_obj,
             ranks=ranks,
             velocity=velocity,
+            successful_children=0,
         )
 
         return state
 
     def generate_strategy(self, **params):
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         swarm_size = self.opt_params.swarm_size
         mutation_rate = self.opt_params.mutation_rate
         nchildren = self.opt_params.nchildren
@@ -193,7 +202,7 @@ class SMPSO(MOEA):
         xub = self.state.bounds[:, 1]
 
         swarm_size = self.opt_params.swarm_size
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         nInput = self.nInput
         nOutput = self.nOutput
 
@@ -205,22 +214,31 @@ class SMPSO(MOEA):
                 local_random, population_parm[sl], velocity[sl], x_gen[sl], D, xlb, xub
             )
 
+        total_children = x_gen.shape[0]
         for p, sl in enumerate(pop_slices):
-            population_parm_p = np.vstack((population_parm[sl], x_gen[sl]))
-            population_obj_p = np.vstack((population_obj[sl], y_gen[sl]))
-            population_parm_p, population_obj_p = remove_duplicates(
-                population_parm_p, population_obj_p
-            )
-            population_parm[sl], population_obj[sl], ranks[p] = remove_worst(
+            population_parm_p = np.vstack((x_gen[sl], population_parm[sl]))
+            population_obj_p = np.vstack((y_gen[sl], population_obj[sl]))
+            population_parm[sl], population_obj[sl], ranks[p], perm = remove_worst(
                 population_parm_p,
                 population_obj_p,
                 popsize,
                 x_distance_metrics=self.x_distance_metrics,
                 y_distance_metrics=self.y_distance_metrics,
+                return_perm=True,
             )
+            # Evaluate children's success
+            children_indices = np.arange(total_children)
+            surviving_children = np.isin(children_indices, perm, assume_unique=True)
+            self.state.successful_children += np.count_nonzero(surviving_children)
+
+        if self.opt_params.adaptive_population_size:
+            self.update_population_size()
+
+        if self.opt_params.adaptive_operator_rates:
+            self.update_operator_rates()
 
     def get_population_strategy(self):
-        popsize = self.popsize
+        popsize = self.opt_params.popsize
         nInput = self.nInput
         nOutput = self.nOutput
 
@@ -237,6 +255,57 @@ class SMPSO(MOEA):
         )
 
         return pop_parm, pop_obj
+
+    def update_population_size(self):
+        """Adapt population size based on convergence and diversity."""
+        # Calculate diversity metric
+        ranks = np.concatenate(self.state.ranks)
+        diversity, cd_spread = self.diversity_indicator.do(
+            ranks, self.state.population_obj
+        )
+        max_size = self.opt_params.max_population_size
+        min_size = self.opt_params.min_population_size
+        current_size = self.opt_params.popsize
+
+        # Adjust population size
+        if diversity < 0.5 and cd_spread < 2.0:
+            # Low diversity - increase population
+            new_size = min(max_size, int(current_size * 1.2))
+        elif diversity > 0.9 or cd_spread > 1.0:
+            # High diversity - decrease population
+            new_size = max(min_size, int(current_size * 0.9))
+        else:
+            new_size = current_size
+
+        self.opt_params.popsize = new_size
+        swarm_size = self.opt_params.swarm_size
+
+        self.pop_slices = list(
+            [range(p * new_size, (p + 1) * new_size) for p in range(swarm_size)]
+        )
+
+    def update_operator_rates(self):
+        """Update operator rates and distribution indices based on success statistics."""
+        opt_params = self.opt_params
+        state = self.state
+
+        # Update mutation parameters
+        success_rate = state.successful_children / (
+            opt_params.popsize * opt_params.swarm_size
+        )
+        if success_rate < opt_params.min_success_rate:
+            # Increase exploration
+            opt_params.di_mutation = np.maximum(1.0, opt_params.di_mutation * 0.9)
+            opt_params.mutation_rate = np.minimum(0.95, opt_params.mutation_rate * 1.1)
+        elif success_rate > opt_params.max_success_rate:
+            # Increase exploitation
+            opt_params.di_mutation = np.minimum(100.0, opt_params.di_mutation * 1.1)
+            opt_params.mutation_rate = np.maximum(
+                0.05 / self.nInput, opt_params.mutation_rate * 0.9
+            )
+
+        # Reset counters
+        state.successful_children = 0
 
 
 def update_position(parameters, velocity, xlb, xub):

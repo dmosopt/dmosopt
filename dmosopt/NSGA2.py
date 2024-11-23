@@ -98,9 +98,9 @@ class NSGA2(MOEA):
             x_distance_metrics=self.x_distance_metrics,
             y_distance_metrics=self.y_distance_metrics,
         )
-        population_parm = x[: self.popsize]
-        population_obj = y[: self.popsize]
-        rank = rank[: self.popsize]
+        population_parm = x[: self.opt_params.popsize]
+        population_obj = y[: self.opt_params.popsize]
+        rank = rank[: self.opt_params.popsize]
 
         state = Struct(
             bounds=bounds,
@@ -223,10 +223,14 @@ class NSGA2(MOEA):
         # Evaluate mutation success
         mutation_children = np.isin(mutation_indices, perm, assume_unique=True)
         self.state.successful_mutations += np.count_nonzero(mutation_children)
-
-        self.state.population_parm = population_parm
-        self.state.population_obj = population_obj
-        self.state.rank = rank
+        if self.opt_params.adaptive_population_size:
+            self.state.population_parm = population_parm
+            self.state.population_obj = population_obj
+            self.state.rank = rank
+        else:
+            self.state.population_parm[:] = population_parm
+            self.state.population_obj[:] = population_obj
+            self.state.rank[:] = rank
 
         if self.opt_params.adaptive_population_size:
             self.update_population_size()
