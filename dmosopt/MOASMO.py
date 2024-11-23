@@ -443,7 +443,7 @@ def epoch(
         is_duplicate = MOEA.get_duplicates(best_x, x_0)
         best_x = best_x[~is_duplicate]
         best_y = best_y[~is_duplicate]
-        D = MOEA.crowding_distance(best_y)
+        D = MOEA.crowding_distance_metric(best_y)
         idxr = D.argsort()[::-1][:N_resample]
         x_resample = best_x[idxr, :]
         y_pred = best_y[idxr, :]

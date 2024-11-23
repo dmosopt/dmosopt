@@ -8,7 +8,7 @@ from dmosopt.MOEA import (
     MOEA,
     mutation,
     sortMO,
-    crowding_distance,
+    crowding_distance_metric,
     remove_worst,
     remove_duplicates,
 )
@@ -200,7 +200,7 @@ class SMPSO(MOEA):
         pop_slices = self.pop_slices
 
         for sl in pop_slices:
-            D = crowding_distance(y_gen[sl])
+            D = crowding_distance_metric(y_gen[sl])
             velocity[sl] = velocity_vector(
                 local_random, population_parm[sl], velocity[sl], x_gen[sl], D, xlb, xub
             )
