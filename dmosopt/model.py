@@ -5,7 +5,7 @@ from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteKernel
 from scipy.cluster.vq import kmeans2
-from dmosopt.MOEA import top_k_MO
+from dmosopt.MOEA import top_k_MO, filter_samples
 
 try:
     import gpflow
@@ -255,9 +255,10 @@ try:
 
             self.eval()
             self.likelihood.eval()
-            with gpytorch.settings.fast_computations(
-                log_prob=False, solves=False
-            ), torch.no_grad():
+            with (
+                gpytorch.settings.fast_computations(log_prob=False, solves=False),
+                torch.no_grad(),
+            ):
                 means, variances = [], []
                 for x_batch in in_loader:
                     if self.use_cuda:
@@ -423,9 +424,10 @@ try:
             self.eval()
             self.likelihood.eval()
 
-            with gpytorch.settings.fast_computations(
-                log_prob=False, solves=False
-            ), torch.no_grad():
+            with (
+                gpytorch.settings.fast_computations(log_prob=False, solves=False),
+                torch.no_grad(),
+            ):
                 means, variances = [], []
                 for x_batch in in_loader:
                     if self.use_cuda:
@@ -652,6 +654,7 @@ class MDSPP_Matern:
         batch_size=10,
         return_mean_variance=False,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -675,9 +678,10 @@ class MDSPP_Matern:
         self.logger = logger
         self.return_mean_variance = return_mean_variance
 
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
+
         xin, yin = top_k_MO(xin, yin, top_k)
-        
-        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -953,6 +957,7 @@ class MDGP_Matern:
         batch_size=10,
         return_mean_variance=False,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -976,9 +981,10 @@ class MDGP_Matern:
         self.logger = logger
         self.return_mean_variance = return_mean_variance
 
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
+
         xin, yin = top_k_MO(xin, yin, top_k)
-        
-        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -1250,6 +1256,7 @@ class MEGP_Matern:
         min_loss_pct_change=0.1,
         return_mean_variance=False,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -1273,9 +1280,10 @@ class MEGP_Matern:
         self.logger = logger
         self.return_mean_variance = return_mean_variance
 
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
+
         xin, yin = top_k_MO(xin, yin, top_k)
-        
-        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -1308,7 +1316,7 @@ class MEGP_Matern:
                 for i in range(yin.shape[1])
             )
         )
-        
+
         train_x = torch.from_numpy(xn)
 
         if logger is not None:
@@ -1540,6 +1548,7 @@ class EGP_Matern:
         return_mean_variance=False,
         batch_size=None,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -1563,9 +1572,10 @@ class EGP_Matern:
         self.logger = logger
         self.return_mean_variance = return_mean_variance
 
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
+
         xin, yin = top_k_MO(xin, yin, top_k)
-        
-        yin = np.nan_to_num(yin)
 
         n_devices = None
         if self.use_cuda:
@@ -1833,6 +1843,7 @@ class CRV_Matern:
         min_elbo_pct_change=0.1,
         return_mean_variance=False,
         num_latent_gps=None,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -1852,9 +1863,10 @@ class CRV_Matern:
         self.logger = logger
         self.return_mean_variance = return_mean_variance
 
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
+
         xin, yin = top_k_MO(xin, yin, top_k)
-        
-        yin = np.nan_to_num(yin)
 
         N = xin.shape[0]
         D = xin.shape[1]
@@ -2051,6 +2063,7 @@ class SIV_Matern:
         min_elbo_pct_change=1.0,
         return_mean_variance=False,
         num_latent_gps=None,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2070,9 +2083,10 @@ class SIV_Matern:
         self.logger = logger
         self.return_mean_variance = return_mean_variance
 
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
+
         xin, yin = top_k_MO(xin, yin, top_k)
-        
-        yin = np.nan_to_num(yin)
 
         N = xin.shape[0]
         D = xin.shape[1]
@@ -2258,6 +2272,7 @@ class SPV_Matern:
         min_elbo_pct_change=1.0,
         num_latent_gps=None,
         return_mean_variance=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2276,6 +2291,9 @@ class SPV_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2465,6 +2483,7 @@ class SVGP_Matern:
         n_iter=30000,
         min_elbo_pct_change=1.0,
         return_mean_variance=True,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2483,6 +2502,9 @@ class SVGP_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2672,6 +2694,7 @@ class VGP_Matern:
         n_iter=3000,
         min_elbo_pct_change=0.1,
         return_mean_variance=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2690,6 +2713,9 @@ class VGP_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2846,6 +2872,7 @@ class GPR_Matern:
         length_scale_bounds=(1e-3, 100.0),
         anisotropic=False,
         return_mean_variance=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2856,6 +2883,9 @@ class GPR_Matern:
         self.xrg = xub - xlb
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
