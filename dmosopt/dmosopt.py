@@ -1464,7 +1464,8 @@ class DistOptimizer:
                                 optimizer.name,
                                 optimizer.opt_parameters,
                             )
-        self.save_stats(problem_id, epoch)
+        if self.save:
+            self.save_stats(problem_id, epoch)
 
         self.epoch_count = self.epoch_count + 1
         return self.epoch_count
