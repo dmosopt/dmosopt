@@ -442,7 +442,7 @@ def remove_duplicates(population_parm, population_obj, eps=1e-16):
     return population_parm[~is_duplicate, :], population_obj[~is_duplicate, :]
 
 
-def filter_samples(y, *companion_arrays, nan="remove", outliers='ignore'):
+def filter_samples(y, *companion_arrays, nan="remove", outliers="ignore"):
     mask = slice(None)
     if nan == "max":
         # replace NaNs with maximum
@@ -453,17 +453,17 @@ def filter_samples(y, *companion_arrays, nan="remove", outliers='ignore'):
         mask = ~np.any(np.isnan(y), axis=1)
     else:
         y = np.nan_to_num(y, nan=nan)
-    
-    if outliers == 'zscore':
+
+    if outliers == "zscore":
         ylog = np.log(y + 1)
         ylmean = np.mean(ylog, axis=0)
         ylstd = np.std(ylog, axis=0)
         zscores = (ylog - ylmean) / ylstd
         mask = ~np.any(np.abs(zscores) > 2, axis=1)
 
-    return (
-        sample[mask] if sample is not None else None
-        for sample in y + list(companion_arrays)
+    return tuple(
+        [y]
+        + [sample[mask] if sample is not None else None for sample in companion_arrays]
     )
 
 
