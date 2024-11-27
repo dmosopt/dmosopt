@@ -462,7 +462,7 @@ def filter_samples(y, *companion_arrays, nan="remove", outliers="ignore"):
         mask = ~np.any(np.abs(zscores) > 2, axis=1)
 
     return tuple(
-        [y]
+        [y[mask]]
         + [sample[mask] if sample is not None else None for sample in companion_arrays]
     )
 
