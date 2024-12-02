@@ -2,6 +2,49 @@
 
 Distributed surrogate based multi-objective optimization.
 
+*dmosopt* is a powerful Python library for performing distributed
+multi-objective optimization, with a focus on surrogate-based
+approaches. It provides a flexible and efficient framework for
+optimizing complex objective functions, especially in scenarios where
+evaluations are expensive or time-consuming.
+
+## Introduction to the dmosopt Optimization API
+
+### Key Features
+
+- **Distributed Optimization**: `dmosopt` is designed to run
+  optimization tasks across multiple workers, allowing for efficient
+  parallelization and scalability. It leverages the
+  [distwq](https://github.com/iraikov/distwq) library for distributed
+  task management.
+
+- **Surrogate Modeling**: The library supports various surrogate
+  modeling techniques, such as Gaussian Process Regression (GPR), to
+  approximate the objective function. This enables efficient
+  exploration of the search space without requiring extensive
+  evaluations of the actual objective.
+
+- **Adaptive Sampling**: `dmosopt` implements adaptive sampling
+  strategies to intelligently select the next points to evaluate based
+  on the surrogate model's predictions and uncertainties. This helps
+  balance exploration and exploitation during the optimization
+  process.
+
+- **Flexible Objective Functions**: The API allows users to define
+  their own objective functions, which can be single- or
+  multi-objective. 
+
+- **Termination Criteria**: `dmosopt` provides configurable
+  termination criteria, such as a maximum number of iterations or a
+  convergence threshold, to control when the optimization process
+  should stop.
+
+- **Detailed recording of model parameters and objectives**: the
+  output file format is
+  [HDF5](https://en.wikipedia.org/wiki/Hierarchical_Data_Format),
+  supporting high-performance, parallel data access.
+
+
 [Documentation](https://dmosopt.github.io/dmosopt/)
 
 
@@ -82,8 +125,33 @@ if __name__ == '__main__':
         plt.savefig("example_dmosopt_zdt1.svg")
 ```
 
+
+In this example:
+
+1. We define the `objective_function` that takes a dictionary of
+   parameters and returns the objective value(s).
+
+2. We specify the `parameter_space`, indicating the ranges and types
+   of the parameters to optimize.
+   
+3. We create a dictionary `dopt_params` with the necessary settings,
+   including the objective function, parameter space, number of
+   epochs, and population size.
+
+4. The `opt_id` serves a unique namespace for the resulting output
+   file that captures the best solutions as well as various meta data
+   about the optimization progress.
+   
+5. Finally, we call `dmosopt.run()` with the optimization parameters
+   and retrieve the best parameters and corresponding objective
+   values.
+
+
 ## Acknowledgements
 
 dmosopt is based on MO-ASMO as described in the following paper:
 
-Gong, W., Q. Duan, J. Li, C. Wang, Z. Di, A. Ye, C. Miao, and Y. Dai (2016), Multiobjective adaptive surrogate modeling-based optimization for parameter estimation of large, complex geophysical models, Water Resour. Res., 52(3), 1984-2008. doi:10.1002/2015WR018230.
+Gong, W., Q. Duan, J. Li, C. Wang, Z. Di, A. Ye, C. Miao, and Y. Dai
+(2016), Multiobjective adaptive surrogate modeling-based optimization
+for parameter estimation of large, complex geophysical models, Water
+Resour. Res., 52(3), 1984-2008. doi:10.1002/2015WR018230.
