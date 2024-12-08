@@ -2870,6 +2870,8 @@ class GPR_Matern:
         optimizer="sceua",
         seed=None,
         length_scale_bounds=(1e-3, 100.0),
+        constant_kernel_bounds=(1e-4, 1e3),
+        noise_level_bounds=(1e-9, 1e-2),
         anisotropic=False,
         return_mean_variance=False,
         nan="remove",
@@ -2900,9 +2902,9 @@ class GPR_Matern:
         length_scale = 0.5
         if anisotropic:
             length_scale = np.asarray([0.5] * nInput)
-        kernel = ConstantKernel(1, (0.01, 100.0)) * Matern(
+        kernel = ConstantKernel(1, constant_kernel_bounds) * Matern(
             length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=2.5
-        ) + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 0.1))
+        ) + WhiteKernel(noise_level=1e-6, noise_level_bounds=noise_level_bounds)
         smlist = []
         for i in range(nOutput):
             if logger is not None:
@@ -2962,7 +2964,9 @@ class GPR_RBF:
         xub,
         optimizer="sceua",
         seed=None,
-        length_scale_bounds=(1e-2, 100.0),
+        length_scale_bounds=(1e-3, 100.0),
+        constant_kernel_bounds=(1e-4, 1e3),
+        noise_level_bounds=(1e-9, 1e-2),
         anisotropic=False,
         return_mean_variance=False,
         logger=None,
@@ -2975,7 +2979,7 @@ class GPR_RBF:
         self.return_mean_variance = return_mean_variance
         self.logger = logger
 
-        N = x.shape[0]
+        N = xin.shape[0]
         x = np.zeros_like(xin)
         y = np.copy(yin)
         for i in range(N):
@@ -2986,9 +2990,9 @@ class GPR_RBF:
         length_scale = 0.5
         if anisotropic:
             length_scale = np.asarray([0.5] * nInput)
-        kernel = ConstantKernel(1, (0.01, 100)) * RBF(
+        kernel = ConstantKernel(1, constant_kernel_bounds) * RBF(
             length_scale=length_scale, length_scale_bounds=length_scale_bounds
-        ) + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 1e-4))
+        ) + WhiteKernel(noise_level=1e-5, noise_level_bounds=noise_level_bounds)
         smlist = []
         for i in range(nOutput):
             if logger is not None:
