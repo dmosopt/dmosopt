@@ -5,7 +5,7 @@ from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, Matern, ConstantKernel, WhiteKernel
 from scipy.cluster.vq import kmeans2
-from dmosopt.MOEA import top_k_MO
+from dmosopt.MOEA import top_k_MO, filter_samples
 
 try:
     import gpflow
@@ -255,9 +255,10 @@ try:
 
             self.eval()
             self.likelihood.eval()
-            with gpytorch.settings.fast_computations(
-                log_prob=False, solves=False
-            ), torch.no_grad():
+            with (
+                gpytorch.settings.fast_computations(log_prob=False, solves=False),
+                torch.no_grad(),
+            ):
                 means, variances = [], []
                 for x_batch in in_loader:
                     if self.use_cuda:
@@ -423,9 +424,10 @@ try:
             self.eval()
             self.likelihood.eval()
 
-            with gpytorch.settings.fast_computations(
-                log_prob=False, solves=False
-            ), torch.no_grad():
+            with (
+                gpytorch.settings.fast_computations(log_prob=False, solves=False),
+                torch.no_grad(),
+            ):
                 means, variances = [], []
                 for x_batch in in_loader:
                     if self.use_cuda:
@@ -652,6 +654,7 @@ class MDSPP_Matern:
         batch_size=10,
         return_mean_variance=False,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -674,6 +677,9 @@ class MDSPP_Matern:
         )
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -951,6 +957,7 @@ class MDGP_Matern:
         batch_size=10,
         return_mean_variance=False,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -973,6 +980,9 @@ class MDGP_Matern:
         )
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -1246,6 +1256,7 @@ class MEGP_Matern:
         min_loss_pct_change=0.1,
         return_mean_variance=False,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -1268,6 +1279,9 @@ class MEGP_Matern:
         )
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -1298,10 +1312,11 @@ class MEGP_Matern:
         # Remove mean and make unit variance
         yn = np.column_stack(
             tuple(
-                (yin[:, i] - self.y_train_mean[i]) / self.y_train_std[i]
+                (yin[:, i] - self.y_train_mean[i]) / (self.y_train_std[i] + 1e-12)
                 for i in range(yin.shape[1])
             )
         )
+
         train_x = torch.from_numpy(xn)
 
         if logger is not None:
@@ -1533,6 +1548,7 @@ class EGP_Matern:
         return_mean_variance=False,
         batch_size=None,
         use_cuda=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -1555,6 +1571,9 @@ class EGP_Matern:
 
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -1824,6 +1843,7 @@ class CRV_Matern:
         min_elbo_pct_change=0.1,
         return_mean_variance=False,
         num_latent_gps=None,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -1842,6 +1862,9 @@ class CRV_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2040,6 +2063,7 @@ class SIV_Matern:
         min_elbo_pct_change=1.0,
         return_mean_variance=False,
         num_latent_gps=None,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2058,6 +2082,9 @@ class SIV_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2245,6 +2272,7 @@ class SPV_Matern:
         min_elbo_pct_change=1.0,
         num_latent_gps=None,
         return_mean_variance=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2263,6 +2291,9 @@ class SPV_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2452,6 +2483,7 @@ class SVGP_Matern:
         n_iter=30000,
         min_elbo_pct_change=1.0,
         return_mean_variance=True,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2470,6 +2502,9 @@ class SVGP_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2659,6 +2694,7 @@ class VGP_Matern:
         n_iter=3000,
         min_elbo_pct_change=0.1,
         return_mean_variance=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2677,6 +2713,9 @@ class VGP_Matern:
         self.batch_size = batch_size
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2831,8 +2870,11 @@ class GPR_Matern:
         optimizer="sceua",
         seed=None,
         length_scale_bounds=(1e-3, 100.0),
+        constant_kernel_bounds=(1e-4, 1e3),
+        noise_level_bounds=(1e-9, 1e-2),
         anisotropic=False,
         return_mean_variance=False,
+        nan="remove",
         top_k=None,
         logger=None,
     ):
@@ -2843,6 +2885,9 @@ class GPR_Matern:
         self.xrg = xub - xlb
         self.logger = logger
         self.return_mean_variance = return_mean_variance
+
+        if nan is not None:
+            yin, xin = filter_samples(yin, xin, nan=nan)
 
         xin, yin = top_k_MO(xin, yin, top_k)
 
@@ -2857,9 +2902,9 @@ class GPR_Matern:
         length_scale = 0.5
         if anisotropic:
             length_scale = np.asarray([0.5] * nInput)
-        kernel = ConstantKernel(1, (0.01, 100.0)) * Matern(
+        kernel = ConstantKernel(1, constant_kernel_bounds) * Matern(
             length_scale=length_scale, length_scale_bounds=length_scale_bounds, nu=2.5
-        ) + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 0.1))
+        ) + WhiteKernel(noise_level=1e-6, noise_level_bounds=noise_level_bounds)
         smlist = []
         for i in range(nOutput):
             if logger is not None:
@@ -2919,7 +2964,9 @@ class GPR_RBF:
         xub,
         optimizer="sceua",
         seed=None,
-        length_scale_bounds=(1e-2, 100.0),
+        length_scale_bounds=(1e-3, 100.0),
+        constant_kernel_bounds=(1e-4, 1e3),
+        noise_level_bounds=(1e-9, 1e-2),
         anisotropic=False,
         return_mean_variance=False,
         logger=None,
@@ -2932,7 +2979,7 @@ class GPR_RBF:
         self.return_mean_variance = return_mean_variance
         self.logger = logger
 
-        N = x.shape[0]
+        N = xin.shape[0]
         x = np.zeros_like(xin)
         y = np.copy(yin)
         for i in range(N):
@@ -2943,9 +2990,9 @@ class GPR_RBF:
         length_scale = 0.5
         if anisotropic:
             length_scale = np.asarray([0.5] * nInput)
-        kernel = ConstantKernel(1, (0.01, 100)) * RBF(
+        kernel = ConstantKernel(1, constant_kernel_bounds) * RBF(
             length_scale=length_scale, length_scale_bounds=length_scale_bounds
-        ) + WhiteKernel(noise_level=1e-5, noise_level_bounds=(1e-8, 1e-4))
+        ) + WhiteKernel(noise_level=1e-5, noise_level_bounds=noise_level_bounds)
         smlist = []
         for i in range(nOutput):
             if logger is not None:
