@@ -13,7 +13,7 @@ from dmosopt import MOEA
 import dmosopt.MOASMO as opt
 from dmosopt.datatypes import (
     OptProblem,
-    ParamSpec,
+    ParameterSpace,
     EvalEntry,
     EvalRequest,
     EpochResults,
@@ -689,17 +689,15 @@ class DistOptimizer:
                     raise FileNotFoundError(file_path)
 
         dim = 0
-        param_names, is_int, lo_bounds, hi_bounds = [], [], [], []
+        param_space = None
         if space is not None:
-            dim = len(space)
-            for parm, conf in space.items():
-                param_names.append(parm)
-                lo, hi = conf
-                is_int.append(type(lo) == int and type(hi) == int)
-                lo_bounds.append(lo)
-                hi_bounds.append(hi)
-                if parm in problem_parameters:
-                    del problem_parameters[parm]
+            param_space = ParameterSpace.from_dict(space)
+
+        if problem_parameters is not None:
+            problem_parameters = ParameterSpace.from_dict(
+                problem_parameters, is_value_only=True
+            )
+
         old_evals = {}
         max_epoch = -1
         stored_random_seed = None
@@ -709,16 +707,15 @@ class DistOptimizer:
                     stored_random_seed,
                     max_epoch,
                     old_evals,
-                    param_names,
-                    is_int,
-                    lo_bounds,
-                    hi_bounds,
+                    param_space,
                     objective_names,
                     feature_dtypes,
                     constraint_names,
                     problem_parameters,
                     problem_ids,
-                ) = init_from_h5(file_path, param_names, opt_id, self.logger)
+                ) = init_from_h5(
+                    file_path, param_space.parameter_names, opt_id, self.logger
+                )
 
         if stored_random_seed is not None:
             if local_random is not None:
@@ -728,13 +725,14 @@ class DistOptimizer:
                     )
             self.local_random = default_rng(seed=stored_random_seed)
 
-        assert dim > 0
-        param_spec = ParamSpec(
-            bound1=np.asarray(lo_bounds),
-            bound2=np.asarray(hi_bounds),
-            is_integer=is_int,
-        )
-        self.param_spec = param_spec
+        if problem_parameters is not None:
+            assert set(param_space.parameter_names).isdisjoint(
+                set(problem_parameters.parameter_names)
+            )
+
+        assert param_space.n_parameters > 0
+        self.param_space = param_space
+        self.param_names = param_space.parameter_names
 
         assert objective_names is not None
         self.objective_names = objective_names
@@ -746,19 +744,18 @@ class DistOptimizer:
         self.n_initial = n_initial
         self.initial_maxiter = initial_maxiter
         self.initial_method = initial_method
-        self.problem_parameters, self.param_names = problem_parameters, param_names
-        self.is_int = is_int
+        self.problem_parameters = problem_parameters
         self.file_path, self.save = file_path, save
 
         for optimizer_kwargs in self.optimizer_kwargs:
             di_crossover = optimizer_kwargs.get("di_crossover", None)
             if isinstance(di_crossover, dict):
-                di_crossover = np.asarray([di_crossover[p] for p in self.param_names])
+                di_crossover = param_space.flatten(di_crossover)
                 optimizer_kwargs["di_crossover"] = di_crossover
 
             di_mutation = optimizer_kwargs.get("di_mutation", None)
             if isinstance(di_mutation, dict):
-                di_mutation = np.asarray([di_mutation[p] for p in self.param_names])
+                di_mutation = param_space.flatten(di_mutation)
                 optimizer_kwargs["di_mutation"] = di_mutation
 
         self.epoch_count = 0
@@ -779,8 +776,7 @@ class DistOptimizer:
                 eval_obj_fun_mp,
                 obj_fun,
                 self.problem_parameters,
-                self.param_names,
-                self.is_int,
+                self.param_space,
                 self.obj_fun_args,
                 problem_ids,
             )
@@ -789,8 +785,7 @@ class DistOptimizer:
                 eval_obj_fun_sp,
                 obj_fun,
                 self.problem_parameters,
-                self.param_names,
-                self.is_int,
+                self.param_space,
                 self.obj_fun_args,
                 0,
             )
@@ -820,7 +815,7 @@ class DistOptimizer:
                     self.opt_id,
                     self.problem_ids,
                     self.has_problem_ids,
-                    self.param_spec,
+                    self.param_space,
                     self.param_names,
                     self.objective_names,
                     self.feature_dtypes,
@@ -890,7 +885,7 @@ class DistOptimizer:
             self.objective_names,
             self.feature_dtypes,
             self.constraint_names,
-            self.param_spec,
+            self.param_space,
             self.eval_fun,
             logger=self.logger,
         )
@@ -990,11 +985,10 @@ class DistOptimizer:
                 self.opt_id,
                 self.problem_ids,
                 self.has_problem_ids,
-                self.param_names,
                 self.objective_names,
                 self.feature_dtypes,
                 self.constraint_names,
-                self.param_spec,
+                self.param_space,
                 finished_evals,
                 self.problem_parameters,
                 self.metadata,
@@ -1495,15 +1489,99 @@ def h5_concat_dataset(dset, data):
     return dset
 
 
+def create_param_paths_dtype(
+    parameter_enum_dtype: np.dtype, max_depth: int = 10, max_name_length: int = 128
+) -> np.dtype:
+    """
+    Create a NumPy dtype for storing parameter paths in HDF5.
+
+    Args:
+        parameter_enum_dtype: parameter enumeration type
+        max_depth: Maximum nesting depth of parameters
+        max_name_length: Maximum length of each parameter name component
+
+    Returns:
+        Structured dtype for parameter paths with fields:
+        - path_length: Number of components in path
+        - components: Fixed-size array of fixed-length strings
+
+    """
+    return np.dtype(
+        [
+            ("parameter", parameter_enum_dtype),
+            ("path_length", np.int32),
+            ("components", f"S{max_name_length}", (max_depth,)),
+        ]
+    )
+
+
+def param_paths_to_array(
+    param_mapping: Dict[str, int],
+    parameter_enum_dtype: np.dtype,
+    param_paths: Dict[str, List[str]],
+    max_depth: int = 10,
+    max_name_length: int = 128,
+) -> np.ndarray:
+    """
+    Convert parameter paths dictionary to structured array.
+
+    Args:
+        param_paths: Dictionary mapping full parameter names to path components
+        max_depth: Maximum allowed path depth
+        max_name_length: Maximum allowed length for each path component
+
+    Returns:
+        Structured array containing parameter paths
+    """
+    dtype = create_param_paths_dtype(parameter_enum_dtype, max_depth, max_name_length)
+    arr = np.zeros(len(param_paths), dtype=dtype)
+
+    for i, (name, path) in enumerate(param_paths.items()):
+        if len(path) > max_depth:
+            raise ValueError(f"Path depth {len(path)} exceeds maximum {max_depth}")
+        if any(len(comp) > max_name_length for comp in path):
+            raise ValueError(f"Path component exceeds maximum length {max_name_length}")
+
+        arr[i]["parameter"] = param_mapping[name]
+        arr[i]["path_length"] = len(path)
+        for j, component in enumerate(path):
+            arr[i]["components"][j] = component.encode("ascii")
+
+    return arr
+
+
+def array_to_param_paths(arr: np.ndarray) -> Dict[str, List[str]]:
+    """
+    Convert structured array back to parameter paths dictionary.
+
+    Args:
+        arr: Structured array containing parameter paths
+
+    Returns:
+        Dictionary mapping full parameter names to path components
+    """
+    param_paths = {}
+
+    for row in arr:
+        path_length = row["path_length"]
+        components = [
+            comp.decode("ascii").rstrip("\x00")
+            for comp in row["components"][:path_length]
+        ]
+        full_name = ".".join(components)
+        param_paths[full_name] = components
+
+    return param_paths
+
+
 def h5_init_types(
     f,
     opt_id,
-    param_names,
     objective_names,
     feature_dtypes,
     constraint_names,
     problem_parameters,
-    spec,
+    parameter_space,
     surrogate_mean_variance=False,
 ):
     opt_grp = h5_get_group(f, opt_id)
@@ -1611,37 +1689,46 @@ def h5_init_types(
             dset[:] = a
 
     # create HDF5 types describing the parameter specification
-    param_keys = set(param_names)
-    param_keys.update(problem_parameters.keys())
+    param_keys = set(problem_parameters.parameter_names)
+    param_keys.update(parameter_space.parameter_names)
 
     param_mapping = {name: idx for (idx, name) in enumerate(param_keys)}
 
     dt = h5py.enum_dtype(param_mapping, basetype=np.uint16)
     opt_grp["parameter_enum"] = dt
 
-    dt = np.dtype({"names": param_names, "formats": [np.float32] * len(param_names)})
+    dt = np.dtype(
+        {"names": list(param_keys), "formats": [np.float32] * len(param_keys)}
+    )
     opt_grp["parameter_space_type"] = dt
 
-    dt = np.dtype([("parameter", opt_grp["parameter_enum"]), ("value", np.float32)])
+    dt = np.dtype(
+        [
+            ("parameter", opt_grp["parameter_enum"]),
+            ("is_integer", bool),
+            ("value", np.float32),
+        ]
+    )
     opt_grp["problem_parameters_type"] = dt
 
     dset = h5_get_dataset(
         opt_grp,
         "problem_parameters",
-        maxshape=(len(problem_parameters),),
+        maxshape=(problem_parameters.n_parameters,),
         dtype=opt_grp["problem_parameters_type"].dtype,
     )
-    dset.resize((len(problem_parameters),))
+    dset.resize((problem_parameters.n_parameters,))
     a = np.zeros(
-        len(problem_parameters), dtype=opt_grp["problem_parameters_type"].dtype
+        problem_parameters.n_parameters, dtype=opt_grp["problem_parameters_type"].dtype
     )
     idx = 0
-    for idx, (parm, val) in enumerate(problem_parameters.items()):
-        a[idx]["parameter"] = param_mapping[parm]
-        a[idx]["value"] = val
+    for idx, parm in enumerate(problem_parameters.items):
+        a[idx]["parameter"] = param_mapping[parm.name]
+        a[idx]["value"] = parm.value
+        a[idx]["is_integer"] = parm.is_integer
     dset[:] = a
 
-    dt = np.dtype(
+    parameter_spec_dtype = np.dtype(
         [
             ("parameter", opt_grp["parameter_enum"]),
             ("is_integer", bool),
@@ -1649,28 +1736,41 @@ def h5_init_types(
             ("upper", np.float32),
         ]
     )
-    opt_grp["parameter_spec_type"] = dt
-
-    is_integer = np.asarray(spec.is_integer, dtype=bool)
-    upper = np.asarray(spec.bound2, dtype=np.float32)
-    lower = np.asarray(spec.bound1, dtype=np.float32)
+    opt_grp["parameter_spec_type"] = parameter_spec_dtype
 
     dset = h5_get_dataset(
         opt_grp,
         "parameter_spec",
-        maxshape=(len(param_names),),
+        maxshape=(parameter_space.n_parameters,),
         dtype=opt_grp["parameter_spec_type"].dtype,
     )
-    dset.resize((len(param_names),))
-    a = np.zeros(len(param_names), dtype=opt_grp["parameter_spec_type"].dtype)
-    for idx, (parm, is_int, hi, lo) in enumerate(
-        zip(param_names, is_integer, upper, lower)
-    ):
-        a[idx]["parameter"] = param_mapping[parm]
-        a[idx]["is_integer"] = is_int
-        a[idx]["lower"] = lo
-        a[idx]["upper"] = hi
+    dset.resize((parameter_space.n_parameters,))
+    a = np.zeros(
+        parameter_space.n_parameters, dtype=opt_grp["parameter_spec_type"].dtype
+    )
+    for idx, parm in enumerate(parameter_space.items):
+        a[idx]["parameter"] = param_mapping[parm.name]
+        a[idx]["is_integer"] = parm.is_integer
+        a[idx]["lower"] = parm.lower
+        a[idx]["upper"] = parm.upper
     dset[:] = a
+
+    parameter_path_dtype = create_param_paths_dtype(opt_grp["parameter_enum"])
+    opt_grp["parameter_path_type"] = parameter_path_dtype
+    all_parameter_paths = parameter_space.parameter_paths
+    all_parameter_paths.update(problem_parameters.parameter_paths)
+    param_path_array = param_paths_to_array(
+        param_mapping, opt_grp["parameter_enum"], all_parameter_paths
+    )
+
+    dset = h5_get_dataset(
+        opt_grp,
+        "parameter_paths",
+        maxshape=(len(all_parameter_paths),),
+        dtype=opt_grp["parameter_path_type"].dtype,
+    )
+    dset.resize((len(param_path_array),))
+    dset[:] = param_path_array
 
 
 def h5_load_raw(input_file, opt_id):
@@ -1708,13 +1808,30 @@ def h5_load_raw(input_file, opt_id):
             feature_name_dict[spec[0]] for spec in iter(opt_grp["feature_spec"])
         ]
 
+    parameter_paths = None
+    if "parameter_paths" in opt_grp:
+        param_path_array = opt_grp["parameter_paths"][:]
+        parameter_paths = array_to_param_paths(param_path_array)
+
     parameter_enum_dict = h5py.check_enum_dtype(opt_grp["parameter_enum"].dtype)
     parameters_idx_dict = {parm: idx for parm, idx in parameter_enum_dict.items()}
     parameters_name_dict = {idx: parm for parm, idx in parameters_idx_dict.items()}
 
-    problem_parameters = {
-        parameters_name_dict[idx]: val for idx, val in opt_grp["problem_parameters"]
-    }
+    problem_parameters = {}
+    for idx, val in opt_grp["problem_parameters"]:
+        param_name = [parameters_name_dict[idx]]
+        param_dict = problem_parameters
+        if parameter_paths is not None:
+            param_path = parameter_paths[param_name]
+            for comp in param_path:
+                if comp in param_dict:
+                    param_dict = param_dict[comp]
+                else:
+                    new_param_dict = {}
+                    param_dict[comp] = new_param_dict
+                    param_dict = new_param_dict
+        param_dict[param_name] = val["value"]
+
     parameter_specs = [
         (parameters_name_dict[spec[0]], tuple(spec)[1:])
         for spec in iter(opt_grp["parameter_spec"])
@@ -1757,18 +1874,28 @@ def h5_load_raw(input_file, opt_id):
 
     f.close()
 
+    raw_spec = {}
     param_names = []
-    is_integer = []
-    lower = []
-    upper = []
-    for parm, spec in parameter_specs:
-        param_names.append(parm)
-        is_int, lo, hi = spec
-        is_integer.append(is_int)
-        lower.append(lo)
-        upper.append(hi)
+    for (param_name, spec) in parameter_specs:
 
-    raw_spec = (is_integer, lower, upper)
+        param_names.append(param_name)
+
+        param_path = None
+        param_dict = raw_spec
+        if parameter_paths is not None:
+            param_path = parameter_paths[param_name]
+            for comp in param_path[:-1]:
+                if comp in param_dict:
+                    param_dict = param_dict[comp]
+                else:
+                    new_param_dict = {}
+                    param_dict[comp] = new_param_dict
+                    param_dict = new_param_dict
+            param_name = param_path[-1]
+
+        is_int, lo, hi = spec
+        param_dict[param_name] = [lo, hi, is_int]
+
     info = {
         "random_seed": random_seed,
         "objectives": objective_names,
@@ -1797,11 +1924,10 @@ def h5_load_all(file_path, opt_id):
         params, problem
     Assumes the structure is located in group /{opt_id}
     Returns
-    (param_spec, function_eval, dict, prev_best)
+    (param_space, function_eval, dict, prev_best)
       where prev_best: np.array[result, param1, param2, ...]
     """
     raw_spec, raw_problem_results, info = h5_load_raw(file_path, opt_id)
-    is_integer, lo_bounds, hi_bounds = raw_spec
     param_names = info["params"]
     objective_names = info["objectives"]
     feature_names = info["features"]
@@ -1813,7 +1939,6 @@ def h5_load_all(file_path, opt_id):
     n_constraints = 0
     if constraint_names is not None:
         n_constraints = len(constraint_names)
-    spec = ParamSpec(bound1=lo_bounds, bound2=hi_bounds, is_integer=is_integer)
     evals = {problem_id: [] for problem_id in raw_problem_results}
     for problem_id in raw_problem_results:
         problem_evals = []
@@ -1841,13 +1966,14 @@ def h5_load_all(file_path, opt_id):
                 c_i = list(cs[i])
             problem_evals.append(EvalEntry(epoch_i, x_i, y_i, f_i, c_i, y_pred_i))
         evals[problem_id] = problem_evals
-    return raw_spec, spec, evals, info
+    return raw_spec, evals, info
 
 
 def init_from_h5(file_path, param_names, opt_id, logger=None):
     # Load progress and settings from file, then compare each
     # restored setting with settings specified by args (if any)
-    old_raw_spec, old_spec, old_evals, info = h5_load_all(file_path, opt_id)
+    raw_spec, old_evals, info = h5_load_all(file_path, opt_id)
+    param_space = ParameterSpace.from_dict(raw_spec)
     saved_params = info["params"]
     max_epoch = -1
     for problem_id in old_evals:
@@ -1869,11 +1995,13 @@ def init_from_h5(file_path, param_names, opt_id, logger=None):
                 f"{param_names}. Using saved."
             )
     params = saved_params
-    raw_spec = old_raw_spec
-    is_int, lo_bounds, hi_bounds = raw_spec
-    if len(params) != len(is_int):
-        raise ValueError(f"Params {params} and spec {raw_spec} are of different length")
-    problem_parameters = info["problem_parameters"]
+    if len(params) != len(param_names):
+        raise ValueError(
+            f"Params {params} and spec {param_names} are of different length"
+        )
+    problem_parameters = ParameterSpace.from_dict(
+        info["problem_parameters"], is_value_only=True
+    )
     objective_names = info["objectives"]
     feature_names = info["features"]
     constraint_names = info["constraints"]
@@ -1884,10 +2012,7 @@ def init_from_h5(file_path, param_names, opt_id, logger=None):
         random_seed,
         max_epoch,
         old_evals,
-        params,
-        is_int,
-        lo_bounds,
-        hi_bounds,
+        param_space,
         objective_names,
         feature_names,
         constraint_names,
@@ -1900,11 +2025,10 @@ def save_to_h5(
     opt_id,
     problem_ids,
     has_problem_ids,
-    param_names,
     objective_names,
     feature_names,
     constraint_names,
-    spec,
+    parameter_space,
     evals,
     problem_parameters,
     metadata,
@@ -1922,11 +2046,10 @@ def save_to_h5(
         h5_init_types(
             f,
             opt_id,
-            param_names,
             objective_names,
             problem_parameters,
             constraint_names,
-            spec,
+            parameter_space,
             surrogate_mean_variance=surrogate_mean_variance,
         )
         opt_grp = h5_get_group(f, opt_id)
@@ -2152,7 +2275,7 @@ def init_h5(
     opt_id,
     problem_ids,
     has_problem_ids,
-    spec,
+    parameter_space,
     param_names,
     objective_names,
     feature_dtypes,
@@ -2172,12 +2295,11 @@ def init_h5(
         h5_init_types(
             f,
             opt_id,
-            param_names,
             objective_names,
             feature_dtypes,
             constraint_names,
             problem_parameters,
-            spec,
+            parameter_space,
             surrogate_mean_variance=surrogate_mean_variance,
         )
         opt_grp = h5_get_group(f, opt_id)
@@ -2191,37 +2313,32 @@ def init_h5(
     f.close()
 
 
-def eval_obj_fun_sp(
-    obj_fun, pp, space_params, is_int, obj_fun_args, problem_id, space_vals
-):
+def eval_obj_fun_sp(obj_fun, pp, param_space, obj_fun_args, problem_id, space_vals):
     """
     Objective function evaluation (single problem).
     """
 
     this_space_vals = space_vals[problem_id]
-    for j, key in enumerate(space_params):
-        pp[key] = int(this_space_vals[j]) if is_int[j] else this_space_vals[j]
+    this_pp = dict({item.name: item.value for item in pp.items})
+    this_pp.update(param_space.unflatten(this_space_vals))
 
     if obj_fun_args is None:
         obj_fun_args = ()
     t = time.time()
-    result = obj_fun(pp, *obj_fun_args)
+    result = obj_fun(this_pp, *obj_fun_args)
     return {problem_id: result, "time": time.time() - t}
 
 
-def eval_obj_fun_mp(
-    obj_fun, pp, space_params, is_int, obj_fun_args, problem_ids, space_vals
-):
+def eval_obj_fun_mp(obj_fun, pp, param_space, obj_fun_args, problem_ids, space_vals):
     """
     Objective function evaluation (multiple problems).
     """
 
     mpp = {}
     for problem_id in problem_ids:
-        this_pp = copy.deepcopy(pp)
+        this_pp = dict({item.name: item.value for item in pp.items})
         this_space_vals = space_vals[problem_id]
-        for j, key in enumerate(space_params):
-            this_pp[key] = int(this_space_vals[j]) if is_int[j] else this_space_vals[j]
+        this_pp.update(space_params.unflatten(this_space_vals))
         mpp[problem_id] = this_pp
 
     if obj_fun_args is None:
