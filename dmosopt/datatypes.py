@@ -118,7 +118,7 @@ class ParameterSpace:
                     upper=float(x[1]),
                     is_integer=x[2] if len(x) > 2 else False,
                 )
-            elif isinstance(x, (int, float)) and is_value_only:
+            elif isinstance(x, (int, float, np.float32)) and is_value_only:
                 return ParameterValue(value=float(x), is_integer=isinstance(x, int))
             elif isinstance(x, dict):
                 # Create new ranges dictionary with parsed values

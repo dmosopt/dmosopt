@@ -804,7 +804,10 @@ class DistOptimizer:
 
         self.feature_dtypes = feature_dtypes
         self.feature_names = None
+        print(f"feature_dtypes = {self.feature_dtypes}")
         if feature_dtypes is not None:
+            for dt in feature_dtypes:
+                print(f"dt = {dt}")
             self.feature_names = [dt[0] for dt in feature_dtypes]
 
         self.constraint_names = constraint_names
@@ -1818,8 +1821,8 @@ def h5_load_raw(input_file, opt_id):
     parameters_name_dict = {idx: parm for parm, idx in parameters_idx_dict.items()}
 
     problem_parameters = {}
-    for idx, val in opt_grp["problem_parameters"]:
-        param_name = [parameters_name_dict[idx]]
+    for idx, is_integer, value in opt_grp["problem_parameters"]:
+        param_name = parameters_name_dict[idx]
         param_dict = problem_parameters
         if parameter_paths is not None:
             param_path = parameter_paths[param_name]
@@ -1830,7 +1833,7 @@ def h5_load_raw(input_file, opt_id):
                     new_param_dict = {}
                     param_dict[comp] = new_param_dict
                     param_dict = new_param_dict
-        param_dict[param_name] = val["value"]
+        param_dict[param_name] = value
 
     parameter_specs = [
         (parameters_name_dict[spec[0]], tuple(spec)[1:])
