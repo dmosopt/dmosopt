@@ -206,17 +206,23 @@ class ParameterSpace:
 
         return flat_params
 
-    def unflatten(self, flat_params: np.ndarray) -> Dict:
+    def unflatten(self, flat_params: Optional[np.ndarray] = None) -> Dict:
         """
         Converts flat array to nested parameter dictionary.
 
         Args:
-            flat_params: Array of values in [0,1] for each parameter
+            flat_params: Array of values for each parameter
 
         Returns:
             Nested dictionary of parameter values in original space
         """
         params = {}
+
+        if (flat_params is None) and not self.is_value_space:
+            raise ValueError("Not a value-only parameter space")
+
+        if flat_params is None:
+            return self.unflatten(self.parameter_values)
 
         for i, param_range in enumerate(self._flat_ranges):
 
@@ -345,3 +351,25 @@ class OptProblem(object):
             len(constraint_names) if constraint_names is not None else None
         )
         self.logger = logger
+
+
+def update_nested_dict(base: Dict, update: Dict) -> Dict:
+    """
+    Recursively update a nested dictionary with another nested dictionary.
+
+    Args:
+        base: Base nested dictionary
+        update: Nested dictionary with values to update
+
+    Returns:
+        Updated nested dictionary
+    """
+    result = base.copy()
+    for key, value in update.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            # Recursively update nested dictionaries
+            result[key] = update_nested_dict(result[key], value)
+        else:
+            # Direct update for values or new keys
+            result[key] = value
+    return result
