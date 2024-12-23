@@ -18,6 +18,7 @@ from dmosopt.datatypes import (
     EvalRequest,
     EpochResults,
     StrategyState,
+    update_nested_dict,
 )
 from dmosopt.termination import MultiObjectiveStdTermination
 
@@ -804,10 +805,7 @@ class DistOptimizer:
 
         self.feature_dtypes = feature_dtypes
         self.feature_names = None
-        print(f"feature_dtypes = {self.feature_dtypes}")
         if feature_dtypes is not None:
-            for dt in feature_dtypes:
-                print(f"dt = {dt}")
             self.feature_names = [dt[0] for dt in feature_dtypes]
 
         self.constraint_names = constraint_names
@@ -2322,9 +2320,7 @@ def eval_obj_fun_sp(obj_fun, pp, param_space, obj_fun_args, problem_id, space_va
     """
 
     this_space_vals = space_vals[problem_id]
-    this_pp = dict({item.name: item.value for item in pp.items})
-    this_pp.update(param_space.unflatten(this_space_vals))
-
+    this_pp = update_nested_dict(pp.unflatten(), param_space.unflatten(this_space_vals))
     if obj_fun_args is None:
         obj_fun_args = ()
     t = time.time()
@@ -2339,9 +2335,10 @@ def eval_obj_fun_mp(obj_fun, pp, param_space, obj_fun_args, problem_ids, space_v
 
     mpp = {}
     for problem_id in problem_ids:
-        this_pp = dict({item.name: item.value for item in pp.items})
         this_space_vals = space_vals[problem_id]
-        this_pp.update(space_params.unflatten(this_space_vals))
+        this_pp = update_nested_dict(
+            pp.unflatten(), space_params.unflatten(this_space_vals)
+        )
         mpp[problem_id] = this_pp
 
     if obj_fun_args is None:
