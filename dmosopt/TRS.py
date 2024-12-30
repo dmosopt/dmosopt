@@ -31,7 +31,7 @@ class TrState:
     length_min: float = 0.00001
     length_max: float = 1.0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
-    success_tolerance: int = 0.6
+    success_tolerance: int = 0.5
     Y_best: np.ndarray = np.asarray([np.inf])  # Goal is minimization
     constraint_violation = float("inf")
     restart: bool = False
@@ -142,14 +142,11 @@ class TRS(MOEA):
         # Engineering Optimization, 45(5):529–555, 2013)
 
         prob_perturb = min(20.0 / self.state.tr.dim, 1.0)
-        perturb_selection = local_random.random((self.state.tr.dim,)) <= prob_perturb
-        ind = np.nonzero(perturb_selection)[0]
-        mask = np.zeros((self.opt_params.popsize, self.state.tr.dim), dtype=int)
-        mask[ind, local_random.integers(0, self.state.tr.dim - 1, size=len(ind))] = 1
+        perturb_mask = local_random.random((self.state.tr.dim,)) <= prob_perturb
 
         # Create candidate points
         X_cand = x_centers.copy()
-        X_cand[mask] = pert[mask]
+        X_cand[:, perturb_mask] = pert[:, perturb_mask]
 
         if X_cand.shape[0] < popsize:
             sample = sobol(
@@ -273,7 +270,7 @@ class TRS(MOEA):
             assert len(selected_indices) == k
             chosen[mid_front[selected_indices]] = True
 
-            not_chosen_mask = np.ones(len(mid_front), np.bool)
+            not_chosen_mask = np.ones(len(mid_front), bool)
             not_chosen_mask[selected_indices] = False
             not_chosen[mid_front[not_chosen_mask]] = True
 
