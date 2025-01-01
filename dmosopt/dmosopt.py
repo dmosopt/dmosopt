@@ -1690,8 +1690,9 @@ def h5_init_types(
             dset[:] = a
 
     # create HDF5 types describing the parameter specification
-    param_keys = set(problem_parameters.parameter_names)
-    param_keys.update(parameter_space.parameter_names)
+    problem_parameter_keys = set(problem_parameters.parameter_names)
+    parameter_space_keys = set(parameter_space.parameter_names)
+    param_keys = problem_parameter_keys.union(parameter_space_keys)
 
     param_mapping = {name: idx for (idx, name) in enumerate(param_keys)}
 
@@ -1699,7 +1700,7 @@ def h5_init_types(
     opt_grp["parameter_enum"] = dt
 
     dt = np.dtype(
-        {"names": list(param_keys), "formats": [np.float32] * len(param_keys)}
+        {"names": list(parameter_space_keys), "formats": [np.float32] * len(param_keys)}
     )
     opt_grp["parameter_space_type"] = dt
 
