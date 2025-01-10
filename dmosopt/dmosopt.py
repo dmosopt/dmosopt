@@ -902,7 +902,13 @@ class DistOptimizer:
                 y = np.vstack(old_eval_ys)
                 f = None
                 if self.feature_dtypes is not None:
-                    old_eval_fs = [e.features for e in self.old_evals[problem_id]]
+                    e0 = self.old_evals[problem_id][0]
+                    f_shape = e0.features.shape[0]
+                    if f_shape > 1:
+                        old_eval_fs = [e.features.reshape((1, f_shape))
+                                       for e in self.old_evals[problem_id]]
+                    else:
+                        old_eval_fs = [e.features for e in self.old_evals[problem_id]]
                     f = np.concatenate(old_eval_fs)
                 c = None
                 if self.constraint_names is not None:
