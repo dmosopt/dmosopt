@@ -374,6 +374,7 @@ try:
             # We're going to use a multitask likelihood instead of the standard GaussianLikelihood
             self.likelihood = likelihood
 
+            print(f"num_inducing_points = {num_inducing_points}")
             # Use K-means to initialize inducing points (only helpful for the first layer)
             if num_inducing_points > train_x.shape[0]:
                 num_inducing_points = train_x.shape[0]
@@ -610,6 +611,7 @@ class Model:
         objective=None,
         feasibility=None,
         sensitivity=None,
+        **kwargs
     ):
         self.objective = objective
         self.feasibility = feasibility
@@ -657,6 +659,7 @@ class MDSPP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -944,7 +947,7 @@ class MDGP_Matern:
         xlb,
         xub,
         num_hidden_dims=3,
-        num_inducing_points=None,
+        num_inducing_points=128,
         seed=None,
         gp_lengthscale_bounds=None,
         gp_likelihood_sigma=None,
@@ -960,6 +963,7 @@ class MDGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -1259,6 +1263,7 @@ class MEGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -1551,6 +1556,7 @@ class EGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -1846,6 +1852,7 @@ class CRV_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2066,6 +2073,7 @@ class SIV_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2275,6 +2283,7 @@ class SPV_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2486,6 +2495,7 @@ class SVGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2697,6 +2707,7 @@ class VGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2877,6 +2888,7 @@ class GPR_Matern:
         nan="remove",
         top_k=None,
         logger=None,
+        **kwargs
     ):
         self.nInput = nInput
         self.nOutput = nOutput
@@ -2970,6 +2982,7 @@ class GPR_RBF:
         anisotropic=False,
         return_mean_variance=False,
         logger=None,
+        **kwargs
     ):
         self.nInput = nInput
         self.nOutput = nOutput

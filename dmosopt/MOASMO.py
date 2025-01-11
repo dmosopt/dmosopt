@@ -507,6 +507,10 @@ def train(
             y = y[feasible, :]
             if logger is not None:
                 logger.info(f"Found {len(feasible)} feasible solutions")
+    else:
+            if logger is not None:
+                logger.info(f"Found {len(x)} solutions")
+
 
     x, y = MOEA.remove_duplicates(x, y)
 
