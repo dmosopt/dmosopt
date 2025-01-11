@@ -611,7 +611,7 @@ class Model:
         objective=None,
         feasibility=None,
         sensitivity=None,
-        **kwargs
+        **kwargs,
     ):
         self.objective = objective
         self.feasibility = feasibility
@@ -659,7 +659,7 @@ class MDSPP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -963,7 +963,7 @@ class MDGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -1263,7 +1263,7 @@ class MEGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -1556,7 +1556,7 @@ class EGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpytorch:
             raise RuntimeError(
@@ -1852,7 +1852,7 @@ class CRV_Matern:
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -1983,7 +1983,16 @@ class CRV_Matern:
         @tf.function
         def optim_step():
             natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
-            adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
+            with tf.GradientTape() as tape:
+                # Forward pass
+                tape.watch(gp_model.trainable_variables)
+                loss = svgp_natgrad_loss()
+
+            # Compute gradients
+            gradients = tape.gradient(loss, gp_model.trainable_variables)
+
+            # Update model parameters
+            adam_opt.apply_gradients(zip(gradients, gp_model.trainable_variables))
 
         iterations = n_iter
         elbo_log = []
@@ -2067,13 +2076,13 @@ class SIV_Matern:
         natgrad_gamma=0.1,
         adam_lr=0.01,
         n_iter=30000,
-        min_elbo_pct_change=1.0,
+        min_elbo_pct_change=0.1,
         return_mean_variance=False,
         num_latent_gps=None,
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2193,7 +2202,16 @@ class SIV_Matern:
         @tf.function
         def optim_step():
             natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
-            adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
+            with tf.GradientTape() as tape:
+                # Forward pass
+                tape.watch(gp_model.trainable_variables)
+                loss = svgp_natgrad_loss()
+
+            # Compute gradients
+            gradients = tape.gradient(loss, gp_model.trainable_variables)
+
+            # Update model parameters
+            adam_opt.apply_gradients(zip(gradients, gp_model.trainable_variables))
 
         iterations = n_iter
         elbo_log = []
@@ -2245,7 +2263,7 @@ class SIV_Matern:
 
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
-        y_var = np.multiply(variances, self.y_train_std**2)
+        y_var = np.multiply(var, self.y_train_std**2)
         y = np.zeros((N, self.nOutput), dtype=np.float32)
         y[:] = y_mean
 
@@ -2277,13 +2295,13 @@ class SPV_Matern:
         natgrad_gamma=0.1,
         adam_lr=0.01,
         n_iter=30000,
-        min_elbo_pct_change=1.0,
+        min_elbo_pct_change=0.1,
         num_latent_gps=None,
         return_mean_variance=False,
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2405,7 +2423,16 @@ class SPV_Matern:
         @tf.function
         def optim_step():
             natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
-            adam_opt.minimize(svgp_natgrad_loss, var_list=gp_model.trainable_variables)
+            with tf.GradientTape() as tape:
+                # Forward pass
+                tape.watch(gp_model.trainable_variables)
+                loss = svgp_natgrad_loss()
+
+            # Compute gradients
+            gradients = tape.gradient(loss, gp_model.trainable_variables)
+
+            # Update model parameters
+            adam_opt.apply_gradients(zip(gradients, gp_model.trainable_variables))
 
         iterations = n_iter
         elbo_log = []
@@ -2458,7 +2485,7 @@ class SPV_Matern:
         # undo normalization
         y_mean = self.y_train_std * mean + self.y_train_mean
         y = np.zeros((N, self.nOutput), dtype=np.float32)
-        y_var = np.multiply(variances, self.y_train_std**2)
+        y_var = np.multiply(var, self.y_train_std**2)
 
         y[:] = y_mean
 
@@ -2490,12 +2517,12 @@ class SVGP_Matern:
         natgrad_gamma=0.1,
         adam_lr=0.01,
         n_iter=30000,
-        min_elbo_pct_change=1.0,
+        min_elbo_pct_change=0.1,
         return_mean_variance=True,
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2534,7 +2561,7 @@ class SVGP_Matern:
                 handle_zeros_in_scale(np.std(yin[:, i], axis=0), copy=False)
                 for i in range(yin.shape[1])
             ],
-            dtype=np.float32,
+            dtype=np.float64,
         )
 
         # Remove mean and make unit variance
@@ -2545,12 +2572,13 @@ class SVGP_Matern:
             )
         )
 
-        adam_opt = tf.optimizers.Adam(adam_lr)
-        natgrad_opt = NaturalGradient(gamma=natgrad_gamma)
         autotune = tf.data.experimental.AUTOTUNE
 
         smlist = []
         for i in range(nOutput):
+            adam_opt = tf.optimizers.Adam(adam_lr)
+            natgrad_opt = NaturalGradient(gamma=natgrad_gamma)
+
             if logger is not None:
                 logger.info(
                     f"SVGP_Matern: creating regressor for output {i+1} of {nOutput}..."
@@ -2613,10 +2641,17 @@ class SVGP_Matern:
 
             @tf.function
             def optim_step():
-                adam_opt.minimize(
-                    svgp_natgrad_loss, var_list=gp_model.trainable_variables
-                )
                 natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
+                with tf.GradientTape() as tape:
+                    # Forward pass
+                    tape.watch(gp_model.trainable_variables)
+                    loss = svgp_natgrad_loss()
+
+                # Compute gradients
+                gradients = tape.gradient(loss, gp_model.trainable_variables)
+
+                # Update model parameters
+                adam_opt.apply_gradients(zip(gradients, gp_model.trainable_variables))
 
             iterations = n_iter
             elbo_log = []
@@ -2675,7 +2710,7 @@ class SVGP_Matern:
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
             y_var = tf.tensordot(var, self.y_train_std[i] ** 2, axes=0)
             y[:, i] = tf.cast(y_mean, tf.float32)
-            y_vars[:, i] = tf.cast(y_var, tf.float32)
+            y_vars[:, i] = tf.reshape(tf.cast(y_var, tf.float32), (-1,))
         return y, y_vars
 
     def evaluate(self, x):
@@ -2707,7 +2742,7 @@ class VGP_Matern:
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         if not _has_gpflow:
             raise RuntimeError(
@@ -2745,7 +2780,7 @@ class VGP_Matern:
                 handle_zeros_in_scale(np.std(yin[:, i], axis=0), copy=False)
                 for i in range(yin.shape[1])
             ],
-            dtype=np.float32,
+            dtype=np.float64,
         )
 
         # Remove mean and make unit variance
@@ -2756,11 +2791,12 @@ class VGP_Matern:
             )
         )
 
-        adam_opt = tf.optimizers.Adam(adam_lr)
-        natgrad_opt = NaturalGradient(gamma=natgrad_gamma)
-
         smlist = []
         for i in range(nOutput):
+
+            adam_opt = tf.optimizers.Adam(adam_lr)
+            natgrad_opt = NaturalGradient(gamma=natgrad_gamma)
+
             if logger is not None:
                 logger.info(
                     f"VGP_Matern: creating regressor for output {i+1} of {nOutput}..."
@@ -2805,9 +2841,16 @@ class VGP_Matern:
                 natgrad_opt.minimize(
                     gp_model.training_loss, var_list=variational_params
                 )
-                adam_opt.minimize(
-                    gp_model.training_loss, var_list=gp_model.trainable_variables
-                )
+                with tf.GradientTape() as tape:
+                    # Forward pass
+                    tape.watch(gp_model.trainable_variables)
+                    loss = gp_model.training_loss()
+
+                # Compute gradients
+                gradients = tape.gradient(loss, gp_model.trainable_variables)
+
+                # Update model parameters
+                adam_opt.apply_gradients(zip(gradients, gp_model.trainable_variables))
 
             for it in range(iterations):
                 optim_step()
@@ -2858,7 +2901,8 @@ class VGP_Matern:
             y_mean = self.y_train_std[i] * tf.reshape(mean, [-1]) + self.y_train_mean[i]
             y_var = tf.tensordot(var, self.y_train_std[i] ** 2, axes=0)
             y[:, i] = tf.cast(y_mean, tf.float32)
-            y_vars[:, i] = tf.cast(y_var, tf.float32)
+            y_vars[:, i] = tf.reshape(tf.cast(y_var, tf.float32), (-1,))
+
         return y, y_vars
 
     def evaluate(self, x):
@@ -2888,7 +2932,7 @@ class GPR_Matern:
         nan="remove",
         top_k=None,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         self.nInput = nInput
         self.nOutput = nOutput
@@ -2982,7 +3026,7 @@ class GPR_RBF:
         anisotropic=False,
         return_mean_variance=False,
         logger=None,
-        **kwargs
+        **kwargs,
     ):
         self.nInput = nInput
         self.nOutput = nOutput
