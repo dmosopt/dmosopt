@@ -242,9 +242,7 @@ class DistOptStrategy:
 
             f_completed = None
             if self.prob.n_features is not None:
-                f_completed = np.concatenate(
-                    [x.features for x in self.completed], axis=None
-                )
+                f_completed = np.concatenate([x.features for x in self.completed])
             c_completed = None
             if self.prob.n_constraints is not None:
                 c_completed = np.vstack([x.constraints for x in self.completed])
@@ -904,8 +902,14 @@ class DistOptimizer:
                 y = np.vstack(old_eval_ys)
                 f = None
                 if self.feature_dtypes is not None:
-                    old_eval_fs = [e.features for e in self.old_evals[problem_id]]
-                    f = np.concatenate(old_eval_fs, axis=None)
+                    e0 = self.old_evals[problem_id][0]
+                    f_shape = e0.features.shape[0]
+                    if f_shape > 1:
+                        old_eval_fs = [e.features.reshape((1, f_shape))
+                                       for e in self.old_evals[problem_id]]
+                    else:
+                        old_eval_fs = [e.features for e in self.old_evals[problem_id]]
+                    f = np.concatenate(old_eval_fs)
                 c = None
                 if self.constraint_names is not None:
                     old_eval_cs = [e.constraints for e in self.old_evals[problem_id]]
@@ -1475,16 +1479,18 @@ def h5_get_group(h, groupname):
 
 
 def h5_get_dataset(g, dsetname, **kwargs):
+    if "shape" not in kwargs:
+        kwargs["shape"] = (0,)
     if dsetname in g.keys():
         dset = g[dsetname]
     else:
-        dset = g.create_dataset(dsetname, (0,), **kwargs)
+        dset = g.create_dataset(dsetname, **kwargs)
     return dset
 
 
 def h5_concat_dataset(dset, data):
     dsize = dset.shape[0]
-    newshape = (dsize + len(data),)
+    newshape = (dsize + data.shape[0],) + data.shape[1:]
     dset.resize(newshape)
     dset[dsize:] = data
     return dset
@@ -2110,10 +2116,19 @@ def save_to_h5(
         h5_concat_dataset(dset, data)
 
         if prob_evals_f is not None:
-            dset = h5_get_dataset(
-                opt_prob, "features", maxshape=(None,), dtype=opt_grp["feature_type"]
-            )
             data = np.concatenate(prob_evals_f, dtype=opt_grp["feature_type"])
+            n_feature_measurements = 1
+            if len(data.shape) > 1:
+                n_feature_measurements = data.shape[1]
+            dset = h5_get_dataset(
+                opt_prob,
+                "features",
+                maxshape=(None,)
+                if n_feature_measurements == 1
+                else (None, n_feature_measurements),
+                shape=(0,) if n_feature_measurements == 1 else (0, 0),
+                dtype=opt_grp["feature_type"],
+            )
             h5_concat_dataset(dset, data)
 
         if prob_evals_c is not None:
