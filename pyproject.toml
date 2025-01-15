@@ -1,6 +1,6 @@
 [project]
 name = "dmosopt"
-version = "0.75"
+version = "0.76"
 description = "Distributed multi-objective surrogate optimization algorithm."
 authors = [
     { name = "Ivan Raikov", email = "ivan.g.raikov@gmail.com" }

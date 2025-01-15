@@ -32,7 +32,7 @@ class TrState:
     length_max: float = 1.0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
     success_tolerance: int = 0.5
-    Y_best: np.ndarray = np.asarray([np.inf])  # Goal is minimization
+    Y_best: np.ndarray = field(default_factory=lambda: np.asarray([np.inf]))  # Goal is minimization
     constraint_violation = float("inf")
     restart: bool = False
 
