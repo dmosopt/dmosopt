@@ -318,6 +318,7 @@ class OptProblem(object):
         "param_names",
         "objective_names",
         "feature_dtypes",
+        "feature_constructor",
         "constraint_names",
         "n_objectives",
         "n_features",
@@ -330,6 +331,7 @@ class OptProblem(object):
         param_names,
         objective_names,
         feature_dtypes,
+        feature_constructor,
         constraint_names,
         spec,
         eval_fun,
@@ -344,6 +346,7 @@ class OptProblem(object):
         self.param_names = param_names
         self.objective_names = objective_names
         self.feature_dtypes = feature_dtypes
+        self.feature_constructor = feature_constructor
         self.constraint_names = constraint_names
         self.n_objectives = len(objective_names)
         self.n_features = len(feature_dtypes) if feature_dtypes is not None else None
