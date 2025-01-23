@@ -195,6 +195,8 @@ class DistOptStrategy:
         if self.optimize_mean_variance and pred is not None:
             if pred.shape[0] == self.prob.n_objectives:
                 pred = np.column_stack((pred, np.zeros_like(pred)))
+        if (f is not None) and (f.shape == 1):
+            f = f.reshape((1, -1))
         entry = EvalEntry(epoch, x, y, f, c, pred, time)
         self.completed.append(entry)
         return entry
@@ -242,7 +244,9 @@ class DistOptStrategy:
 
             f_completed = None
             if self.prob.n_features is not None:
-                f_completed = np.concatenate([x.features for x in self.completed])
+                f_completed = np.concatenate(
+                    [x.features for x in self.completed], axis=0
+                )
             c_completed = None
             if self.prob.n_constraints is not None:
                 c_completed = np.vstack([x.constraints for x in self.completed])
@@ -262,7 +266,7 @@ class DistOptStrategy:
                 self.y = np.vstack((self.y, y_completed))
 
                 if self.prob.n_features is not None:
-                    self.f = np.concatenate((self.f, f_completed))
+                    self.f = np.concatenate((self.f, f_completed), axis=0)
                 if self.prob.n_constraints is not None:
                     self.c = np.vstack((self.c, c_completed))
 
@@ -511,7 +515,7 @@ class DistOptStrategy:
                 self.prob.n_objectives,
                 feasible=feasible,
             )
-            return bestx, besty, bestf, bestc
+            return bestx, besty, self.prob.feature_constructor(bestf), bestc
         else:
             return None, None, None, None
 
@@ -549,6 +553,7 @@ class DistOptimizer:
         obj_fun_args=None,
         objective_names=None,
         feature_dtypes=None,
+        feature_class=None,
         constraint_names=None,
         n_initial=10,
         initial_maxiter=5,
@@ -715,7 +720,6 @@ class DistOptimizer:
                 ) = init_from_h5(
                     file_path, param_space.parameter_names, opt_id, self.logger
                 )
-
         if stored_random_seed is not None:
             if local_random is not None:
                 if self.logger is not None:
@@ -801,6 +805,9 @@ class DistOptimizer:
         self.optimizer_dict = {}
         self.storage_dict = {}
 
+        self.feature_constructor = lambda x: x
+        if feature_class is not None:
+            self.feature_constructor = import_object_by_path(feature_class)
         self.feature_dtypes = feature_dtypes
         self.feature_names = None
         if feature_dtypes is not None:
@@ -883,6 +890,7 @@ class DistOptimizer:
             self.param_names,
             self.objective_names,
             self.feature_dtypes,
+            self.feature_constructor,
             self.constraint_names,
             self.param_space,
             self.eval_fun,
@@ -903,13 +911,17 @@ class DistOptimizer:
                 f = None
                 if self.feature_dtypes is not None:
                     e0 = self.old_evals[problem_id][0]
-                    f_shape = e0.features.shape[0]
-                    if f_shape > 1:
-                        old_eval_fs = [e.features.reshape((1, f_shape))
-                                       for e in self.old_evals[problem_id]]
-                    else:
+                    f_shape = e0.features.shape[0] if len(e0.features.shape) > 0 else 0
+                    if f_shape == 0:
+                        old_eval_fs = [[e.features] for e in self.old_evals[problem_id]]
+                    elif f_shape == 1:
                         old_eval_fs = [e.features for e in self.old_evals[problem_id]]
-                    f = np.concatenate(old_eval_fs)
+                    else:
+                        old_eval_fs = [
+                            e.features.reshape((1, f_shape))
+                            for e in self.old_evals[problem_id]
+                        ]
+                    f = self.feature_constructor(np.concatenate(old_eval_fs, axis=0))
                 c = None
                 if self.constraint_names is not None:
                     old_eval_cs = [e.constraints for e in self.old_evals[problem_id]]
@@ -1090,8 +1102,7 @@ class DistOptimizer:
                         constr_i = {k: constr_dict[k][i] for k in constr_dict}
                     ftrs_i = None
                     if ftrs is not None:
-                        ftrs_i = ftrs[i]
-                        lftrs_i = dict(zip(ftrs_i.dtype.names, ftrs_i))
+                        lftrs_i = ftrs[i]
                     if (ftrs_i is not None) and (constr_i is not None):
                         self.logger.info(
                             f"Best eval {i} so far for id {problem_id}: {res_i}@{prms_i} [{lftrs_i}] [constr: {constr_i}]"
@@ -1229,10 +1240,7 @@ class DistOptimizer:
                             lres = list(
                                 zip(self.objective_names, rres[problem_id][0].T)
                             )
-                            lftrs = [
-                                dict(zip(rres[problem_id][1].dtype.names, x))
-                                for x in rres[problem_id][1]
-                            ]
+                            lftrs = [x for x in rres[problem_id][1]]
                             lconstr = list(
                                 zip(self.constraint_names, rres[problem_id][2].T)
                             )
@@ -1243,10 +1251,7 @@ class DistOptimizer:
                             lres = list(
                                 zip(self.objective_names, rres[problem_id][0].T)
                             )
-                            lftrs = [
-                                dict(zip(rres[problem_id][1].dtype.names, x))
-                                for x in rres[problem_id][1]
-                            ]
+                            lftrs = [x for x in rres[problem_id][1]]
                             logger.info(
                                 f"problem id {problem_id}: optimization epoch {eval_epoch}: parameters {prms}: {lres} / {lftrs}"
                             )
@@ -1826,7 +1831,17 @@ def h5_load_raw(input_file, opt_id):
     parameters_name_dict = {idx: parm for parm, idx in parameters_idx_dict.items()}
 
     problem_parameters = {}
-    for idx, is_integer, value in opt_grp["problem_parameters"]:
+    problem_parameters_dset = opt_grp["problem_parameters"][:]
+    problem_parameters_integer_flag = False
+    if len(problem_parameters_dset) > 0:
+        if len(problem_parameters_dset[0]) > 2:
+            problem_parameters_integer_flag = True
+    for entry in problem_parameters_dset:
+        idx = entry[0]
+        if problem_parameters_integer_flag:
+            value = entry[2]
+        else:
+            value = entry[1]
         param_name = parameters_name_dict[idx]
         param_dict = problem_parameters
         if parameter_paths is not None:
@@ -1995,18 +2010,13 @@ def init_from_h5(file_path, param_names, opt_id, logger=None):
                 break
 
     if (param_names is not None) and param_names != saved_params:
-        # Switching params being optimized over would throw off the optimizer.
-        # Must use restore params from specified
-        if logger is not None:
-            logger.warning(
-                f"Saved params {saved_params} differ from currently specified "
-                f"{param_names}. Using saved."
-            )
-    params = saved_params
-    if len(params) != len(param_names):
-        raise ValueError(
-            f"Params {params} and spec {param_names} are of different length"
+        # Switching parameters being optimized over would throw off the optimizer.
+        # Must use restored parameters from specified
+        raise RuntimeError(
+            f"Saved parameters {saved_params} differ from currently specified "
+            f"{param_names}. "
         )
+
     problem_parameters = ParameterSpace.from_dict(
         info["problem_parameters"], is_value_only=True
     )
@@ -2116,7 +2126,7 @@ def save_to_h5(
         h5_concat_dataset(dset, data)
 
         if prob_evals_f is not None:
-            data = np.concatenate(prob_evals_f, dtype=opt_grp["feature_type"])
+            data = np.concatenate(prob_evals_f, dtype=opt_grp["feature_type"], axis=0)
             n_feature_measurements = 1
             if len(data.shape) > 1:
                 n_feature_measurements = data.shape[1]
