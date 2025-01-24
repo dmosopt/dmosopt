@@ -1,6 +1,6 @@
-import sys, logging
+import logging
 import numpy as np
-from typing import List, Tuple
+from typing import List
 from dmosopt import dmosopt
 
 logging.basicConfig(level=logging.INFO)
@@ -123,7 +123,6 @@ if __name__ == "__main__":
 
     best = dmosopt.run(dmosopt_params, verbose=True)
     if best is not None:
-
         bestx, besty = best
         x, y = dmosopt.dopt_dict["dmosopt_zdt1"].optimizer_dict[0].get_evals()
         solution_quality = test_solution_quality(x)

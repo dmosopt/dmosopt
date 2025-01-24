@@ -6,4 +6,3 @@ docs-dev:
 
 docs-install:
 	bun install
-

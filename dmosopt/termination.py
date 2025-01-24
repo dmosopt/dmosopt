@@ -5,7 +5,6 @@
 # https://github.com/anyoptimization/pymoo
 #
 
-import logging
 import numpy as np
 from abc import abstractmethod
 from dmosopt.normalization import normalize

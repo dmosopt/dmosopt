@@ -1,13 +1,14 @@
-import os, sys, importlib, logging, pprint, copy, time, itertools
+import os
+import logging
+import time
+import itertools
 from functools import partial
-from collections import namedtuple
-from collections.abc import Iterable, Iterator, Sequence
-from typing import Any, Union, Dict, List, Tuple, Optional
+from collections.abc import Iterator, Sequence
+from typing import Union, Dict, List, Optional
 from types import GeneratorType
 import numpy as np
 from numpy.random import default_rng
 import distwq
-import time
 from dmosopt.config import import_object_by_path
 from dmosopt import MOEA
 import dmosopt.MOASMO as opt
@@ -306,9 +307,9 @@ class DistOptStrategy:
         return result
 
     def initialize_epoch(self, epoch_index):
-        assert (
-            self.opt_gen == None
-        ), "Optimization generator is active in DistOptStrategy"
+        assert self.opt_gen == None, (
+            "Optimization generator is active in DistOptStrategy"
+        )
 
         optimizer_index = next(self.optimizer_iter)
         optimizer_kwargs = {}
@@ -723,9 +724,7 @@ class DistOptimizer:
         if stored_random_seed is not None:
             if local_random is not None:
                 if self.logger is not None:
-                    self.logger.warning(
-                        f"Using saved random seed to create local RNG. "
-                    )
+                    self.logger.warning("Using saved random seed to create local RNG. ")
             self.local_random = default_rng(seed=stored_random_seed)
 
         if problem_parameters is not None:
@@ -1449,7 +1448,7 @@ class DistOptimizer:
                                     )
                                 )
                             logger.info(
-                                f"surrogate accuracy at epoch {epoch-1} for problem {problem_id} was {mae}"
+                                f"surrogate accuracy at epoch {epoch - 1} for problem {problem_id} was {mae}"
                             )
 
                     if advance_epoch and epoch > 0:
@@ -1899,8 +1898,7 @@ def h5_load_raw(input_file, opt_id):
 
     raw_spec = {}
     param_names = []
-    for (param_name, spec) in parameter_specs:
-
+    for param_name, spec in parameter_specs:
         param_names.append(param_name)
 
         param_path = None
@@ -2419,7 +2417,7 @@ def dopt_init(
                 dopt_params["reduce_fun"] = reducefun
             elif nprocs_per_worker > 1:
                 raise RuntimeError(
-                    f"When nprocs_per_workers > 1, a reduce function must be specified."
+                    "When nprocs_per_workers > 1, a reduce function must be specified."
                 )
 
     dopt = DistOptimizer(**dopt_params, verbose=verbose)
@@ -2432,7 +2430,7 @@ def dopt_init(
 def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
     """Controller for distributed surrogate optimization."""
     logger = logging.getLogger(dopt_params["opt_id"])
-    logger.info(f"Initializing optimization controller...")
+    logger.info("Initializing optimization controller...")
     if verbose:
         logger.setLevel(logging.INFO)
     dopt_params["controller"] = controller

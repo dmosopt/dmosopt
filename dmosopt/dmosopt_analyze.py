@@ -1,5 +1,6 @@
-import os, sys, logging, datetime, gc, pprint
-from functools import partial
+import os
+import sys
+import pprint
 from collections import OrderedDict
 import click
 import numpy as np

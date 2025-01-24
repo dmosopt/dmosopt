@@ -1,15 +1,9 @@
 # Trust Region Search, multi-objective local optimization algorithm.
-import sys
-import gc, itertools, math
-from functools import partial
 import numpy as np
-from numpy.random import default_rng
-from dmosopt.datatypes import OptHistory
 from dmosopt.MOEA import (
     Struct,
     MOEA,
     orderMO,
-    remove_worst,
     remove_duplicates,
 )
 from dmosopt.sampling import sobol
@@ -18,7 +12,7 @@ from dmosopt.indicators import (
     SlidingWindow,
     PopulationDiversity,
 )
-from typing import Any, Union, Dict, List, Tuple, Optional
+from typing import Any, Dict, Optional
 from dataclasses import dataclass, field
 
 
@@ -32,7 +26,9 @@ class TrState:
     length_max: float = 1.0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
     success_tolerance: int = 0.5
-    Y_best: np.ndarray = field(default_factory=lambda: np.asarray([np.inf]))  # Goal is minimization
+    Y_best: np.ndarray = field(
+        default_factory=lambda: np.asarray([np.inf])
+    )  # Goal is minimization
     constraint_violation = float("inf")
     restart: bool = False
 
@@ -208,7 +204,6 @@ class TRS(MOEA):
         return pop_x, pop_y
 
     def select_candidates(self, candidates_x, candidates_y):
-
         popsize = self.opt_params.popsize
 
         candidates_inds = np.asarray(range(candidates_x.shape[0]), dtype=np.int_)
@@ -277,7 +272,6 @@ class TRS(MOEA):
         return chosen, not_chosen
 
     def update_state(self, X_next, Y_next, is_offspring):
-
         state = self.state.tr
 
         if state.restart:

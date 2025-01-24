@@ -1,7 +1,3 @@
-import copy
-import numpy as np
-from functools import partial
-
 try:
     from SALib.sample import fast_sampler, finite_diff
     from SALib.analyze import fast, dgsm

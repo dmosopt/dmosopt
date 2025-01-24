@@ -3,7 +3,6 @@
 # Based on normalization clasess from PyMOO:
 # https://github.com/anyoptimization/pymoo
 
-import warnings
 import numpy as np
 from abc import abstractmethod
 
@@ -58,17 +57,18 @@ class ZeroToOneNormalization(Normalization):
         xl_nan, xu_nan = np.isnan(xl), np.isnan(xu)
 
         # now create all the masks that are necessary
-        self.xl_only, self.xu_only = np.logical_and(~xl_nan, xu_nan), np.logical_and(
-            xl_nan, ~xu_nan
+        self.xl_only, self.xu_only = (
+            np.logical_and(~xl_nan, xu_nan),
+            np.logical_and(xl_nan, ~xu_nan),
         )
         self.both_nan = np.logical_and(np.isnan(xl), np.isnan(xu))
         self.neither_nan = ~self.both_nan
 
         # if neither is nan than xu must be greater or equal than xl
         any_nan = np.logical_or(np.isnan(xl), np.isnan(xu))
-        assert np.all(
-            np.logical_or(xu >= xl, any_nan)
-        ), "xl must be less or equal than xu."
+        assert np.all(np.logical_or(xu >= xl, any_nan)), (
+            "xl must be less or equal than xu."
+        )
 
     def forward(self, X):
         if X is None or (self.xl is None and self.xu is None):
@@ -116,9 +116,9 @@ class PreNormalization:
         self.ideal, self.nadir = ideal, nadir
 
         if zero_to_one:
-            assert (
-                self.ideal is not None and self.nadir is not None
-            ), "For normalization either provide pf or bounds!"
+            assert self.ideal is not None and self.nadir is not None, (
+                "For normalization either provide pf or bounds!"
+            )
 
             n_dim = len(self.ideal)
             self.normalization = ZeroToOneNormalization(self.ideal, self.nadir)

@@ -1,5 +1,7 @@
-import os, sys, logging, gc, pprint
-from functools import partial
+import os
+import sys
+import logging
+import pprint
 import click
 import numpy as np
 from dmosopt.dmosopt import init_from_h5

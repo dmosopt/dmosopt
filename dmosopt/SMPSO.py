@@ -13,7 +13,7 @@ from dmosopt.MOEA import (
     remove_duplicates,
 )
 from dmosopt.indicators import PopulationDiversity
-from typing import Any, Union, Dict, List, Tuple, Optional
+from typing import Any, Dict, Optional
 
 
 class SMPSO(MOEA):

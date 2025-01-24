@@ -1,5 +1,4 @@
 import gc
-import copy
 import numpy as np
 from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -12,9 +11,7 @@ try:
     import tensorflow as tf
     import tensorflow_probability as tfp
     from gpflow.utilities import print_summary
-    from gpflow.models import VGP, GPR, SVGP
     from gpflow.optimizers import NaturalGradient
-    from gpflow.optimizers.natgrad import XiSqrtMeanVar
 
     gpflow.config.set_default_float(np.float64)
     gpflow.config.set_default_jitter(10e-3)
@@ -34,7 +31,7 @@ else:
     _has_gpflow = True
 
 try:
-    import pykeops
+    pass
 except:
     _has_pykeops = False
 else:
@@ -43,7 +40,6 @@ else:
 try:
     import torch
     import gpytorch
-    from torch.nn import Linear
     from contextlib import ExitStack
 
     def find_best_gpu_setting(
@@ -720,10 +716,10 @@ class MDSPP_Matern:
         train_x = torch.from_numpy(xn)
 
         if logger is not None:
-            logger.info(f"MDSPP_Matern: creating regressor for output...")
+            logger.info("MDSPP_Matern: creating regressor for output...")
             for i in range(nOutput):
                 logger.info(
-                    f"MDSPP_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                    f"MDSPP_Matern: y_{i + 1} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}"
                 )
 
         train_y = torch.from_numpy(yn.astype(np.float32))
@@ -793,7 +789,7 @@ class MDSPP_Matern:
             )
 
             if logger is not None:
-                logger.info(f"MDSPP_Matern: optimizing regressor...")
+                logger.info("MDSPP_Matern: optimizing regressor...")
 
             # "Loss" for GPs - the marginal log likelihood
             mll = gpytorch.mlls.DeepApproximateMLL(
@@ -854,7 +850,7 @@ class MDSPP_Matern:
                         if mean_loss_pct_change < min_loss_pct_change:
                             if logger is not None:
                                 logger.info(
-                                    f"MDSPP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent"
+                                    f"MDSPP_Matern: likelihood change at iteration {it + 1} is less than {min_loss_pct_change} percent"
                                 )
                             break
 
@@ -1024,10 +1020,10 @@ class MDGP_Matern:
         train_x = torch.from_numpy(xn)
 
         if logger is not None:
-            logger.info(f"MDGP_Matern: creating regressor for output...")
+            logger.info("MDGP_Matern: creating regressor for output...")
             for i in range(nOutput):
                 logger.info(
-                    f"MDGP_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                    f"MDGP_Matern: y_{i + 1} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}"
                 )
 
         train_y = torch.from_numpy(yn.astype(np.float32))
@@ -1097,7 +1093,7 @@ class MDGP_Matern:
             )
 
             if logger is not None:
-                logger.info(f"MDGP_Matern: optimizing regressor...")
+                logger.info("MDGP_Matern: optimizing regressor...")
 
             # "Loss" for GPs - the marginal log likelihood
             mll = gpytorch.mlls.DeepApproximateMLL(
@@ -1158,7 +1154,7 @@ class MDGP_Matern:
                         if mean_loss_pct_change < min_loss_pct_change:
                             if logger is not None:
                                 logger.info(
-                                    f"MDGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent"
+                                    f"MDGP_Matern: likelihood change at iteration {it + 1} is less than {min_loss_pct_change} percent"
                                 )
                             break
 
@@ -1325,10 +1321,10 @@ class MEGP_Matern:
         train_x = torch.from_numpy(xn)
 
         if logger is not None:
-            logger.info(f"MEGP_Matern: creating regressor for output...")
+            logger.info("MEGP_Matern: creating regressor for output...")
             for i in range(nOutput):
                 logger.info(
-                    f"MEGP_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                    f"MEGP_Matern: y_{i + 1} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}"
                 )
 
         train_y = torch.from_numpy(yn.astype(np.float32))
@@ -1381,7 +1377,7 @@ class MEGP_Matern:
             )  # Includes GaussianLikelihood parameters
 
             if logger is not None:
-                logger.info(f"MEGP_Matern: optimizing regressor...")
+                logger.info("MEGP_Matern: optimizing regressor...")
 
             # "Loss" for GPs - the marginal log likelihood
             mll = gpytorch.mlls.ExactMarginalLogLikelihood(gp_likelihood, gp_model)
@@ -1429,7 +1425,7 @@ class MEGP_Matern:
                         if mean_loss_pct_change < min_loss_pct_change:
                             if logger is not None:
                                 logger.info(
-                                    f"MEGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent"
+                                    f"MEGP_Matern: likelihood change at iteration {it + 1} is less than {min_loss_pct_change} percent"
                                 )
                             break
 
@@ -1477,7 +1473,7 @@ class MEGP_Matern:
         self.sm = gp_model
 
     def predict(self, xin):
-        from torch.utils.data import TensorDataset, DataLoader
+        from torch.utils.data import DataLoader
 
         batch_size = self.batch_size
         if self.batch_size is None:
@@ -1712,7 +1708,7 @@ class EGP_Matern:
                         mean_loss_pct_change = np.mean(loss_pct_change[-1000:])
                         if mean_loss_pct_change < min_loss_pct_change:
                             logger.info(
-                                f"EGP_Matern: likelihood change at iteration {it+1} is less than {min_loss_pct_change} percent"
+                                f"EGP_Matern: likelihood change at iteration {it + 1} is less than {min_loss_pct_change} percent"
                             )
                             break
 
@@ -1722,17 +1718,17 @@ class EGP_Matern:
         for i in range(nOutput):
             if logger is not None:
                 logger.info(
-                    f"EGP_Matern: creating regressor for output {i+1} of {nOutput}..."
+                    f"EGP_Matern: creating regressor for output {i + 1} of {nOutput}..."
                 )
                 logger.info(
-                    f"EGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}..."
+                    f"EGP_Matern: y_{i} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}..."
                 )
 
             train_y = torch.from_numpy(yn[:, i].reshape((-1,)).astype(np.float32))
 
             if logger is not None:
                 logger.info(
-                    f"EGP_Matern: optimizing regressor for output {i+1} of {nOutput}..."
+                    f"EGP_Matern: optimizing regressor for output {i + 1} of {nOutput}..."
                 )
 
             if n_devices is not None and n_devices >= 1:
@@ -1909,10 +1905,10 @@ class CRV_Matern:
         autotune = tf.data.experimental.AUTOTUNE
 
         if logger is not None:
-            logger.info(f"CRV_Matern: creating regressor for output...")
+            logger.info("CRV_Matern: creating regressor for output...")
             for i in range(nOutput):
                 logger.info(
-                    f"CRV_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                    f"CRV_Matern: y_{i + 1} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}"
                 )
 
         data = (np.asarray(xn, dtype=np.float64), yn.astype(np.float64))
@@ -1964,7 +1960,7 @@ class CRV_Matern:
         gpflow.set_trainable(gp_model.inducing_variable, False)
 
         if logger is not None:
-            logger.info(f"CRV_Matern: optimizing regressor...")
+            logger.info("CRV_Matern: optimizing regressor...")
 
         variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
 
@@ -2014,7 +2010,7 @@ class CRV_Matern:
                     )
                 if mean_elbo_pct_change < min_elbo_pct_change:
                     logger.info(
-                        f"CRV_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent"
+                        f"CRV_Matern: likelihood change at iteration {it + 1} is less than {min_elbo_pct_change} percent"
                     )
                     break
         print_summary(gp_model)
@@ -2139,10 +2135,10 @@ class SIV_Matern:
         autotune = tf.data.experimental.AUTOTUNE
 
         if logger is not None:
-            logger.info(f"SIV_Matern: creating regressor for output...")
+            logger.info("SIV_Matern: creating regressor for output...")
             for i in range(nOutput):
                 logger.info(
-                    f"SIV_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                    f"SIV_Matern: y_{i + 1} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}"
                 )
 
         data = (np.asarray(xn, dtype=np.float64), yn.astype(np.float64))
@@ -2183,7 +2179,7 @@ class SIV_Matern:
         gpflow.set_trainable(gp_model.inducing_variable, False)
 
         if logger is not None:
-            logger.info(f"SIV_Matern: optimizing regressor...")
+            logger.info("SIV_Matern: optimizing regressor...")
 
         variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
 
@@ -2233,7 +2229,7 @@ class SIV_Matern:
                     )
                 if mean_elbo_pct_change < min_elbo_pct_change:
                     logger.info(
-                        f"SIV_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent"
+                        f"SIV_Matern: likelihood change at iteration {it + 1} is less than {min_elbo_pct_change} percent"
                     )
                     break
         print_summary(gp_model)
@@ -2358,10 +2354,10 @@ class SPV_Matern:
         autotune = tf.data.experimental.AUTOTUNE
 
         if logger is not None:
-            logger.info(f"SPV_Matern: creating regressor for output...")
+            logger.info("SPV_Matern: creating regressor for output...")
             for i in range(nOutput):
                 logger.info(
-                    f"SPV_Matern: y_{i+1} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}"
+                    f"SPV_Matern: y_{i + 1} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}"
                 )
 
         data = (np.asarray(xn, dtype=np.float64), yn.astype(np.float64))
@@ -2404,7 +2400,7 @@ class SPV_Matern:
         gpflow.set_trainable(gp_model.inducing_variable, False)
 
         if logger is not None:
-            logger.info(f"SPV_Matern: optimizing regressor...")
+            logger.info("SPV_Matern: optimizing regressor...")
 
         variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
 
@@ -2454,7 +2450,7 @@ class SPV_Matern:
                     )
                 if mean_elbo_pct_change < min_elbo_pct_change:
                     logger.info(
-                        f"SPV_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent"
+                        f"SPV_Matern: likelihood change at iteration {it + 1} is less than {min_elbo_pct_change} percent"
                     )
                     break
         print_summary(gp_model)
@@ -2581,10 +2577,10 @@ class SVGP_Matern:
 
             if logger is not None:
                 logger.info(
-                    f"SVGP_Matern: creating regressor for output {i+1} of {nOutput}..."
+                    f"SVGP_Matern: creating regressor for output {i + 1} of {nOutput}..."
                 )
                 logger.info(
-                    f"SVGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max( yin[:,i]))}..."
+                    f"SVGP_Matern: y_{i} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}..."
                 )
 
             data = (
@@ -2622,7 +2618,7 @@ class SVGP_Matern:
 
             if logger is not None:
                 logger.info(
-                    f"SVGP_Matern: optimizing regressor for output {i+1} of {nOutput}..."
+                    f"SVGP_Matern: optimizing regressor for output {i + 1} of {nOutput}..."
                 )
 
             variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
@@ -2675,7 +2671,7 @@ class SVGP_Matern:
                         )
                     if mean_elbo_pct_change < min_elbo_pct_change:
                         logger.info(
-                            f"SVGP_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent"
+                            f"SVGP_Matern: likelihood change at iteration {it + 1} is less than {min_elbo_pct_change} percent"
                         )
                         break
             print_summary(gp_model)
@@ -2793,16 +2789,15 @@ class VGP_Matern:
 
         smlist = []
         for i in range(nOutput):
-
             adam_opt = tf.optimizers.Adam(adam_lr)
             natgrad_opt = NaturalGradient(gamma=natgrad_gamma)
 
             if logger is not None:
                 logger.info(
-                    f"VGP_Matern: creating regressor for output {i+1} of {nOutput}..."
+                    f"VGP_Matern: creating regressor for output {i + 1} of {nOutput}..."
                 )
                 logger.info(
-                    f"VGP_Matern: y_{i} range is {(np.min(yin[:,i]), np.max(yin[:,i]))}..."
+                    f"VGP_Matern: y_{i} range is {(np.min(yin[:, i]), np.max(yin[:, i]))}..."
                 )
 
             gp_kernel = gpflow.kernels.Matern52()
@@ -2828,7 +2823,7 @@ class VGP_Matern:
 
             if logger is not None:
                 logger.info(
-                    f"VGP_Matern: optimizing regressor for output {i+1} of {nOutput}..."
+                    f"VGP_Matern: optimizing regressor for output {i + 1} of {nOutput}..."
                 )
 
             variational_params = [(gp_model.q_mu, gp_model.q_sqrt)]
@@ -2866,7 +2861,7 @@ class VGP_Matern:
                     mean_elbo_pct_change = np.mean(elbo_pct_change[-100:])
                     if mean_elbo_pct_change < min_elbo_pct_change:
                         logger.info(
-                            f"VGP_Matern: likelihood change at iteration {it+1} is less than {min_elbo_pct_change} percent"
+                            f"VGP_Matern: likelihood change at iteration {it + 1} is less than {min_elbo_pct_change} percent"
                         )
                         break
             print_summary(gp_model)
@@ -2965,10 +2960,10 @@ class GPR_Matern:
         for i in range(nOutput):
             if logger is not None:
                 logger.info(
-                    f"GPR_Matern: creating regressor for output {i+1} of {nOutput}..."
+                    f"GPR_Matern: creating regressor for output {i + 1} of {nOutput}..."
                 )
                 logger.info(
-                    f"GPR_Matern: y_{i} range is {(np.min(y[:,i]), np.max(y[:,i]))}..."
+                    f"GPR_Matern: y_{i} range is {(np.min(y[:, i]), np.max(y[:, i]))}..."
                 )
             if optimizer == "sceua":
                 optf = partial(sceua_optimizer, seed, logger)
@@ -3054,10 +3049,10 @@ class GPR_RBF:
         for i in range(nOutput):
             if logger is not None:
                 logger.info(
-                    f"GPR_RBF: creating regressor for output {i+1} of {nOutput}..."
+                    f"GPR_RBF: creating regressor for output {i + 1} of {nOutput}..."
                 )
                 logger.info(
-                    f"GPR_RBF: y_{i} range is {(np.min(y[:,i]), np.max(y[:,i]))}..."
+                    f"GPR_RBF: y_{i} range is {(np.min(y[:, i]), np.max(y[:, i]))}..."
                 )
             if optimizer == "sceua":
                 optf = partial(sceua_optimizer, seed, logger)

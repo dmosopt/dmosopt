@@ -10,11 +10,9 @@ from dmosopt.MOEA import (
     tournament_selection,
     sortMO,
     remove_worst,
-    remove_duplicates,
-    crowding_distance_metric,
 )
 from dmosopt.indicators import PopulationDiversity
-from typing import Any, Union, Dict, List, Tuple, Optional
+from typing import Any, Dict, Optional
 
 
 class NSGA2(MOEA):
@@ -116,7 +114,6 @@ class NSGA2(MOEA):
         return state
 
     def generate_strategy(self, **params):
-
         popsize = self.opt_params.popsize
         poolsize = self.opt_params.poolsize
         crossover_prob = self.opt_params.crossover_prob

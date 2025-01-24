@@ -1,10 +1,8 @@
-import os, sys, logging, pprint
-from functools import partial
 from collections import namedtuple
 import numpy as np
 from enum import IntEnum
 from dataclasses import dataclass, field
-from typing import Dict, List, Union, Tuple, Optional
+from typing import Dict, List, Union, Optional
 
 
 class Struct(object):
@@ -24,7 +22,7 @@ class Struct(object):
         return f"Struct({self.__dict__})"
 
     def __str__(self):
-        return f"<Struct>"
+        return "<Struct>"
 
 
 @dataclass
@@ -109,7 +107,7 @@ class ParameterSpace:
         """
 
         def parse_level(
-            x: Union[List, float, int, Dict]
+            x: Union[List, float, int, Dict],
         ) -> Union[ParameterDefn, "ParameterSpace"]:
             # Check if this level is a parameter specification
             if isinstance(x, list):
@@ -225,7 +223,6 @@ class ParameterSpace:
             return self.unflatten(self.parameter_values)
 
         for i, param_range in enumerate(self._flat_ranges):
-
             value = flat_params[i]
 
             # Navigate/create nested dictionary using parameter path

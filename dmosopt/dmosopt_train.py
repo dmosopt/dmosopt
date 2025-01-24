@@ -1,9 +1,12 @@
-import os, sys, logging, time, gc, pprint
+import os
+import sys
+import logging
+import time
 import click
 import numpy as np
 from dmosopt.dmosopt import init_from_h5
 from dmosopt.MOASMO import train
-from joblib import dump, load
+from joblib import dump
 
 script_name = os.path.basename(__file__)
 
