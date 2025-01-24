@@ -8,7 +8,9 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: mixed-line-ending
-  - repo: https://github.com/psf/black
-    rev: 22.3.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.3
     hooks:
-      - id: black
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

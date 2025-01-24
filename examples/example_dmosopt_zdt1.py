@@ -1,4 +1,4 @@
-import sys, logging
+import logging
 import numpy as np
 from dmosopt import dmosopt
 

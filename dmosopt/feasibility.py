@@ -3,11 +3,10 @@
 Definitions of feasibility models.
 """
 
-import sys
 import numpy as np
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import SGDClassifier, LogisticRegression
+from sklearn.linear_model import LogisticRegression
 from sklearn.decomposition import PCA
 from sklearn.model_selection import GridSearchCV
 

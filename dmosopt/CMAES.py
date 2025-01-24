@@ -7,7 +7,6 @@
 ### https://github.com/DEAP/deap/blob/master/deap/cma.py
 ###
 
-from functools import partial
 import numpy as np
 from dmosopt.dda import dda_ens
 from dmosopt.MOEA import (
@@ -17,8 +16,7 @@ from dmosopt.MOEA import (
     remove_duplicates,
 )
 from dmosopt.indicators import HypervolumeImprovement, PopulationDiversity
-from typing import Any, Union, Dict, List, Tuple, Optional
-import sys
+from typing import Any, Dict, Optional
 
 
 class CMAES(MOEA):

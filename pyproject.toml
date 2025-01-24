@@ -35,7 +35,8 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 dev-dependencies = [
-    "pre-commit>=3.8.0",
+    "pre-commit>=4.1.0",
+    "ruff==0.9.3",
 ]
 
 [tool.hatch.metadata]

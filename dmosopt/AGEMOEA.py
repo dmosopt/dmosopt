@@ -12,7 +12,6 @@
 #
 
 import numpy as np
-from functools import reduce
 from dmosopt.dda import dda_ens
 from dmosopt.MOEA import (
     Struct,
@@ -23,7 +22,7 @@ from dmosopt.MOEA import (
     remove_duplicates,
 )
 from dmosopt.indicators import PopulationDiversity
-from typing import Any, Union, Dict, List, Tuple, Optional
+from typing import Any, Dict, Optional
 
 
 class AGEMOEA(MOEA):

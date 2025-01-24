@@ -6,7 +6,7 @@ import math
 import numpy as np
 from functools import reduce
 from scipy.spatial.distance import cdist
-from typing import Any, Union, Dict, List, Tuple, Optional
+from typing import Any, Dict, Tuple, Optional
 from dmosopt.dda import dda_ens
 from dmosopt import sampling
 from dmosopt.indicators import crowding_distance_metric, euclidean_distance_metric
@@ -49,7 +49,7 @@ class Struct(object):
         return f"Struct({self.__dict__})"
 
     def __str__(self):
-        return f"<Struct>"
+        return "<Struct>"
 
 
 class MOEA(object):

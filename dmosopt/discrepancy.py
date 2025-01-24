@@ -1,5 +1,5 @@
 from __future__ import division, print_function, absolute_import
-import math, sys
+import math
 import numpy as np
 
 # compute 4 kinds of L2-discrepancy, and other 2 uniform metrics

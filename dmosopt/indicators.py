@@ -3,7 +3,6 @@
 # https://github.com/anyoptimization/pymoo
 #
 from abc import abstractmethod
-import sys
 import numpy as np
 from dmosopt.normalization import PreNormalization
 from dmosopt.hv import HyperVolumeBoxDecomposition as _HyperVolume
@@ -179,7 +178,7 @@ class DistanceIndicator(Indicator):
         ideal=None,
         nadir=None,
         norm_by_dist=False,
-        **kwargs
+        **kwargs,
     ):
         # the pareto front if necessary to calculate the indicator
         pf = at_least_2d_array(pf, extend_as="row")
@@ -197,9 +196,9 @@ class DistanceIndicator(Indicator):
 
         # if zero_to_one is disabled this can be used to normalize the distance calculation itself
         if self.norm_by_dist:
-            assert (
-                self.ideal is not None and self.nadir is not None
-            ), "If norm_by_dist is enabled ideal and nadir must be set!"
+            assert self.ideal is not None and self.nadir is not None, (
+                "If norm_by_dist is enabled ideal and nadir must be set!"
+            )
             norm = self.nadir - self.ideal
 
         D = vectorized_cdist(self.pf, F, func_dist=self.dist_func, norm=norm)
@@ -220,7 +219,7 @@ class Hypervolume(Indicator):
         norm_ref_point=True,
         ideal=None,
         nadir=None,
-        **kwargs
+        **kwargs,
     ):
         pf = at_least_2d_array(pf, extend_as="row")
         ideal, nadir = derive_ideal_and_nadir_from_pf(pf, ideal=ideal, nadir=nadir)
@@ -241,9 +240,9 @@ class Hypervolume(Indicator):
             ref_point = self.normalization.forward(ref_point)
 
         self.ref_point = ref_point
-        assert (
-            self.ref_point is not None
-        ), "For Hypervolume a reference point needs to be provided!"
+        assert self.ref_point is not None, (
+            "For Hypervolume a reference point needs to be provided!"
+        )
 
     def _do(self, F):
         if self.nds:
@@ -266,7 +265,7 @@ class HypervolumeImprovement(Indicator):
         norm_ref_point=True,
         ideal=None,
         nadir=None,
-        **kwargs
+        **kwargs,
     ):
         pf = at_least_2d_array(pf, extend_as="row")
         ideal, nadir = derive_ideal_and_nadir_from_pf(pf, ideal=ideal, nadir=nadir)
@@ -289,9 +288,9 @@ class HypervolumeImprovement(Indicator):
             ref_point = self.normalization.forward(ref_point)
 
         self.ref_point = ref_point
-        assert (
-            self.ref_point is not None
-        ), "For Hypervolume a reference point needs to be provided!"
+        assert self.ref_point is not None, (
+            "For Hypervolume a reference point needs to be provided!"
+        )
 
     def _do(self, F, means, variances, k):
         assert k > 0

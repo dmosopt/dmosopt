@@ -3,10 +3,9 @@
 Created on Mon Nov 17 14:18:23 2014
 @author: gongwei
 """
+
 # Good Lattice Points method for Uniform Design
-import sys
 import numpy as np
-import fractions as fc
 import math
 import itertools
 from dmosopt.discrepancy import CD2

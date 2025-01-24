@@ -1,13 +1,11 @@
 import numpy as np
 from numpy.random import default_rng
-import logging
 from dmosopt import sampling
 from sly import Lexer, Parser
 from dmosopt.MOEA import (
     crossover_sbx,
     mutation,
     tournament_selection,
-    remove_duplicates,
 )
 
 

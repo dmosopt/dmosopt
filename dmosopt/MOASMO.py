@@ -1,11 +1,11 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
 
-import sys, itertools
+import sys
+import itertools
 import time
 from scipy import stats
 import numpy as np
 from numpy.random import default_rng
-from typing import Any, Union, Dict, List, Tuple, Optional
 from dmosopt import MOEA, model
 from dmosopt.datatypes import OptHistory, EpochResults
 from dmosopt.config import (
@@ -302,7 +302,7 @@ def epoch(
                 feasibility_method_name
             ]
         try:
-            logger.info(f"Constructing feasibility model...")
+            logger.info("Constructing feasibility model...")
             feasibility_method_cls = import_object_by_path(feasibility_method_name)
             mdl.feasibility = feasibility_method_cls(x, C)
         except:
@@ -411,7 +411,6 @@ def epoch(
     else:
         x_gen = item
         while True:
-
             y_gen, y_var, c_gen = None, None, None
             if mdl.objective is not None:
                 if mdl.return_mean_variance:
@@ -508,9 +507,8 @@ def train(
             if logger is not None:
                 logger.info(f"Found {len(feasible)} feasible solutions")
     else:
-            if logger is not None:
-                logger.info(f"Found {len(x)} solutions")
-
+        if logger is not None:
+            logger.info(f"Found {len(x)} solutions")
 
     x, y = MOEA.remove_duplicates(x, y)
 

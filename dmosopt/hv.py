@@ -1,12 +1,9 @@
 import numpy as np
-import sys
-from typing import Any, Union, Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 from itertools import product
 from scipy.stats import norm
-from typing import List, Tuple, Optional
 from functools import lru_cache
 from dataclasses import dataclass
-import heapq
 
 #    Copyright (C) 2010 Simon Wessing
 #    TU Dortmund University
@@ -334,7 +331,6 @@ class HyperVolumeBoxDecompositionYang:
     def compute_ehvi(
         self, candidate_mean: np.ndarray, candidate_var: Optional[np.ndarray] = None
     ) -> np.ndarray:
-
         if candidate_var is None:
             candidate_var = np.ones_like(candidate_mean)
 
@@ -391,7 +387,7 @@ class HyperVolumeBoxDecompositionYang:
             )
             stacked_factors = np.concatenate(
                 [np.expand_dims(psi_lb2ub, -2), np.expand_dims(nu_contrib, -2)],
-                axis=-2
+                axis=-2,
                 # stacked_factors = np.concatenate(
                 #    [psi_lb2ub, nu_contrib], axis=-2
             )  # Take the cross product of psi_diff and nu across all outcomes
@@ -1217,7 +1213,7 @@ def run_analytical_test_cases():
     single_point_2d = np.array([[1.0, 1.0]])
     hv_2d_single = bd_2d.compute_hypervolume(single_point_2d)
     expected_2d_single = 9.0
-    print(f"2D Single point:")
+    print("2D Single point:")
     print(f"Computed: {hv_2d_single:.6f}")
     print(f"Expected: {expected_2d_single}")
     print(f"Error: {abs(hv_2d_single - expected_2d_single):.6f}")
@@ -1229,7 +1225,7 @@ def run_analytical_test_cases():
     two_points_2d = np.array([[1.0, 3.0], [3.0, 1.0]])
     hv_2d_two = bd_2d.compute_hypervolume(two_points_2d)
     expected_2d_two = 5.0
-    print(f"\n2D Two points:")
+    print("\n2D Two points:")
     print(f"Computed: {hv_2d_two:.6f}")
     print(f"Expected: {expected_2d_two}")
     print(f"Error: {abs(hv_2d_two - expected_2d_two):.6f}")
@@ -1241,7 +1237,7 @@ def run_analytical_test_cases():
     rectangle_2d = np.array([[1.0, 3.0], [1.0, 1.0], [3.0, 1.0]])
     hv_2d_rect = bd_2d.compute_hypervolume(rectangle_2d)
     expected_2d_rect = 9.0
-    print(f"\n2D Rectangle:")
+    print("\n2D Rectangle:")
     print(f"Computed: {hv_2d_rect:.6f}")
     print(f"Expected: {expected_2d_rect}")
     print(f"Error: {abs(hv_2d_rect - expected_2d_rect):.6f}")
@@ -1258,7 +1254,7 @@ def run_analytical_test_cases():
     single_point_3d = np.array([[1.0, 1.0, 1.0]])
     hv_3d_single = bd_3d.compute_hypervolume(single_point_3d)
     expected_3d_single = 27.0
-    print(f"3D Single point:")
+    print("3D Single point:")
     print(f"Computed: {hv_3d_single:.6f}")
     print(f"Expected: {expected_3d_single}")
     print(f"Error: {abs(hv_3d_single - expected_3d_single):.6f}")
@@ -1270,7 +1266,7 @@ def run_analytical_test_cases():
     plane_points_3d = np.array([[1.0, 1.0, 3.0], [1.0, 3.0, 1.0], [3.0, 1.0, 1.0]])
     hv_3d_plane = bd_3d.compute_hypervolume(plane_points_3d)
     expected_3d_plane = 19.0
-    print(f"\n3D Plane points:")
+    print("\n3D Plane points:")
     print(f"Computed: {hv_3d_plane:.6f}")
     print(f"Expected: {expected_3d_plane}")
     print(f"Error: {abs(hv_3d_plane - expected_3d_plane):.6f}")
@@ -1294,7 +1290,7 @@ def run_analytical_test_cases():
     )
     hv_3d_cuboid = bd_cuboid.compute_hypervolume(cuboid_points)
     expected_3d_cuboid = 19.0
-    print(f"\n3D Cuboid:")
+    print("\n3D Cuboid:")
     print(f"Computed: {hv_3d_cuboid:.6f}")
     print(f"Expected: {expected_3d_cuboid}")
     print(f"Error: {abs(hv_3d_cuboid - expected_3d_cuboid):.6f}")
@@ -1308,7 +1304,7 @@ def run_analytical_test_cases():
     )
     hv_3d_layer = bd_3d.compute_hypervolume(layer_points)
     expected_3d_layer = 27.0
-    print(f"\n3D Layer:")
+    print("\n3D Layer:")
     print(f"Computed: {hv_3d_layer:.6f}")
     print(f"Expected: {expected_3d_layer}")
     print(f"Error: {abs(hv_3d_layer - expected_3d_layer):.6f}")
