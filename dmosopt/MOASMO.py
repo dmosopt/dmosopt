@@ -331,7 +331,7 @@ def epoch(
 
         class S:
             def __init__(self):
-                self.di_dict = analyze_sensitivity(
+                self._di_dict = analyze_sensitivity(
                     mdl.objective,
                     xlb,
                     xub,
@@ -343,7 +343,7 @@ def epoch(
                 )
 
             def di_dict(self):
-                return self.di_dict
+                return dict(self._di_dict)
 
         mdl.sensitivity = S()
 
