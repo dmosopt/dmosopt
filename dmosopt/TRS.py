@@ -25,7 +25,7 @@ class TrState:
     length_min: float = 0.00001
     length_max: float = 1.0
     failure_tolerance: int = float("nan")  # Note: Post-initialized
-    success_tolerance: int = 0.5
+    success_tolerance: int = 0.51
     Y_best: np.ndarray = field(
         default_factory=lambda: np.asarray([np.inf])
     )  # Goal is minimization
@@ -106,7 +106,6 @@ class TRS(MOEA):
 
     def generate_strategy(self, **params):
         popsize = self.opt_params.popsize
-        nchildren = self.opt_params.nchildren
 
         local_random = self.local_random
         xlb = self.state.bounds[:, 0]
@@ -162,11 +161,6 @@ class TRS(MOEA):
     ):
         population_parm = self.state.population_parm
         population_obj = self.state.population_obj
-        rank = self.state.rank
-
-        popsize = self.opt_params.popsize
-        nInput = self.nInput
-        nOutput = self.nOutput
 
         candidates_x = np.vstack((x_gen, population_parm))
         candidates_y = np.vstack((y_gen, population_obj))
@@ -181,7 +175,7 @@ class TRS(MOEA):
             )
         )
 
-        population_parm, population_obj = self.update_state(
+        population_parm, population_obj, rank = self.update_state(
             candidates_x, candidates_y, candidates_offspring
         )
 
@@ -209,7 +203,7 @@ class TRS(MOEA):
         candidates_inds = np.asarray(range(candidates_x.shape[0]), dtype=np.int_)
 
         if candidates_x.shape[0] <= popsize:
-            return np.ones_like(candidates_inds, dtype=bool_), np.zeros_like(
+            return np.ones_like(candidates_inds, dtype=np.bool), np.zeros_like(
                 candidates_inds, dtype=bool
             )
 
@@ -269,7 +263,7 @@ class TRS(MOEA):
             not_chosen_mask[selected_indices] = False
             not_chosen[mid_front[not_chosen_mask]] = True
 
-        return chosen, not_chosen
+        return chosen, not_chosen, rank[chosen]
 
     def update_state(self, X_next, Y_next, is_offspring):
         state = self.state.tr
@@ -277,14 +271,17 @@ class TRS(MOEA):
         if state.restart:
             self.restart_state()
 
-        chosen, not_chosen = self.select_candidates(X_next, Y_next)
+        chosen, not_chosen, chosen_rank = self.select_candidates(X_next, Y_next)
 
         success_counter = np.count_nonzero(np.logical_and(is_offspring, chosen))
         self.state.success_window.append(success_counter)
         success_mean = np.mean(self.state.success_window[:])
         success_frac = min(1.0, success_mean / self.opt_params.popsize)
-        if success_frac >= state.success_tolerance:  # Expand trust region
-            state.length = min((1.0 + success_frac) * state.length, state.length_max)
+        if success_frac > state.success_tolerance:  # Expand trust region
+            state.length = min(
+                (1.0 + (success_frac - state.success_tolerance)) * state.length,
+                state.length_max,
+            )
             state.success_counter = 0
         elif success_frac <= state.failure_tolerance:  # Shrink trust region
             state.length /= 2.0
@@ -292,7 +289,7 @@ class TRS(MOEA):
         if state.length < state.length_min:
             state.restart = True
 
-        return X_next[chosen], Y_next[chosen]
+        return X_next[chosen], Y_next[chosen], chosen_rank
 
     def restart_state(self):
         success_window_size = self.opt_params.success_window_size

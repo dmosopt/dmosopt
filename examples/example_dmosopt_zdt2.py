@@ -46,7 +46,7 @@ if __name__ == "__main__":
         "opt_id": "dmosopt_zdt2",
         "obj_fun_name": "example_dmosopt_zdt2.obj_fun",
         "problem_parameters": problem_parameters,
-        "optimizer": "nsga2",
+        "optimizer_name": "age",
         "population_size": 200,
         "num_generations": 200,
         "termination_conditions": True,
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         import matplotlib.pyplot as plt
 
         bestx, besty = best
-        x, y = dmosopt.sopt_dict["dmosopt_zdt2"].optimizer_dict[0].get_evals()
+        x, y = dmosopt.dopt_dict["dmosopt_zdt2"].optimizer_dict[0].get_evals()
         besty_dict = dict(besty)
 
         # plot results
