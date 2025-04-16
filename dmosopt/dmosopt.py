@@ -186,7 +186,7 @@ class DistOptStrategy:
         else:
             try:
                 req = self.reqs.pop(0)
-            except:
+            except Exception:
                 pass
         return req
 
@@ -307,7 +307,7 @@ class DistOptStrategy:
         return result
 
     def initialize_epoch(self, epoch_index):
-        assert self.opt_gen == None, (
+        assert self.opt_gen is None, (
             "Optimization generator is active in DistOptStrategy"
         )
 
@@ -320,7 +320,7 @@ class DistOptStrategy:
         if self.termination is not None:
             self.termination.reset()
 
-        completed_evals = self._update_evals()
+        self._update_evals()
 
         assert epoch_index > self.epoch_index
         self.epoch_index = epoch_index
@@ -578,6 +578,7 @@ class DistOptimizer:
         save_surrogate_evals=False,
         save_optimizer_params=True,
         metadata=None,
+        nested_parameter_space=False,
         surrogate_method_name="gpr",
         surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
         surrogate_custom_training=None,
@@ -693,7 +694,6 @@ class DistOptimizer:
                 if problem_parameters is None or space is None:
                     raise FileNotFoundError(file_path)
 
-        dim = 0
         param_space = None
         if space is not None:
             param_space = ParameterSpace.from_dict(space)
@@ -779,6 +779,7 @@ class DistOptimizer:
                 obj_fun,
                 self.problem_parameters,
                 self.param_space,
+                nested_parameter_space,
                 self.obj_fun_args,
                 problem_ids,
             )
@@ -788,6 +789,7 @@ class DistOptimizer:
                 obj_fun,
                 self.problem_parameters,
                 self.param_space,
+                nested_parameter_space,
                 self.obj_fun_args,
                 0,
             )
@@ -1345,9 +1347,7 @@ class DistOptimizer:
                 "DistOptimizer: method epoch cannot be executed when controller is not set."
             )
 
-        controller = self.controller
         epoch = self.epoch_count + self.start_epoch
-        gen = None
         advance_epoch = self.epoch_count < self.n_epochs - 1
 
         self.stats["init_sampling_start"] = time.time()
@@ -1793,29 +1793,24 @@ def h5_load_raw(input_file, opt_id):
 
     objective_enum_dict = h5py.check_enum_dtype(opt_grp["objective_enum"].dtype)
     objective_enum_name_dict = {idx: parm for parm, idx in objective_enum_dict.items()}
-    n_objectives = len(objective_enum_dict)
     objective_names = [
         objective_enum_name_dict[spec[0]] for spec in iter(opt_grp["objective_spec"])
     ]
 
-    n_constraints = 0
     constraint_names = None
     if "constraint_enum" in opt_grp:
         constraint_enum_dict = h5py.check_enum_dtype(opt_grp["constraint_enum"].dtype)
         constraint_idx_dict = {parm: idx for parm, idx in constraint_enum_dict.items()}
         constraint_name_dict = {idx: parm for parm, idx in constraint_idx_dict.items()}
-        n_constraints = len(constraint_enum_dict)
         constraint_names = [
             constraint_name_dict[spec[0]] for spec in iter(opt_grp["constraint_spec"])
         ]
 
-    n_features = 0
     feature_names = None
     if "feature_enum" in opt_grp:
         feature_enum_dict = h5py.check_enum_dtype(opt_grp["feature_enum"].dtype)
         feature_idx_dict = {parm: idx for parm, idx in feature_enum_dict.items()}
         feature_name_dict = {idx: parm for parm, idx in feature_idx_dict.items()}
-        n_features = len(feature_enum_dict)
         feature_names = [
             feature_name_dict[spec[0]] for spec in iter(opt_grp["feature_spec"])
         ]
@@ -1862,9 +1857,6 @@ def h5_load_raw(input_file, opt_id):
     problem_ids = None
     if "problem_ids" in opt_grp:
         problem_ids = set(opt_grp["problem_ids"])
-
-    M = len(parameter_specs)
-    P = n_objectives
 
     raw_results = {}
     for problem_id in problem_ids if problem_ids is not None else [0]:
@@ -1949,17 +1941,6 @@ def h5_load_all(file_path, opt_id):
       where prev_best: np.array[result, param1, param2, ...]
     """
     raw_spec, raw_problem_results, info = h5_load_raw(file_path, opt_id)
-    param_names = info["params"]
-    objective_names = info["objectives"]
-    feature_names = info["features"]
-    constraint_names = info["constraints"]
-    n_objectives = len(objective_names)
-    n_features = 0
-    if feature_names is not None:
-        n_features = len(feature_names)
-    n_constraints = 0
-    if constraint_names is not None:
-        n_constraints = len(constraint_names)
     evals = {problem_id: [] for problem_id in raw_problem_results}
     for problem_id in raw_problem_results:
         problem_evals = []
@@ -2080,9 +2061,9 @@ def save_to_h5(
 
     opt_grp = h5_get_group(f, opt_id)
 
-    parameter_enum_dict = h5py.check_enum_dtype(opt_grp["parameter_enum"].dtype)
-    parameters_idx_dict = {parm: idx for parm, idx in parameter_enum_dict.items()}
-    parameters_name_dict = {idx: parm for parm, idx in parameters_idx_dict.items()}
+    # parameter_enum_dict = h5py.check_enum_dtype(opt_grp["parameter_enum"].dtype)
+    # parameters_idx_dict = {parm: idx for parm, idx in parameter_enum_dict.items()}
+    # parameters_name_dict = {idx: parm for parm, idx in parameters_idx_dict.items()}
 
     for problem_id in problem_ids:
         (
@@ -2220,7 +2201,7 @@ def save_surrogate_evals_to_h5(
 
     opt_grp = h5_get_group(f, opt_id)
 
-    opt_prob = h5_get_group(opt_grp, str(problem_id))
+    # opt_prob = h5_get_group(opt_grp, str(problem_id))
     opt_sm = h5_get_group(opt_grp, "surrogate_evals")
 
     n_evals = x_sm.shape[0]
@@ -2338,13 +2319,38 @@ def init_h5(
     f.close()
 
 
-def eval_obj_fun_sp(obj_fun, pp, param_space, obj_fun_args, problem_id, space_vals):
+def eval_obj_fun_sp(
+    obj_fun,
+    pp,
+    param_space,
+    nested_parameter_space,
+    obj_fun_args,
+    problem_id,
+    space_vals,
+):
     """
     Objective function evaluation (single problem).
     """
 
     this_space_vals = space_vals[problem_id]
-    this_pp = update_nested_dict(pp.unflatten(), param_space.unflatten(this_space_vals))
+    if nested_parameter_space:
+        this_pp = update_nested_dict(
+            pp.unflatten(), param_space.unflatten(this_space_vals)
+        )
+    else:
+        this_pp = {}
+        this_pp.update(
+            [
+                (item.name, int(item.value) if item.is_integer else item.value)
+                for item in pp.items
+            ]
+        )
+        this_pp.update(
+            [
+                (param_name, this_space_vals[i])
+                for i, param_name in enumerate(param_space.parameter_names)
+            ]
+        )
     if obj_fun_args is None:
         obj_fun_args = ()
     t = time.time()
@@ -2352,7 +2358,15 @@ def eval_obj_fun_sp(obj_fun, pp, param_space, obj_fun_args, problem_id, space_va
     return {problem_id: result, "time": time.time() - t}
 
 
-def eval_obj_fun_mp(obj_fun, pp, param_space, obj_fun_args, problem_ids, space_vals):
+def eval_obj_fun_mp(
+    obj_fun,
+    pp,
+    param_space,
+    nested_parameter_space,
+    obj_fun_args,
+    problem_ids,
+    space_vals,
+):
     """
     Objective function evaluation (multiple problems).
     """
@@ -2360,9 +2374,24 @@ def eval_obj_fun_mp(obj_fun, pp, param_space, obj_fun_args, problem_ids, space_v
     mpp = {}
     for problem_id in problem_ids:
         this_space_vals = space_vals[problem_id]
-        this_pp = update_nested_dict(
-            pp.unflatten(), space_params.unflatten(this_space_vals)
-        )
+        if nested_parameter_space:
+            this_pp = update_nested_dict(
+                pp.unflatten(), param_space.unflatten(this_space_vals)
+            )
+        else:
+            this_pp = {}
+            this_pp.update(
+                [
+                    (item.name, int(item.value) if item.is_integer else item.value)
+                    for item in pp.items
+                ]
+            )
+            this_pp.update(
+                [
+                    (param_name, this_space_vals[i])
+                    for i, param_name in enumerate(param_space.parameter_names)
+                ]
+            )
         mpp[problem_id] = this_pp
 
     if obj_fun_args is None:
@@ -2373,6 +2402,10 @@ def eval_obj_fun_mp(obj_fun, pp, param_space, obj_fun_args, problem_ids, space_v
     result_dict["time"] = time.time() - t
 
     return result_dict
+
+
+def reducefun(xs):
+    return xs[0]
 
 
 def dopt_init(
@@ -2413,7 +2446,6 @@ def dopt_init(
         # first element of the list.
         if distwq.is_controller and distwq.workers_available:
             if nprocs_per_worker == 1:
-                reducefun = lambda xs: xs[0]
                 dopt_params["reduce_fun"] = reducefun
             elif nprocs_per_worker > 1:
                 raise RuntimeError(
@@ -2441,7 +2473,6 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
         initialize_strategy=True,
     )
     logger.info(f"Optimizing for {dopt.n_epochs} epochs...")
-    start_epoch = dopt.start_epoch
 
     if dopt.n_epochs <= 0:
         # initial sampling only
