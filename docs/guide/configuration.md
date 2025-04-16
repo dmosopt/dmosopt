@@ -103,6 +103,53 @@ dmosopt supports evaluating different problems with the same set of parameters. 
 
 Furthermore, it is possible to implement dynamic sampling strategies via the `dynamic_initial_sampling` option (and `dynamic_initial_sampling_kwargs`). [Learn more](./sampling)
 
+### Nested parameter spaces
+
+dmosopt supports the use of nested parameter spaces that allow optimization parameters to be organized into logical groups. Nested parameter spaces can be configured as follows:
+
+#### Define parameter space as a nested dictionary
+
+```python
+space = {"group1": {}, "group2": {}}
+# Add parameters to each group
+for i in range(15):
+    space["group1"]["x%d" % (i + 1)] = [0.0, 1.0]
+for i in range(15, 30):
+    space["group2"]["x%d" % (i + 1)] = [0.0, 1.0]
+```
+
+#### Enable nested parameters in dmosopt configuration
+
+```python
+dmosopt_params = {
+    # Other parameters...
+    "space": space,
+    "nested_parameter_space": True,
+    # Rest of configuration...
+}
+```
+
+#### Access nested parameters in objective function
+
+```python
+def obj_fun(pp):
+    """Objective function with nested parameters."""
+    group1 = pp["group1"]  # Access first group
+    group2 = pp["group2"]  # Access second group
+    
+    # Process parameters by group
+    param_values = np.concatenate(
+        (
+            np.asarray([group1[k] for k in sorted(group1)]),
+            np.asarray([group2[k] for k in sorted(group2)]),
+        )
+    )
+    
+    # Perform objective calculation
+```
+
+
+
 ### Surrogate strategy
 
 [Surrogate models](./surrogates) can greatly improve sampling effectiveness and convergence. Use `surrogate_method_name` to point to a strategy; method specific options can be passed via `surrogate_method_kwargs`. Moreover, to use a custom training method, you can pass its Python import path to `surrogate_custom_training` (and additional arguments to `surrogate_custom_training_kwargs`).
