@@ -79,14 +79,14 @@ def test_solution_quality(
 if __name__ == "__main__":
     space = {}
     for i in range(30):
-        space["x%d" % (i + 1)] = [0.0, 1.0]
+        space["x.%d" % (i + 1)] = [0.0, 1.0]
     problem_parameters = {}
     objective_names = ["y1", "y2"]
 
     # Create an optimizer
     dmosopt_params = {
         "opt_id": "dmosopt_zdt1",
-        "obj_fun_name": "test_zdt1_age.obj_fun",
+        "obj_fun_name": "test_zdt1_age_dotname.obj_fun",
         "problem_parameters": problem_parameters,
         "space": space,
         "objective_names": objective_names,
@@ -106,7 +106,8 @@ if __name__ == "__main__":
         "optimize_mean_variance": False,
         "n_initial": 3,
         "n_epochs": 4,
-        "save": False,
+        "file_path": "./zdt1_dotname.h5",
+        "save": True,
         "save_surrogate_eval": False,
     }
 
