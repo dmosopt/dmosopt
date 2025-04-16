@@ -68,7 +68,7 @@ class ParameterSpace:
         self._flat_ranges = []
         self._param_paths = {}
 
-        for name, item in self.ranges.items():
+        for name, item in sorted(self.ranges.items()):
             current_path = f"{prefix}.{name}" if prefix else name
 
             if isinstance(item, (ParameterDefn, ParameterValue)):
