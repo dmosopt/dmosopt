@@ -27,7 +27,7 @@ def check_order():
             "opt_id": "debug",
             "obj_fun_name": "objective_function",
             "space": parameter_space,
-            "num_epochs": 1,
+            "n_epochs": 1,
             "population_size": 3,
             "num_generations": 3,
             "problem_parameters": {},
@@ -57,26 +57,26 @@ def check_order():
         parameter_enum_T = {v: k for k, v in parameter_enum.items()}
 
         parameter_names = [
-            parameter_enum_T[s[0]] for s in iter(h5[f"debug/parameter_spec"])
+            parameter_enum_T[s[0]] for s in iter(h5["debug/parameter_spec"])
         ]
 
-        parameters = pd.DataFrame(h5[f"debug/0/parameters"][:], columns=parameter_names)
+        parameters = pd.DataFrame(h5["debug/0/parameters"][:], columns=parameter_names)
 
     # at runtime, the samples were correct:
     for column in objectives.columns:
         values = objectives[column]
         min_val, max_val = map(int, column.split("_"))
-        assert all(
-            min_val <= v <= max_val for v in values
-        ), f"Values in {column} outside range [{min_val}, {max_val}]"
+        assert all(min_val <= v <= max_val for v in values), (
+            f"Values in {column} outside range [{min_val}, {max_val}]"
+        )
 
     # but they are being saved in a different order
     for column in parameters.columns:
         values = parameters[column]
         min_val, max_val = map(int, column.split("_"))
-        assert all(
-            min_val <= v <= max_val for v in values
-        ), f"Values in {column} outside range [{min_val}, {max_val}]"
+        assert all(min_val <= v <= max_val for v in values), (
+            f"Values in {column} outside range [{min_val}, {max_val}]"
+        )
 
 
 check_order()
