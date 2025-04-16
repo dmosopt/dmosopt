@@ -23,15 +23,7 @@ def zdt1(x):
 
 def obj_fun(pp):
     """Objective function to be minimized."""
-    group1 = pp["group1"]
-    group2 = pp["group2"]
-    param_values = np.concatenate(
-        (
-            np.asarray([group1[k] for k in sorted(group1)]),
-            np.asarray([group2[k] for k in sorted(group2)]),
-        )
-    )
-
+    param_values = np.asarray([pp[k] for k in sorted(pp)])
     res = zdt1(param_values)
     logger.info(f"Iter: \t pp:{pp}, result:{res}")
     return res
@@ -69,7 +61,7 @@ def test_solution_quality(
     distances = []
     for point in objective_values:
         dist = np.min(np.sqrt(np.sum((pareto_front - point) ** 2, axis=1)))
-        #        print(f"point = {point} dist = {dist} pareto_front = {pareto_front[:10]}")
+        print(f"point = {point} dist = {dist} pareto_front = {pareto_front[:10]}")
         distances.append(dist)
 
     distances = np.array(distances)
@@ -85,22 +77,18 @@ def test_solution_quality(
 
 
 if __name__ == "__main__":
-    space = {"group1": {}, "group2": {}}
-    for i in range(15):
-        space["group1"]["x%d" % (i + 1)] = [0.0, 1.0]
-    for i in range(15, 30):
-        space["group2"]["x%d" % (i + 1)] = [0.0, 1.0]
-
+    space = {}
+    for i in range(30):
+        space["x.%d" % (i + 1)] = [0.0, 1.0]
     problem_parameters = {}
     objective_names = ["y1", "y2"]
 
     # Create an optimizer
     dmosopt_params = {
         "opt_id": "dmosopt_zdt1",
-        "obj_fun_name": "test_zdt1_age_nested.obj_fun",
+        "obj_fun_name": "test_zdt1_age_dotname.obj_fun",
         "problem_parameters": problem_parameters,
         "space": space,
-        "nested_parameter_space": True,
         "objective_names": objective_names,
         "population_size": 200,
         "num_generations": 100,
@@ -118,7 +106,7 @@ if __name__ == "__main__":
         "optimize_mean_variance": False,
         "n_initial": 3,
         "n_epochs": 4,
-        "file_path": "./zdt1_nested.h5",
+        "file_path": "./zdt1_dotname.h5",
         "save": True,
         "save_surrogate_eval": False,
     }
