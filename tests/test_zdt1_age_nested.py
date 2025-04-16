@@ -100,6 +100,7 @@ if __name__ == "__main__":
         "obj_fun_name": "test_zdt1_age_nested.obj_fun",
         "problem_parameters": problem_parameters,
         "space": space,
+        "nested_parameter_space": True,
         "objective_names": objective_names,
         "population_size": 200,
         "num_generations": 100,
@@ -117,7 +118,8 @@ if __name__ == "__main__":
         "optimize_mean_variance": False,
         "n_initial": 3,
         "n_epochs": 4,
-        "save": False,
+        "file_path": "./zdt1_nested.h5",
+        "save": True,
         "save_surrogate_eval": False,
     }
 
