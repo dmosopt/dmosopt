@@ -100,6 +100,7 @@ class dmosopt.DistOptimizer(
     save_surrogate_evals=False,
     save_optimizer_params=True,
     metadata=None,
+    nested_parameter_space=False,
     surrogate_method_name="gpr",
     surrogate_method_kwargs={"anisotropic": False, "optimizer": "sceua"},
     surrogate_custom_training=None,
@@ -153,6 +154,7 @@ The `DistOptimizer` class represents a distributed optimizer object. It encapsul
 - `save_surrogate_evals` (bool, optional): If True, surrogate evaluations will be saved. Default is False.
 - `save_optimizer_params` (bool, optional): If True, optimizer parameters will be saved. Default is True.
 - `metadata` (dict, optional): Dictionary of values representing metadata associated with the optimization. Default is None.
+- `nested_parameter_space` (bool, optional): If True, create nested parameter spaces for parameter of the form x.y. Default is False.
 - `surrogate_method_name` (str, optional): Name of the surrogate modeling method. Default is "gpr".
 - `surrogate_method_kwargs` (dict, optional): Keyword arguments for the surrogate modeling method. Default is {"anisotropic": False, "optimizer": "sceua"}.
 - `surrogate_custom_training` (str, optional): Custom surrogate training function. Default is None.
