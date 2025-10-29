@@ -67,6 +67,7 @@ if __name__ == "__main__":
         "problem_parameters": problem_parameters,
         "optimizer": "nsga2",
         "surrogate_options": {"lengthscale_bounds": (1e-4, 1000.0)},
+        "surrogate_method_name": "megp",
         "population_size": 200,
         "num_generations": 200,
         "termination_conditions": True,
@@ -85,7 +86,7 @@ if __name__ == "__main__":
         import matplotlib.pyplot as plt
 
         bestx, besty = best
-        x, y = dmosopt.sopt_dict["dmosopt_zdt3"].optimizer_dict[0].get_evals()
+        x, y = dmosopt.dopt_dict["dmosopt_zdt3"].optimizer_dict[0].get_evals()
         besty_dict = dict(besty)
 
         # plot results
