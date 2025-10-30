@@ -21,7 +21,7 @@ from dmosopt.datatypes import (
     StrategyState,
     update_nested_dict,
 )
-from dmosopt.termination import MultiObjectiveStdTermination
+from dmosopt.adaptive_termination import create_adaptive_termination
 
 logger = logging.getLogger("dmosopt")
 
@@ -119,15 +119,12 @@ class DistOptStrategy:
         self.termination = None
         if termination_conditions:
             termination_kwargs = {
-                "x_tol": 1e-6,
-                "f_tol": 0.0001,
-                "nth_gen": 5,
+                "strategy": "comprehensive",
                 "n_max_gen": num_generations,
-                "n_last": 50,
             }
             if isinstance(termination_conditions, dict):
                 termination_kwargs.update(termination_conditions)
-            self.termination = MultiObjectiveStdTermination(prob, **termination_kwargs)
+            self.termination = create_adaptive_termination(prob, **termination_kwargs)
         nPrevious = None
         if self.x is not None:
             nPrevious = self.x.shape[0]
@@ -317,8 +314,6 @@ class DistOptStrategy:
             optimizer_kwargs.update(self.optimizer_kwargs[optimizer_index])
         if self.distance_metric is not None:
             optimizer_kwargs["distance_metric"] = self.distance_metric
-        if self.termination is not None:
-            self.termination.reset()
 
         self._update_evals()
 
@@ -1715,7 +1710,10 @@ def h5_init_types(
     opt_grp["parameter_enum"] = dt
 
     dt = np.dtype(
-        {"names": parameter_space.parameter_names, "formats": [np.float32] * len(parameter_space.parameter_names)}
+        {
+            "names": parameter_space.parameter_names,
+            "formats": [np.float32] * len(parameter_space.parameter_names),
+        }
     )
     opt_grp["parameter_space_type"] = dt
 
