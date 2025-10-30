@@ -61,6 +61,11 @@ def handle_zeros_in_scale(scale, copy=True, constant_mask=None):
         scale[constant_mask] = 1.0
         return scale
 
+from dmosopt.model_gpytorch import (MEGP_Matern, 
+                                    EGP_Matern,
+                                    MDGP_Matern,
+                                    MDSPP_Matern)
+
 
 class Model:
     def __init__(
