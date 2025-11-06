@@ -1070,6 +1070,19 @@ if __name__ == "__main__":
     )
     print("-" * 80)
 
+    print("Comparing optimization strategies with epsilon=0.1...")
+    print("-" * 80)
+
+    results = compare_optimizations(
+        pareto_front, reference_point, epsilon=0.1, delta=0.25, minimize=True
+    )
+    print("\nResults:")
+    print("-" * 80)
+    print(
+        f"{'Algorithm':<25} {'HV':<12} {'Samples':<10} {'Comparisons':<12} {'Speedup':<10}"
+    )
+    print("-" * 80)
+
     baseline_comparisons = results["FPRAS-Baseline"].num_comparisons
 
     for name, result in results.items():

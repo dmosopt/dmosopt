@@ -5,8 +5,8 @@ automatic algorithm selection based on problem dimensionality.
 
 Key optimizations:
 1. Hybrid algorithm selection based on dimensionality
-2. Lacour et al. (2016) box decomposition for low and medium dimensions (1-8 objectives)
-3. Monte Carlo approximation for high dimensions (>8 objectives)
+2. Lacour et al. (2016) box decomposition for low and medium dimensions (1-10 objectives)
+3. Monte Carlo approximation for high dimensions (>=10 objectives)
 
 References:
 
@@ -79,8 +79,8 @@ class AdaptiveHyperVolume:
     Adaptive hypervolume computation with automatic algorithm selection.
 
     Automatically chooses the best algorithm based on problem dimensionality:
-    - Box decomposition for 1 <= d <= 8 (efficient for low and medium dimensions)
-    - Monte Carlo approximation for d > 8 (only practical option for high dimensions)
+    - Box decomposition for 1 <= d < 10 (efficient for low and medium dimensions)
+    - Monte Carlo approximation for d >= 10 (only practical option for high dimensions)
 
     This hybrid approach provides scalable performance across all dimensions.
 
