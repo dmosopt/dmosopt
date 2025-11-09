@@ -5,7 +5,7 @@
 from abc import abstractmethod
 import numpy as np
 from dmosopt.normalization import PreNormalization
-from dmosopt.hv import HyperVolumeBoxDecomposition as _HyperVolume
+from dmosopt.hv_box_decomposition import HyperVolumeBoxDecomposition as _HyperVolume
 from dmosopt.dda import dda_ens
 
 

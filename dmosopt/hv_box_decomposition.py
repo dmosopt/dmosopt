@@ -420,8 +420,8 @@ class HyperVolumeBoxDecomposition:
         sorted_indices = np.argsort(pareto_front[:, 0])
         sorted_front = pareto_front[sorted_indices]
 
-        lower_bounds = np.full((n_points + 1, self.n_objectives), -np.inf)
-        upper_bounds = np.full((n_points + 1, self.n_objectives), np.inf)
+        lower_bounds = np.full((n_points + 1, self.d), -np.inf)
+        upper_bounds = np.full((n_points + 1, self.d), np.inf)
 
         lower_bounds[1:] = sorted_front
         upper_bounds[:-1] = sorted_front
