@@ -52,16 +52,13 @@ def test_solution_quality(
     # Calculate objective values for all solutions
     objective_values = np.vstack([zdt1(x) for x in solutions])
 
-    print(f"objective_values.shape = {objective_values.shape}")
     # Get analytical Pareto front
     pareto_front = zdt1_pareto(num_pareto_points)
-    print(f"pareto_front.shape = {pareto_front.shape}")
 
     # Calculate minimum distance to Pareto front for each solution
     distances = []
     for point in objective_values:
         dist = np.min(np.sqrt(np.sum((pareto_front - point) ** 2, axis=1)))
-        print(f"point = {point} dist = {dist} pareto_front = {pareto_front[:10]}")
         distances.append(dist)
 
     distances = np.array(distances)
@@ -91,7 +88,7 @@ if __name__ == "__main__":
         "space": space,
         "objective_names": objective_names,
         "population_size": 200,
-        "num_generations": 100,
+        "num_generations": 400,
         "initial_maxiter": 10,
         "surrogate_method_name": "gpr",
         "optimizer_name": ["age"],

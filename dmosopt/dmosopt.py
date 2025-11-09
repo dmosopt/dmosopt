@@ -117,7 +117,9 @@ class DistOptStrategy:
         self.num_generations = num_generations
         self.population_size = population_size
         self.termination = None
-        if termination_conditions:
+        if callable(termination_conditions):
+            self.termination = termination_conditions(prob)
+        elif termination_conditions:
             termination_kwargs = {
                 "strategy": "comprehensive",
                 "n_max_gen": num_generations,

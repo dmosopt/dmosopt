@@ -1,910 +1,560 @@
-import numpy as np
-from typing import Dict, List, Tuple
-from scipy.stats import norm
-from functools import lru_cache
-from dataclasses import dataclass
+"""Adaptive hypervolume computation with Yang et al. box decomposition
 
-#    Copyright (C) 2010 Simon Wessing
-#    TU Dortmund University
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+This module provides adaptive hypervolume computation strategies with
+automatic algorithm selection based on problem dimensionality.
 
+Key optimizations:
+1. Hybrid algorithm selection based on dimensionality
+2. Lacour et al. (2016) box decomposition for low and medium dimensions (1-10 objectives)
+3. Monte Carlo approximation for high dimensions (>=10 objectives)
 
-class HyperVolumeDimensionSweep:
-    """
-    Hypervolume computation based on variant 3 of the algorithm in the paper:
-    C. M. Fonseca, L. Paquete, and M. Lopez-Ibanez. An improved dimension-sweep
-    algorithm for the hypervolume indicator. In IEEE Congress on Evolutionary
-    Computation, pages 1157-1163, Vancouver, Canada, July 2006.
+References:
 
-    Minimization is implicitly assumed here!
+Renaud Lacour, Kathrin Klamroth, Carlos M. Fonseca, A Box
+Decomposition Algorithm to Compute the Hypervolume Indicator,
+Computers & Operations Research, 2016.
 
-    """
-
-    def __init__(self, referencePoint):
-        """Constructor."""
-        self.referencePoint = referencePoint
-        self.list = []
-
-    def compute_hypervolume(self, front):
-        """Returns the hypervolume that is dominated by a non-dominated front.
-
-        Before the HV computation, front and reference point are translated, so
-        that the reference point is [0, ..., 0].
-
-        """
-
-        def weaklyDominates(point, other):
-            for i in range(len(point)):
-                if point[i] > other[i]:
-                    return False
-            return True
-
-        relevantPoints = []
-        referencePoint = self.referencePoint
-        dimensions = len(referencePoint)
-        for point in front:
-            # only consider points that dominate the reference point
-            if weaklyDominates(point, referencePoint):
-                relevantPoints.append(point)
-        if any(referencePoint):
-            # shift points so that referencePoint == [0, ..., 0]
-            # this way the reference point doesn't have to be explicitly used
-            # in the HV computation
-            for j in range(len(relevantPoints)):
-                relevantPoints[j] = [
-                    relevantPoints[j][i] - referencePoint[i] for i in range(dimensions)
-                ]
-        self.preProcess(relevantPoints)
-        bounds = [-1.0e308] * dimensions
-        hyperVolume = self.hvRecursive(dimensions - 1, len(relevantPoints), bounds)
-        return hyperVolume
-
-    def hvRecursive(self, dimIndex, length, bounds):
-        """Recursive call to hypervolume calculation.
-
-        In contrast to the paper, the code assumes that the reference point
-        is [0, ..., 0]. This allows the avoidance of a few operations.
-
-        """
-        hvol = 0.0
-        sentinel = self.list.sentinel
-        if length == 0:
-            return hvol
-        elif dimIndex == 0:
-            # special case: only one dimension
-            # why using hypervolume at all?
-            return -sentinel.next[0].cargo[0]
-        elif dimIndex == 1:
-            # special case: two dimensions, end recursion
-            q = sentinel.next[1]
-            h = q.cargo[0]
-            p = q.next[1]
-            while p is not sentinel:
-                pCargo = p.cargo
-                hvol += h * (q.cargo[1] - pCargo[1])
-                if pCargo[0] < h:
-                    h = pCargo[0]
-                q = p
-                p = q.next[1]
-            hvol += h * q.cargo[1]
-            return hvol
-        else:
-            remove = self.list.remove
-            reinsert = self.list.reinsert
-            hvRecursive = self.hvRecursive
-            p = sentinel
-            q = p.prev[dimIndex]
-            while q.cargo is not None:
-                if q.ignore < dimIndex:
-                    q.ignore = 0
-                q = q.prev[dimIndex]
-            q = p.prev[dimIndex]
-            while length > 1 and (
-                q.cargo[dimIndex] > bounds[dimIndex]
-                or q.prev[dimIndex].cargo[dimIndex] >= bounds[dimIndex]
-            ):
-                p = q
-                remove(p, dimIndex, bounds)
-                q = p.prev[dimIndex]
-                length -= 1
-            qArea = q.area
-            qCargo = q.cargo
-            qPrevDimIndex = q.prev[dimIndex]
-            if length > 1:
-                hvol = qPrevDimIndex.volume[dimIndex] + qPrevDimIndex.area[dimIndex] * (
-                    qCargo[dimIndex] - qPrevDimIndex.cargo[dimIndex]
-                )
-            else:
-                qArea[0] = 1
-                qArea[1 : dimIndex + 1] = [
-                    qArea[i] * -qCargo[i] for i in range(dimIndex)
-                ]
-            q.volume[dimIndex] = hvol
-            if q.ignore >= dimIndex:
-                qArea[dimIndex] = qPrevDimIndex.area[dimIndex]
-            else:
-                qArea[dimIndex] = hvRecursive(dimIndex - 1, length, bounds)
-                if qArea[dimIndex] <= qPrevDimIndex.area[dimIndex]:
-                    q.ignore = dimIndex
-            while p is not sentinel:
-                pCargoDimIndex = p.cargo[dimIndex]
-                hvol += q.area[dimIndex] * (pCargoDimIndex - q.cargo[dimIndex])
-                bounds[dimIndex] = pCargoDimIndex
-                reinsert(p, dimIndex, bounds)
-                length += 1
-                q = p
-                p = p.next[dimIndex]
-                q.volume[dimIndex] = hvol
-                if q.ignore >= dimIndex:
-                    q.area[dimIndex] = q.prev[dimIndex].area[dimIndex]
-                else:
-                    q.area[dimIndex] = hvRecursive(dimIndex - 1, length, bounds)
-                    if q.area[dimIndex] <= q.prev[dimIndex].area[dimIndex]:
-                        q.ignore = dimIndex
-            hvol -= q.area[dimIndex] * q.cargo[dimIndex]
-            return hvol
-
-    def preProcess(self, front):
-        """Sets up the list data structure needed for calculation."""
-        dimensions = len(self.referencePoint)
-        nodeList = MultiList(dimensions)
-        nodes = [MultiList.Node(dimensions, point) for point in front]
-        for i in range(dimensions):
-            self.sortByDimension(nodes, i)
-            nodeList.extend(nodes, i)
-        self.list = nodeList
-
-    def sortByDimension(self, nodes, i):
-        """Sorts the list of nodes by the i-th value of the contained points."""
-        # build a list of tuples of (point[i], node)
-        decorated = [(node.cargo[i], index, node) for index, node in enumerate(nodes)]
-        # sort by this value
-        decorated.sort()
-        # write back to original list
-        nodes[:] = [node for (_, _, node) in decorated]
-
-
-class MultiList:
-    """A special data structure needed by FonsecaHyperVolume.
-
-    It consists of several doubly linked lists that share common nodes. So,
-    every node has multiple predecessors and successors, one in every list.
-
-    """
-
-    class Node:
-        def __init__(self, numberLists, cargo=None):
-            self.cargo = cargo
-            self.next = [None] * numberLists
-            self.prev = [None] * numberLists
-            self.ignore = 0
-            self.area = [0.0] * numberLists
-            self.volume = [0.0] * numberLists
-
-        def __str__(self):
-            return str(self.cargo)
-
-    def __init__(self, numberLists):
-        """Constructor.
-
-        Builds 'numberLists' doubly linked lists.
-
-        """
-        self.numberLists = numberLists
-        self.sentinel = MultiList.Node(numberLists)
-        self.sentinel.next = [self.sentinel] * numberLists
-        self.sentinel.prev = [self.sentinel] * numberLists
-
-    def __str__(self):
-        strings = []
-        for i in range(self.numberLists):
-            currentList = []
-            node = self.sentinel.next[i]
-            while node != self.sentinel:
-                currentList.append(str(node))
-                node = node.next[i]
-            strings.append(str(currentList))
-        stringRepr = ""
-        for string in strings:
-            stringRepr += string + "\n"
-        return stringRepr
-
-    def __len__(self):
-        """Returns the number of lists that are included in this MultiList."""
-        return self.numberLists
-
-    def getLength(self, i):
-        """Returns the length of the i-th list."""
-        length = 0
-        sentinel = self.sentinel
-        node = sentinel.next[i]
-        while node != sentinel:
-            length += 1
-            node = node.next[i]
-        return length
-
-    def append(self, node, index):
-        """Appends a node to the end of the list at the given index."""
-        lastButOne = self.sentinel.prev[index]
-        node.next[index] = self.sentinel
-        node.prev[index] = lastButOne
-        # set the last element as the new one
-        self.sentinel.prev[index] = node
-        lastButOne.next[index] = node
-
-    def extend(self, nodes, index):
-        """Extends the list at the given index with the nodes."""
-        sentinel = self.sentinel
-        for node in nodes:
-            lastButOne = sentinel.prev[index]
-            node.next[index] = sentinel
-            node.prev[index] = lastButOne
-            # set the last element as the new one
-            sentinel.prev[index] = node
-            lastButOne.next[index] = node
-
-    def remove(self, node, index, bounds):
-        """Removes and returns 'node' from all lists in [0, 'index'[."""
-        for i in range(index):
-            predecessor = node.prev[i]
-            successor = node.next[i]
-            predecessor.next[i] = successor
-            successor.prev[i] = predecessor
-            if bounds[i] > node.cargo[i]:
-                bounds[i] = node.cargo[i]
-        return node
-
-    def reinsert(self, node, index, bounds):
-        """
-        Inserts 'node' at the position it had in all lists in [0, 'index'[
-        before it was removed. This method assumes that the next and previous
-        nodes of the node that is reinserted are in the list.
-
-        """
-        for i in range(index):
-            node.prev[i].next[i] = node
-            node.next[i].prev[i] = node
-            if bounds[i] > node.cargo[i]:
-                bounds[i] = node.cargo[i]
-
-
-""" 
-Implementation of hypervolume and Expected Hypervolume Improvement
-(EHVI) computation using box decomposition algorithms.
-
-The implementation provides two main functionalities:
-
-1. Hypervolume Computation: Calculates the hypervolume dominated by a
-set of Pareto-optimal points
-
-2. EHVI Computation: Calculates the expected improvement in
-   hypervolume for a new point with uncertain objective values
-   (represented by Gaussian distributions)
-
-Key Concepts:
-------------
-1. Hypervolume: 
-   - Measures the volume of the objective space dominated by a Pareto front
-   - Computed using a recursive slicing algorithm
-   
-2. Expected Hypervolume Improvement (EHVI):
-   - Extends hypervolume to handle uncertainty in predictions
-   - Computed using box decomposition and integration over Gaussian distributions
-
-Algorithm Details:
------------------
-1. Hypervolume Computation:
-   - Uses a recursive slicing algorithm
-   - Processes dimensions one at a time
-   - For each dimension:
-     * Sorts points by current dimension
-     * Computes contribution of each slice
-     * Recursively processes remaining dimensions
-     
-2. EHVI Computation:
-   - Decomposes non-dominated space into boxes
-   - For each box:
-     * Computes probability of improvement in each dimension
-     * Calculates expected improvement contribution
-     * Combines dimensional contributions
 """
 
-
-@dataclass
-class Box:
-    lower: np.ndarray
-    upper: np.ndarray
-    _volume: float = None
-
-    @property
-    def volume(self) -> float:
-        if self._volume is None:
-            mask = ~np.isinf(self.lower) & ~np.isinf(self.upper)
-            if not np.any(mask):
-                self._volume = 0.0
-            else:
-                self._volume = np.prod(self.upper[mask] - self.lower[mask])
-        return self._volume
+import numpy as np
+from typing import Tuple, Optional
+from dmosopt.hv_box_decomposition import compute_hypervolume_box_decomposition
+from dmosopt.hv_adaptive import (
+    ApproximationResult,
+    compute_hypervolume_fpras,
+    compute_hypervolume_mcm2rv,
+    compute_hypervolume_hybrid,
+)
 
 
-class HyperVolumeBoxDecomposition:
-    def __init__(self, ref_point: np.ndarray):
-        self.ref_point = ref_point
+def filter_dominated(points: np.ndarray, minimize: bool = True) -> np.ndarray:
+    """
+    Filter out dominated points to get non-dominated set (pure function).
+
+    Uses vectorized operations for efficiency.
+
+    Args:
+        points: Array of shape (n_points, n_objectives)
+        minimize: If True, filter for minimization (default)
+
+    Returns:
+        Array of non-dominated points
+    """
+    n = points.shape[0]
+    if n == 0:
+        return points.copy()
+
+    # Vectorized dominance check
+    dominated = np.zeros(n, dtype=bool)
+
+    if minimize:
+        # For minimization: point i dominates j if i <= j in all dims and i < j in at least one
+        for i in range(n):
+            if not dominated[i]:
+                leq = np.all(points[i] <= points, axis=1)
+                lt = np.any(points[i] < points, axis=1)
+                dominates_i = leq & lt
+                dominates_i[i] = False  # A point doesn't dominate itself
+                dominated[dominates_i] = True
+    else:
+        # For maximization: point i dominates j if i >= j in all dims and i > j in at least one
+        for i in range(n):
+            if not dominated[i]:
+                geq = np.all(points[i] >= points, axis=1)
+                gt = np.any(points[i] > points, axis=1)
+                dominates_i = geq & gt
+                dominates_i[i] = False
+                dominated[dominates_i] = True
+
+    return points[~dominated].copy()
+
+
+# ============================================================================
+# Adaptive Hypervolume
+# ============================================================================
+
+
+class AdaptiveHyperVolume:
+    """
+    Adaptive hypervolume computation with automatic algorithm selection.
+
+    Automatically chooses the best algorithm based on problem dimensionality:
+    - Box decomposition for 1 <= d < 10 (efficient for low and medium dimensions)
+    - Monte Carlo approximation for d >= 10 (only practical option for high dimensions)
+
+    This hybrid approach provides scalable performance across all dimensions.
+
+    """
+
+    def __init__(
+        self,
+        ref_point: np.ndarray,
+        dimension_threshold_exact: int = 10,
+        monte_carlo_samples: int = 100000,
+        use_adaptive_mc: bool = True,  # Adaptive MC parameters
+        mc_epsilon: float = 0.01,
+        mc_delta: float = 0.25,
+    ):
+        """
+        Initialize the hypervolume calculator.
+
+        Parameters
+        ----------
+        ref_point : np.ndarray
+            Reference point for hypervolume computation (for minimization:
+            worst acceptable values; for maximization: nadir point)
+        dimension_threshold_exact : int
+            Use exact algorithms for d < this value (default: 10)
+            For d >= this value, use Monte Carlo approximation
+        monte_carlo_samples : int
+            Number of samples for basic Monte Carlo approximation (default: 100000)
+        use_adaptive_mc: If True, use adaptive Monte Carlo algorithms (recommended)
+        mc_epsilon: Approximation error bound for adaptive Monte Carlo methods
+        mc_delta: Error probability for adaptive Monte Carlo methods
+        """
+        self.ref_point = np.asarray(ref_point, dtype=np.float64)
         self.n_objectives = len(ref_point)
-        self._hv_cache: Dict[Tuple, float] = {}
+        self.dimension_threshold_exact = dimension_threshold_exact
+        self.monte_carlo_samples = monte_carlo_samples
+        self.use_adaptive_mc = use_adaptive_mc
+        self.mc_epsilon = mc_epsilon
+        self.mc_delta = mc_delta
 
-    def select_candidates(
+    def compute_hypervolume(
         self,
         pareto_front: np.ndarray,
-        candidate_means: np.ndarray,
-        candidate_variances: np.ndarray,
-        n_select: int = 1,
-        batch_size: int = 100,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        algorithm: Optional[str] = None,
+        verbose: bool = False,
+    ) -> float:
         """
-        Select the best candidate points based on EHVI.
+        Compute hypervolume using automatically selected or specified algorithm.
+
+        Parameters
+        ----------
+        pareto_front : np.ndarray
+            Pareto front points, shape (n_points, n_objectives)
+        algorithm : str, optional
+            Force specific algorithm:
+                       - 'box': Box decomposition (exact, d<10)
+                       - 'monte_carlo': Standard Monte Carlo (approximate)
+                       - 'fpras': FPRAS adaptive (approximate)
+                       - 'mcm2rv': MCM2RV adaptive (approximate)
+                       - 'hybrid': Hybrid adaptive (approximate, recommended)
+                       - None/'auto': Automatic selection
+            Default is automatic selection.
+        verbose : bool
+            Print algorithm selection info
+
+        Returns
+        -------
+        float
+            Hypervolume value
         """
-        n_candidates = len(candidate_means)
+        pareto_front = np.asarray(pareto_front, dtype=np.float64)
 
-        # Pre-compute boxes for the current Pareto front
-        if len(pareto_front) == 0:
-            boxes = []
-        else:
-            boxes = self._decompose_dominated_space_optimized(pareto_front)
-
-        # Compute EHVI for all candidates in batches
-        ehvi_values = np.zeros(n_candidates)
-
-        for batch_start in range(0, n_candidates, batch_size):
-            batch_end = min(batch_start + batch_size, n_candidates)
-            batch_means = candidate_means[batch_start:batch_end]
-            batch_variances = candidate_variances[batch_start:batch_end]
-
-            if len(boxes) == 0:
-                # Handle empty Pareto front case
-                for i, (means, variances) in enumerate(
-                    zip(batch_means, batch_variances)
-                ):
-                    ehvi_values[batch_start + i] = self._compute_empty_ehvi(
-                        means, variances
-                    )
-            else:
-                # Compute EHVI for the batch
-                batch_ehvi = self._compute_batch_ehvi(
-                    boxes, batch_means, batch_variances
-                )
-                ehvi_values[batch_start:batch_end] = batch_ehvi
-
-        # Select top n_select candidates
-        selected_indices = np.copy(np.argsort(-ehvi_values)[:n_select])
-
-        return selected_indices, ehvi_values[selected_indices]
-
-    def _compute_batch_ehvi(
-        self, boxes: List[Box], batch_means: np.ndarray, batch_variances: np.ndarray
-    ) -> np.ndarray:
-        """
-        Compute EHVI for a batch of candidates efficiently.
-        Fixed broadcasting for vectorized operations.
-        """
-        batch_size = len(batch_means)
-        ehvi_values = np.zeros(batch_size)
-
-        # Prepare box bounds arrays
-        n_boxes = len(boxes)
-        lowers = np.array(
-            [box.lower for box in boxes]
-        )  # Shape: (n_boxes, n_objectives)
-        uppers = np.array(
-            [box.upper for box in boxes]
-        )  # Shape: (n_boxes, n_objectives)
-
-        # Compute contributions for each candidate
-        for i in range(batch_size):
-            means = batch_means[i]  # Shape: (n_objectives,)
-            variances = batch_variances[i]  # Shape: (n_objectives,)
-            std = np.sqrt(variances)  # Shape: (n_objectives,)
-
-            # Reshape for broadcasting
-            means = means[None, :]  # Shape: (1, n_objectives)
-            std = std[None, :]  # Shape: (1, n_objectives)
-
-            # Compute probabilities for all boxes
-            lower_probs = np.zeros_like(lowers, dtype=float)
-            upper_probs = np.ones_like(uppers, dtype=float)
-
-            # Handle finite bounds with proper broadcasting
-            finite_mask_lower = ~np.isinf(lowers)
-            finite_mask_upper = ~np.isinf(uppers)
-
-            if np.any(finite_mask_lower):
-                lower_probs[finite_mask_lower] = norm.cdf(
-                    (
-                        lowers[finite_mask_lower]
-                        - means.repeat(n_boxes, 0)[finite_mask_lower]
-                    )
-                    / std.repeat(n_boxes, 0)[finite_mask_lower]
-                )
-
-            if np.any(finite_mask_upper):
-                upper_probs[finite_mask_upper] = norm.cdf(
-                    (
-                        uppers[finite_mask_upper]
-                        - means.repeat(n_boxes, 0)[finite_mask_upper]
-                    )
-                    / std.repeat(n_boxes, 0)[finite_mask_upper]
-                )
-
-            # Compute partial expectations with proper broadcasting
-            partial_exp = std * (
-                norm.pdf((lowers - means) / std) - norm.pdf((uppers - means) / std)
-            ) + means * (upper_probs - lower_probs)
-
-            # Multiply along objectives dimension
-            contributions = np.prod(partial_exp, axis=1)
-            ehvi_values[i] = np.sum(contributions)
-
-        return ehvi_values
-
-    def _decompose_dominated_space_optimized(
-        self, pareto_front: np.ndarray
-    ) -> List[Box]:
-        n_points = len(pareto_front)
-        sorted_indices = np.argsort(pareto_front[:, 0])
-        sorted_front = pareto_front[sorted_indices]
-
-        lower_bounds = np.full((n_points + 1, self.n_objectives), -np.inf)
-        upper_bounds = np.full((n_points + 1, self.n_objectives), np.inf)
-
-        lower_bounds[1:] = sorted_front
-        upper_bounds[:-1] = sorted_front
-        upper_bounds[-1] = self.ref_point
-
-        valid_boxes = np.all(upper_bounds > lower_bounds, axis=1)
-        boxes = [
-            Box(lower_bounds[i], upper_bounds[i])
-            for i in range(n_points + 1)
-            if valid_boxes[i]
-        ]
-
-        return boxes
-
-    def _compute_empty_ehvi(self, means: np.ndarray, variances: np.ndarray) -> float:
-        contribution = 1.0
-
-        for i in range(self.n_objectives):
-            mean, var = means[i], variances[i]
-            std = np.sqrt(var)
-
-            prob = 1 - norm.cdf((self.ref_point[i] - mean) / std)
-            partial_exp = std * norm.pdf((self.ref_point[i] - mean) / std) + mean * prob
-
-            contribution *= partial_exp
-
-        return float(contribution)
-
-    def compute_hypervolume(self, pareto_front: np.ndarray) -> float:
-        """
-        Compute hypervolume with basic optimizations and correct caching.
-        """
         if len(pareto_front) == 0:
             return 0.0
 
-        # Ensure all points are dominated by reference point
-        valid_mask = np.all(pareto_front <= self.ref_point, axis=1)
+        # Ensure all points dominate reference point (for minimization: <= ref)
+        valid_mask = np.all(self.ref_point > pareto_front, axis=1)
         if not np.any(valid_mask):
             return 0.0
         points = pareto_front[valid_mask]
 
-        # Convert points to tuples for initial cache lookup
-        points_tuple = tuple(map(tuple, points))
-        ref_tuple = tuple(self.ref_point)
+        # Select algorithm
+        if algorithm is None or algorithm == "auto":
+            if self.n_objectives < self.dimension_threshold_exact:
+                algorithm = "box"
+            elif self.use_adaptive_mc:
+                algorithm = "hybrid"
+            else:
+                algorithm = "monte_carlo"
 
-        return self._compute_hv_optimized(
-            points_tuple, ref_tuple, self.n_objectives - 1
-        )
+        if verbose:
+            print(
+                f"Computing hypervolume using '{algorithm}' algorithm "
+                f"for {self.n_objectives} objectives, {len(points)} points"
+            )
 
-    @lru_cache(maxsize=1024)
-    def _compute_hv_optimized(
-        self,
-        points_tuple: Tuple[Tuple[float, ...], ...],
-        ref_tuple: Tuple[float, ...],
-        dimension: int,
+        # Dispatch to appropriate algorithm
+        if algorithm in ["fpras", "mcm2rv", "hybrid"]:
+            return self._compute_adaptive_mc(pareto_front, algorithm, verbose)
+        elif algorithm == "monte_carlo":
+            return self._compute_standard_mc(
+                pareto_front, n_samples=self.monte_carlo_samples
+            )
+        elif algorithm == "box":
+            return compute_hypervolume_box_decomposition(points, self.ref_point)
+        else:
+            raise ValueError(f"Unknown algorithm: {algorithm}")
+
+    def _compute_standard_mc(
+        self, points: np.ndarray, n_samples: int = 100000
     ) -> float:
         """
-        Recursive hypervolume computation with caching.
-        Works with tuples for hashability.
+        Monte Carlo approximation for high dimensions (d > 10).
+
+        Parameters
+        ----------
+        points : np.ndarray
+            Pareto front points
+        n_samples : int
+            Number of Monte Carlo samples
+
+        Returns
+        -------
+        float
+            Approximate hypervolume value
         """
-        points = np.array(points_tuple)
-        ref_point = np.array(ref_tuple)
+        # Find bounding box for sampling
+        lower_bounds = np.min(points, axis=0)
+        upper_bounds = self.ref_point
 
-        if len(points) == 0:
-            return 0.0
+        # Generate random samples in the dominated space
+        samples = np.random.uniform(
+            lower_bounds, upper_bounds, size=(n_samples, self.n_objectives)
+        )
 
-        if dimension == 0:
-            return float(ref_point[0] - np.min(points[:, 0]))
+        # Check which samples are dominated by at least one Pareto point
+        # Vectorized for efficiency
+        dominated = np.zeros(n_samples, dtype=bool)
 
-        # Sort points by current dimension (descending)
-        sorted_indices = np.argsort(-points[:, dimension])
-        sorted_points = points[sorted_indices]
-
-        hv = 0.0
-        prev_point = ref_point.copy()
-
-        for point in sorted_points:
-            if point[dimension] < prev_point[dimension]:
-                # Create reference point for this slice
-                curr_ref = prev_point.copy()
-                curr_ref[dimension] = point[dimension]
-
-                # Find points that are relevant for this slice
-                relevant_mask = np.all(sorted_points <= curr_ref, axis=1)
-                relevant_points = sorted_points[relevant_mask]
-
-                # Convert to tuples for recursive call
-                relevant_tuple = tuple(map(tuple, relevant_points))
-                curr_ref_tuple = tuple(curr_ref)
-
-                # Recursive call with updated reference point
-                slice_volume = self._compute_hv_optimized(
-                    relevant_tuple, curr_ref_tuple, dimension - 1
+        # Process in chunks to avoid memory issues
+        chunk_size = 10000
+        while np.sum(dominated) == 0:
+            for i in range(0, len(points), chunk_size):
+                chunk = points[i : i + chunk_size]
+                # Sample is dominated if all objectives are >= some Pareto point
+                dominated |= np.any(
+                    np.all(samples[:, None, :] >= chunk[None, :, :], axis=2), axis=1
                 )
-                hv += slice_volume * (prev_point[dimension] - point[dimension])
 
-                prev_point[dimension] = point[dimension]
+            # Re-generate random samples if dominated is zero
+            samples = np.random.uniform(
+                lower_bounds, upper_bounds, size=(n_samples, self.n_objectives)
+            )
 
-        return float(hv)
+        # Estimate hypervolume as fraction of dominated samples
+        total_volume = np.prod(upper_bounds - lower_bounds)
+        dominated_fraction = np.mean(dominated)
 
-    def compute_ehvi(
+        return float(total_volume * dominated_fraction)
+
+    def _compute_adaptive_mc(
+        self, points: np.ndarray, algorithm: str, verbose: bool = False
+    ) -> float:
+        """Compute using adaptive Monte Carlo methods."""
+        if algorithm == "fpras":
+            result = compute_hypervolume_fpras(
+                points, self.ref_point, self.mc_epsilon, self.mc_delta, minimize=True
+            )
+        elif algorithm == "mcm2rv":
+            result = compute_hypervolume_mcm2rv(
+                points, self.ref_point, self.mc_epsilon, self.mc_delta, minimize=True
+            )
+        else:  # hybrid
+            result = compute_hypervolume_hybrid(
+                points,
+                self.ref_point,
+                self.mc_epsilon,
+                self.mc_delta,
+                minimize=True,
+                verbose=verbose,
+            )
+
+        if verbose:
+            print(f"  Actual algorithm: {result.algorithm_used}")
+            print(f"  Comparisons: {result.num_comparisons}")
+            print(f"  Samples: {result.num_samples}")
+
+        return result.hypervolume
+
+    def compute_hypervolume_with_confidence(
         self,
         pareto_front: np.ndarray,
-        means: np.ndarray,
-        variances: np.ndarray,
-        batch_size: int = 1000,
-    ) -> float:
-        if len(pareto_front) == 0:
-            return self._compute_empty_ehvi(means, variances)
+        n_runs: int = 10,
+        confidence: float = 0.95,
+        verbose: bool = False,
+    ) -> Tuple[float, float]:
+        """
+        Compute hypervolume with confidence interval (Monte Carlo only).
 
-        boxes = self._decompose_dominated_space_optimized(pareto_front)
-        total_ehvi = 0.0
+        Useful for high-dimensional problems where exact computation is
+        infeasible and you want to quantify approximation uncertainty.
 
-        for i in range(0, len(boxes), batch_size):
-            batch = boxes[i : i + batch_size]
-            total_ehvi += self._compute_batch_contribution(batch, means, variances)
+        Parameters
+        ----------
+        pareto_front : np.ndarray
+            Pareto front points
+        n_runs : int
+            Number of independent Monte Carlo runs
+        confidence : float
+            Confidence level (default: 0.95 for 95% CI)
 
-        return total_ehvi
+        Returns
+        -------
+        Tuple[float, float]
+            (mean_hypervolume, confidence_interval_width)
+        """
+        if self.n_objectives < self.dimension_threshold_exact:
+            # Use exact algorithm, no uncertainty
+            hv = self.compute_hypervolume(pareto_front)
+            return hv, 0.0
 
-    def _compute_batch_contribution(
-        self,
-        boxes: List[Box],
-        means: np.ndarray,
-        variances: np.ndarray,
-        threshold: float = 1e-10,
-    ) -> float:
-        n_boxes = len(boxes)
-        if n_boxes == 0:
-            return 0.0
-
-        lowers = np.array([box.lower for box in boxes])
-        uppers = np.array([box.upper for box in boxes])
-
-        std = np.sqrt(variances)
-        finite_mask_lower = ~np.isinf(lowers)
-        finite_mask_upper = ~np.isinf(uppers)
-
-        lower_probs = np.zeros((n_boxes, self.n_objectives))
-        upper_probs = np.ones((n_boxes, self.n_objectives))
-
-        lower_probs[finite_mask_lower] = norm.cdf(
-            (lowers[finite_mask_lower] - means) / std
-        )
-        upper_probs[finite_mask_upper] = norm.cdf(
-            (uppers[finite_mask_upper] - means) / std
+        # Run multiple Monte Carlo estimates
+        estimates = np.array(
+            [
+                self._compute_adaptive_mc(
+                    pareto_front, algorithm="hybrid", verbose=verbose
+                )
+                for _ in range(n_runs)
+            ]
         )
 
-        partial_exp = std * (
-            norm.pdf((lowers - means) / std) - norm.pdf((uppers - means) / std)
-        ) + means * (upper_probs - lower_probs)
+        # Compute mean and confidence interval
+        mean_hv = np.mean(estimates)
+        std_hv = np.std(estimates, ddof=1)
 
-        contribution = np.prod(partial_exp, axis=1)
-        return float(np.sum(contribution[contribution > threshold]))
+        # t-distribution critical value for confidence interval
+        from scipy.stats import t
 
-    def _compute_empty_ehvi(self, means: np.ndarray, variances: np.ndarray) -> float:
-        contribution = 1.0
+        t_crit = t.ppf((1 + confidence) / 2, n_runs - 1)
+        ci_half_width = t_crit * std_hv / np.sqrt(n_runs)
 
-        for i in range(self.n_objectives):
-            mean, var = means[i], variances[i]
-            std = np.sqrt(var)
+        return float(mean_hv), float(ci_half_width)
 
-            prob = 1 - norm.cdf((self.ref_point[i] - mean) / std)
-            partial_exp = std * norm.pdf((self.ref_point[i] - mean) / std) + mean * prob
+    def compute_hypervolume_with_statistics(
+        self, pareto_front: np.ndarray, algorithm: str = "hybrid", verbose: bool = False
+    ) -> ApproximationResult:
+        """
+        Compute hypervolume and return detailed statistics.
 
-            contribution *= partial_exp
+        Parameters
+        ----------
+        pareto_front : np.ndarray
+            Pareto front points
+        algorithm : str
+            'fpras', 'mcm2rv', or 'hybrid'
+        verbose : bool
+            Print progress information
 
-        return float(contribution)
+        Returns
+        -------
+        ApproximationResult
+            Result with hypervolume and detailed statistics
+        """
+        pareto_front = filter_dominated(pareto_front, minimize=True)
 
-
-def run_basic_test_cases():
-    print("\n=== 2D Test Cases ===")
-
-    # 2D reference point
-    ref_point_2d = np.array([10.0, 10.0])
-    bd_2d = HyperVolumeBoxDecomposition(ref_point_2d)
-
-    # Test 2D cases
-    pareto_2d = np.array([[2.0, 8.0], [4.0, 4.0], [8.0, 2.0]])
-    hv_2d = bd_2d.compute_hypervolume(pareto_2d)
-    print(f"2D Basic case hypervolume: {hv_2d}")
-
-    # Single 2D point
-    single_point_2d = np.array([[5.0, 5.0]])
-    hv_single_2d = bd_2d.compute_hypervolume(single_point_2d)
-    print(f"2D Single point hypervolume: {hv_single_2d}")
-
-    print("\n=== 3D Test Cases ===")
-
-    # 3D reference point
-    ref_point_3d = np.array([10.0, 10.0, 10.0])
-    bd_3d = HyperVolumeBoxDecomposition(ref_point_3d)
-
-    # Test Case 1: Simple 3D Pareto front
-    pareto_3d_simple_1 = np.array([[2.0, 8.0, 8.0], [8.0, 2.0, 8.0], [8.0, 8.0, 2.0]])
-    hv_3d_simple_1 = bd_3d.compute_hypervolume(pareto_3d_simple_1)
-    print(f"3D Simple case 1 hypervolume: {hv_3d_simple_1}")
-
-    # Test Case 2: Simple 3D Pareto front
-    pareto_3d_simple_2 = np.array([[1, 0, 1], [0, 1, 0]])
-    hv_3d_simple_2 = bd_3d.compute_hypervolume(pareto_3d_simple_2)
-    print(f"3D Simple case 2 hypervolume: {hv_3d_simple_2}")
-
-    # Test Case 2: Single 3D point
-    single_point_3d = np.array([[5.0, 5.0, 5.0]])
-    hv_3d_single = bd_3d.compute_hypervolume(single_point_3d)
-    print(f"3D Single point hypervolume: {hv_3d_single}")
-    # Expected: (10-5)*(10-5)*(10-5) = 125
-
-    # Test Case 3: More complex 3D Pareto front
-    pareto_3d_complex = np.array(
-        [
-            [2.0, 8.0, 8.0],
-            [3.0, 3.0, 8.0],
-            [8.0, 2.0, 8.0],
-            [8.0, 8.0, 2.0],
-            [3.0, 8.0, 3.0],
-            [8.0, 3.0, 3.0],
-        ]
-    )
-    hv_3d_complex = bd_3d.compute_hypervolume(pareto_3d_complex)
-    print(f"3D Complex case hypervolume: {hv_3d_complex}")
-
-    # Test Case 4: 3D points with dominated points
-    pareto_3d_dominated = np.array(
-        [
-            [2.0, 8.0, 8.0],
-            [3.0, 7.0, 7.0],  # dominated by first point
-            [8.0, 2.0, 8.0],
-            [8.0, 8.0, 2.0],
-        ]
-    )
-    hv_3d_dominated = bd_3d.compute_hypervolume(pareto_3d_dominated)
-    print(f"3D Case with dominated points hypervolume: {hv_3d_dominated}")
-
-    # Test Case 5: 3D points outside reference point
-    pareto_3d_invalid = np.array(
-        [
-            [11.0, 5.0, 5.0],  # invalid in first dimension
-            [5.0, 11.0, 5.0],  # invalid in second dimension
-            [5.0, 5.0, 5.0],  # valid point
-            [5.0, 5.0, 11.0],  # invalid in third dimension
-        ]
-    )
-    hv_3d_invalid = bd_3d.compute_hypervolume(pareto_3d_invalid)
-    print(f"3D Case with invalid points hypervolume: {hv_3d_invalid}")
-
-    # Test Case 6: Corner cases in 3D
-    pareto_3d_corners = np.array([[0.0, 0.0, 10.0], [0.0, 10.0, 0.0], [10.0, 0.0, 0.0]])
-    hv_3d_corners = bd_3d.compute_hypervolume(pareto_3d_corners)
-    print(f"3D Corner cases hypervolume: {hv_3d_corners}")
-
-    # Test Case 7: Empty 3D front
-    empty_front_3d = np.array([])
-    hv_3d_empty = bd_3d.compute_hypervolume(empty_front_3d)
-    print(f"3D Empty front hypervolume: {hv_3d_empty}")
-
-    return {
-        "2d_basic": hv_2d,
-        "2d_single": hv_single_2d,
-        "3d_simple_1": hv_3d_simple_1,
-        "3d_simple_2": hv_3d_simple_2,
-        "3d_single": hv_3d_single,
-        "3d_complex": hv_3d_complex,
-        "3d_dominated": hv_3d_dominated,
-        "3d_invalid": hv_3d_invalid,
-        "3d_corners": hv_3d_corners,
-        "3d_empty": hv_3d_empty,
-    }
+        if algorithm == "fpras":
+            return compute_hypervolume_fpras(
+                pareto_front,
+                self.ref_point,
+                self.mc_epsilon,
+                self.mc_delta,
+                minimize=True,
+            )
+        elif algorithm == "mcm2rv":
+            return compute_hypervolume_mcm2rv(
+                pareto_front,
+                self.ref_point,
+                self.mc_epsilon,
+                self.mc_delta,
+                minimize=True,
+            )
+        elif algorithm == "hybrid":
+            return compute_hypervolume_hybrid(
+                pareto_front,
+                self.ref_point,
+                self.mc_epsilon,
+                self.mc_delta,
+                minimize=True,
+                verbose=verbose,
+            )
+        else:
+            raise ValueError(f"Unknown algorithm: {algorithm}")
 
 
-def run_analytical_test_cases():
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+
+def performance_comparison():
     """
-    Run test cases with known analytical solutions.
-    Returns dictionary of test results with computed and expected values.
+    Compare performance of different implementations.
     """
-    results = {}
+    import time
 
-    print("\n=== 2D Analytical Test Cases ===")
+    print("=" * 70)
+    print("Hypervolume Performance Comparison")
+    print("=" * 70)
 
-    # 2D Test Case 1: Single Point
-    # Reference point: [4,4], Point: [1,1]
-    # Expected volume: (4-1)*(4-1) = 3*3 = 9
-    ref_point_2d = np.array([4.0, 4.0])
-    bd_2d = HyperVolumeBoxDecomposition(ref_point_2d)
+    # Test different dimensionalities
+    dimensions_to_test = [3, 5, 8, 10, 15, 20]
+    dimensions_to_test = [10, 15, 20]
+    n_points = 250
 
-    single_point_2d = np.array([[1.0, 1.0]])
-    hv_2d_single = bd_2d.compute_hypervolume(single_point_2d)
-    expected_2d_single = 9.0
-    print("2D Single point:")
-    print(f"Computed: {hv_2d_single:.6f}")
-    print(f"Expected: {expected_2d_single}")
-    print(f"Error: {abs(hv_2d_single - expected_2d_single):.6f}")
-    results["2d_single"] = (hv_2d_single, expected_2d_single)
+    for d in dimensions_to_test:
+        print(f"\nDimensions: {d}, Points: {n_points}")
 
-    # 2D Test Case 2: Two Non-Dominated Points
-    # Points: [1,3], [3,1]
-    # Expected volume: 5
-    two_points_2d = np.array([[1.0, 3.0], [3.0, 1.0]])
-    hv_2d_two = bd_2d.compute_hypervolume(two_points_2d)
-    expected_2d_two = 5.0
-    print("\n2D Two points:")
-    print(f"Computed: {hv_2d_two:.6f}")
-    print(f"Expected: {expected_2d_two}")
-    print(f"Error: {abs(hv_2d_two - expected_2d_two):.6f}")
-    results["2d_two"] = (hv_2d_two, expected_2d_two)
+        # Generate random Pareto front
+        np.random.seed(42)
+        ref_point = np.full(d, 10.0)
 
-    # 2D Test Case 3: Rectangle
-    # Points: [1,3], [1,1], [3,1]
-    # Expected volume: 9
-    rectangle_2d = np.array([[1.0, 3.0], [1.0, 1.0], [3.0, 1.0]])
-    hv_2d_rect = bd_2d.compute_hypervolume(rectangle_2d)
-    expected_2d_rect = 9.0
-    print("\n2D Rectangle:")
-    print(f"Computed: {hv_2d_rect:.6f}")
-    print(f"Expected: {expected_2d_rect}")
-    print(f"Error: {abs(hv_2d_rect - expected_2d_rect):.6f}")
-    results["2d_rect"] = (hv_2d_rect, expected_2d_rect)
+        # Generate points that are somewhat Pareto-optimal
+        points = []
+        for _ in range(n_points):
+            point = np.random.uniform(1, 9, d)
+            # Make them tend toward Pareto front
+            point = point * (1 - 0.5 * np.random.random(d))
+            points.append(point)
+        pareto_front = np.array(points)
 
-    print("\n=== 3D Analytical Test Cases ===")
+        # Test AdaptiveHyperVolume with automatic selection
+        hv_opt = AdaptiveHyperVolume(ref_point)
+        start = time.time()
+        result_opt = hv_opt.compute_hypervolume(pareto_front, verbose=d >= 10)
+        time_opt = time.time() - start
 
-    # 3D Test Case 1: Single Point
-    # Reference point: [4,4,4], Point: [1,1,1]
-    # Expected volume: (4-1)*(4-1)*(4-1) = 27
-    ref_point_3d = np.array([4.0, 4.0, 4.0])
-    bd_3d = HyperVolumeBoxDecomposition(ref_point_3d)
+        # Determine which algorithm was used
+        if d < 10:
+            algo_used = "Box Decomposition"
+        else:
+            algo_used = "Monte Carlo"
 
-    single_point_3d = np.array([[1.0, 1.0, 1.0]])
-    hv_3d_single = bd_3d.compute_hypervolume(single_point_3d)
-    expected_3d_single = 27.0
-    print("3D Single point:")
-    print(f"Computed: {hv_3d_single:.6f}")
-    print(f"Expected: {expected_3d_single}")
-    print(f"Error: {abs(hv_3d_single - expected_3d_single):.6f}")
-    results["3d_single"] = (hv_3d_single, expected_3d_single)
+        print(f"  {algo_used:35s}: {time_opt:.6f}s, HV={result_opt:.4f}")
 
-    # 3D Test Case 2: Three Non-Dominated Points forming a plane
-    # Points: [1,1,3], [1,3,1], [3,1,1]
-    # Expected volume: 19
-    plane_points_3d = np.array([[1.0, 1.0, 3.0], [1.0, 3.0, 1.0], [3.0, 1.0, 1.0]])
-    hv_3d_plane = bd_3d.compute_hypervolume(plane_points_3d)
-    expected_3d_plane = 19.0
-    print("\n3D Plane points:")
-    print(f"Computed: {hv_3d_plane:.6f}")
-    print(f"Expected: {expected_3d_plane}")
-    print(f"Error: {abs(hv_3d_plane - expected_3d_plane):.6f}")
-    results["3d_plane"] = (hv_3d_plane, expected_3d_plane)
-
-    # 3D Test Case 3: Regular Cuboid
-    # Points forming a regular cuboid with corner at [1,1,1] extending to [3,3,3]
-    # Expected volume: 19
-    ref_point_cuboid = np.array([4.0, 4.0, 4.0])
-    bd_cuboid = HyperVolumeBoxDecomposition(ref_point_cuboid)
-    cuboid_points = np.array(
-        [
-            [1.0, 1.0, 3.0],
-            [1.0, 3.0, 1.0],
-            [3.0, 1.0, 1.0],
-            [1.0, 3.0, 3.0],
-            [3.0, 1.0, 3.0],
-            [3.0, 3.0, 1.0],
-            [3.0, 3.0, 3.0],
-        ]
-    )
-    hv_3d_cuboid = bd_cuboid.compute_hypervolume(cuboid_points)
-    expected_3d_cuboid = 19.0
-    print("\n3D Cuboid:")
-    print(f"Computed: {hv_3d_cuboid:.6f}")
-    print(f"Expected: {expected_3d_cuboid}")
-    print(f"Error: {abs(hv_3d_cuboid - expected_3d_cuboid):.6f}")
-    results["3d_cuboid"] = (hv_3d_cuboid, expected_3d_cuboid)
-
-    # 3D Test Case 4: Layer
-    # Points forming a horizontal layer
-    # Expected volume: 27
-    layer_points = np.array(
-        [[1.0, 1.0, 1.0], [1.0, 3.0, 1.0], [3.0, 1.0, 1.0], [3.0, 3.0, 1.0]]
-    )
-    hv_3d_layer = bd_3d.compute_hypervolume(layer_points)
-    expected_3d_layer = 27.0
-    print("\n3D Layer:")
-    print(f"Computed: {hv_3d_layer:.6f}")
-    print(f"Expected: {expected_3d_layer}")
-    print(f"Error: {abs(hv_3d_layer - expected_3d_layer):.6f}")
-    results["3d_layer"] = (hv_3d_layer, expected_3d_layer)
-
-    # Summary of all errors
-    print("\n=== Summary of All Test Cases ===")
-    total_error = 0.0
-    for test_name, (computed, expected) in results.items():
-        error = abs(computed - expected)
-        total_error += error
-        print(f"{test_name}:")
-        print(f"  Computed: {computed:.6f}")
-        print(f"  Expected: {expected:.6f}")
-        print(f"  Error: {error:.6f}")
-
-    print(f"\nTotal absolute error across all tests: {total_error:.6f}")
-    return results
+        # Show Monte Carlo explicitly
+        start = time.time()
+        result_mc = hv_opt.compute_hypervolume(
+            pareto_front, algorithm="hybrid" if d < 10 else "monte_carlo", verbose=True
+        )
+        time_mc = time.time() - start
+        print(f"  {'Monte Carlo (explicit)':35s}: {time_mc:.6f}s, HV={result_mc:.4f}")
 
 
-def test_ehvi_candidates():
-    """
-    Example of how to use the BoxDecomposition class for candidate selection.
-    """
-    # Setup
-    n_objectives = 2
-    ref_point = np.array([10.0, 10.0])
-    bd = HyperVolumeBoxDecomposition(ref_point)
+def test_adaptive_algorithms():
+    """Test the adaptive Monte Carlo algorithms."""
+    print("=" * 80)
+    print("Adaptive Monte Carlo Hypervolume Demonstration")
+    print("=" * 80)
 
-    # Current Pareto front
-    pareto_front = np.array([[2.0, 8.0], [4.0, 4.0], [8.0, 2.0]])
+    # Test case 1: Linear front (low overlap - FPRAS should be better)
+    print("\nTest 1: Linear Pareto front (20D, 100 points)")
+    print("-" * 80)
 
-    # Generate some candidate points
-    n_candidates = 100
     np.random.seed(42)
+    d = 20
+    n = 100
+    ref = np.full(d, 10.0)
 
-    # Create candidate predictions (means and variances)
-    candidate_means = np.random.uniform(1, 9, size=(n_candidates, n_objectives))
-    candidate_variances = np.random.uniform(0.1, 0.5, size=(n_candidates, n_objectives))
+    # Generate linear front
+    points = []
+    for i in range(n):
+        t = i / n
+        point = np.full(d, 10.0 * (1 - t) + 1.0 * t)
+        point += np.random.normal(0, 0.1, d)
+        points.append(point)
+    linear_front = np.array(points)
 
-    # Select best candidates
-    n_select = 5
-    selected_indices, ehvi_values = bd.select_candidates(
-        pareto_front=pareto_front,
-        candidate_means=candidate_means,
-        candidate_variances=candidate_variances,
-        n_select=n_select,
+    hv_calc = AdaptiveHyperVolume(ref, mc_epsilon=0.01, mc_delta=0.25)
+
+    # Test all three algorithms
+    for algo in ["fpras", "mcm2rv", "hybrid"]:
+        result = hv_calc.compute_hypervolume_with_statistics(
+            linear_front, algorithm=algo
+        )
+        print(
+            f"{algo.upper():10s}: HV={result.hypervolume:12.6f}, "
+            f"Samples={result.num_samples:6d}, "
+            f"Comparisons={result.num_comparisons:8d}, "
+            f"Final={result.algorithm_used}"
+        )
+
+    # Test case 2: Convex front (high overlap - MCM2RV should be better)
+    print("\nTest 2: Convex Pareto front (20D, 100 points)")
+    print("-" * 80)
+
+    # Generate convex front
+    points = []
+    for i in range(n):
+        # Generate random direction
+        direction = np.random.normal(0, 1, d)
+        direction = direction / np.linalg.norm(direction)
+        # Scale to create convex shape
+        radius = np.random.uniform(1, 5)
+        point = 5.0 + radius * direction
+        points.append(point)
+    convex_front = filter_dominated(np.array(points), minimize=True)
+
+    for algo in ["hybrid", "fpras", "mcm2rv"]:
+        result = hv_calc.compute_hypervolume_with_statistics(
+            convex_front, algorithm=algo
+        )
+        print(
+            f"{algo.upper():10s}: HV={result.hypervolume:12.6f}, "
+            f"Samples={result.num_samples:6d}, "
+            f"Comparisons={result.num_comparisons:8d}, "
+            f"Final={result.algorithm_used}"
+        )
+
+    # Test case 3: Hybrid algorithm decision-making
+    print("\nTest 3: Hybrid algorithm with verbose output (10D, 50 points)")
+    print("-" * 80)
+
+    d = 10
+    n = 50
+    ref = np.full(d, 10.0)
+    np.random.seed(123)
+    test_front = np.random.uniform(2, 8, size=(n, d))
+    test_front = filter_dominated(test_front, minimize=True)
+
+    hv_calc = AdaptiveHyperVolume(ref, mc_epsilon=0.02, mc_delta=0.25)
+    result = hv_calc.compute_hypervolume_with_statistics(
+        test_front, algorithm="hybrid", verbose=True
     )
 
-    print("\nTop candidate points:")
-    for idx, ehvi in zip(selected_indices, ehvi_values):
-        print(f"Candidate {idx}:")
-        print(f"  Means: {candidate_means[idx]}")
-        print(f"  Variances: {candidate_variances[idx]}")
-        print(f"  EHVI: {ehvi:.6f}")
+    print(f"\nFinal result: HV={result.hypervolume:.6f}")
+    print(f"Algorithm chosen: {result.algorithm_used}")
+    print(f"Total comparisons: {result.num_comparisons}")
 
 
 if __name__ == "__main__":
-    results = run_basic_test_cases()
-    results = run_analytical_test_cases()
-    results = test_ehvi_candidates()
+    test_adaptive_algorithms()
+
+    # Run performance comparison
+    performance_comparison()
+
+    # Example usage
+    print("\n\nHypervolume Examples:")
+    print("=" * 70)
+
+    # 2D example
+    ref_point_2d = np.array([10.0, 10.0])
+    pareto_2d = np.array([[2.0, 8.0], [4.0, 4.0], [8.0, 2.0]])
+
+    hv_opt = AdaptiveHyperVolume(ref_point_2d)
+    hv = hv_opt.compute_hypervolume(pareto_2d, verbose=True)
+    print(f"2D Hypervolume: {hv:.4f}\n")
+
+    # 5D example (uses box decomposition)
+    ref_point_5d = np.full(5, 10.0)
+    np.random.seed(42)
+    pareto_5d = np.random.uniform(2, 8, size=(30, 5))
+
+    hv_opt_5d = AdaptiveHyperVolume(ref_point_5d)
+    hv_5d = hv_opt_5d.compute_hypervolume(pareto_5d, verbose=True)
+    print(f"5D Hypervolume: {hv_5d:.4f}\n")
+
+    # High-dimensional example (uses Monte Carlo)
+    ref_point_30d = np.full(30, 10.0)
+    np.random.seed(42)
+    pareto_30d = np.random.uniform(2, 8, size=(100, 30))
+
+    hv_opt_30d = AdaptiveHyperVolume(ref_point_30d)
+
+    hv, ci = hv_opt_30d.compute_hypervolume_with_confidence(
+        pareto_30d, n_runs=5, confidence=0.95, verbose=True
+    )
+    print(f"30D Hypervolume: {hv:.2e} +/- {ci:.2e}")
+    print(f"Relative uncertainty: +/-{100 * ci / hv:.2f}%")
