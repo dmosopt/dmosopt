@@ -18,8 +18,26 @@ Computers & Operations Research, 2016.
 """
 
 import numpy as np
-from typing import List
+from typing import List, Tuple
 from dataclasses import dataclass
+from scipy.stats import norm
+
+
+@dataclass
+class Box:
+    lower: np.ndarray
+    upper: np.ndarray
+    _volume: float = None
+
+    @property
+    def volume(self) -> float:
+        if self._volume is None:
+            mask = ~np.isinf(self.lower) & ~np.isinf(self.upper)
+            if not np.any(mask):
+                self._volume = 0.0
+            else:
+                self._volume = np.prod(self.upper[mask] - self.lower[mask])
+        return self._volume
 
 
 @dataclass
@@ -166,7 +184,7 @@ class HyperVolumeBoxDecomposition:
 
             # Find upper bounds strictly dominated by z_bar (set A)
             A = []
-            A_bar = []  # Not dominated (Ā)
+            A_bar = []  # Not dominated
 
             for ub in ubs:
                 if np.all(z_bar < ub.coords):
@@ -182,7 +200,7 @@ class HyperVolumeBoxDecomposition:
             # Generate new upper bounds
             new_ubs = []
 
-            # Step 2: For each u in A, create (z̄_p, u_{-p})
+            # Step 2: For each u in A, create (z_bar_p, u_{-p})
             for ub in A:
                 new_coords = ub.coords.copy()
                 new_coords[-1] = z_bar[-1]
@@ -194,11 +212,11 @@ class HyperVolumeBoxDecomposition:
                     LocalUpperBound(coords=new_coords, defining_points=new_def_pts)
                 )
 
-            # Step 3: For each u in A, for j=1,...,p-1, create (z̄_j, u_{-j})
-            # if z̄_j ≥ max_{k≠j}{z^k_j(u)}
+            # Step 3: For each u in A, for j=1,...,p-1, create (z_bar_j, u_{-j})
+            # if z_bar_j >= max_{k != j}{z^k_j(u)}
             for ub in A:
                 for j in range(self.d - 1):
-                    # Compute max_{k≠j}{z^k_j(u)}
+                    # Compute max_{k != j}{z^k_j(u)}
                     max_val = -np.inf
                     for k in range(self.d):
                         if k != j:
@@ -206,7 +224,7 @@ class HyperVolumeBoxDecomposition:
                             def_point = self._get_point_coords(def_point_idx)
                             max_val = max(max_val, def_point[j])
 
-                    # Check condition z̄_j ≥ max_{k≠j}{z^k_j(u)}
+                    # Check condition z_bar_j >= max_{k != j}{z^k_j(u)}
                     if max_val < z_bar[j]:
                         new_coords = ub.coords.copy()
                         new_coords[j] = z_bar[j]
@@ -220,7 +238,7 @@ class HyperVolumeBoxDecomposition:
                             )
                         )
 
-            # Combine: new upper bounds + unddominated old ones (Ā)
+            # Combine: new upper bounds + unddominated old ones (A_bar)
             ubs = new_ubs + A_bar
 
             # Remove duplicates
@@ -249,7 +267,7 @@ class HyperVolumeBoxDecomposition:
         Compute volume of box B(u) defined by upper bound u.
 
         From equation (2):
-        B(u) = [z^1_1(u), z^r_1] × ∏^p_{j=2}[max_{k<j}{z^k_j(u)}, u_j]
+        B(u) = [z^1_1(u), z^r_1] × \\Pi^p_{j=2}[max_{k<j}{z^k_j(u)}, u_j]
 
         Args:
             ub: Local upper bound
@@ -284,6 +302,139 @@ class HyperVolumeBoxDecomposition:
             volume *= dim_j_length
 
         return volume
+
+    def select_candidates(
+        self,
+        pareto_front: np.ndarray,
+        candidate_means: np.ndarray,
+        candidate_variances: np.ndarray,
+        n_select: int = 1,
+        batch_size: int = 100,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Select the best candidate points based on EHVI.
+        """
+        n_candidates = len(candidate_means)
+
+        # Pre-compute boxes for the current Pareto front
+        if len(pareto_front) == 0:
+            boxes = []
+        else:
+            boxes = self._decompose_dominated_space(pareto_front)
+
+        # Compute EHVI for all candidates in batches
+        ehvi_values = np.zeros(n_candidates)
+
+        for batch_start in range(0, n_candidates, batch_size):
+            batch_end = min(batch_start + batch_size, n_candidates)
+            batch_means = candidate_means[batch_start:batch_end]
+            batch_variances = candidate_variances[batch_start:batch_end]
+
+            if len(boxes) == 0:
+                # Handle empty Pareto front case
+                for i, (means, variances) in enumerate(
+                    zip(batch_means, batch_variances)
+                ):
+                    ehvi_values[batch_start + i] = self._compute_empty_ehvi(
+                        means, variances
+                    )
+            else:
+                # Compute EHVI for the batch
+                batch_ehvi = self._compute_batch_ehvi(
+                    boxes, batch_means, batch_variances
+                )
+                ehvi_values[batch_start:batch_end] = batch_ehvi
+
+        # Select top n_select candidates
+        selected_indices = np.copy(np.argsort(-ehvi_values)[:n_select])
+
+        return selected_indices, ehvi_values[selected_indices]
+
+    def _compute_batch_ehvi(
+        self, boxes: List[Box], batch_means: np.ndarray, batch_variances: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute EHVI for a batch of candidates efficiently.
+        """
+        batch_size = len(batch_means)
+        ehvi_values = np.zeros(batch_size)
+
+        # Prepare box bounds arrays
+        n_boxes = len(boxes)
+        lowers = np.array(
+            [box.lower for box in boxes]
+        )  # Shape: (n_boxes, n_objectives)
+        uppers = np.array(
+            [box.upper for box in boxes]
+        )  # Shape: (n_boxes, n_objectives)
+
+        # Compute contributions for each candidate
+        for i in range(batch_size):
+            means = batch_means[i]  # Shape: (n_objectives,)
+            variances = batch_variances[i]  # Shape: (n_objectives,)
+            std = np.sqrt(variances)  # Shape: (n_objectives,)
+
+            # Reshape for broadcasting
+            means = means[None, :]  # Shape: (1, n_objectives)
+            std = std[None, :]  # Shape: (1, n_objectives)
+
+            # Compute probabilities for all boxes
+            lower_probs = np.zeros_like(lowers, dtype=float)
+            upper_probs = np.ones_like(uppers, dtype=float)
+
+            # Handle finite bounds with proper broadcasting
+            finite_mask_lower = ~np.isinf(lowers)
+            finite_mask_upper = ~np.isinf(uppers)
+
+            if np.any(finite_mask_lower):
+                lower_probs[finite_mask_lower] = norm.cdf(
+                    (
+                        lowers[finite_mask_lower]
+                        - means.repeat(n_boxes, 0)[finite_mask_lower]
+                    )
+                    / std.repeat(n_boxes, 0)[finite_mask_lower]
+                )
+
+            if np.any(finite_mask_upper):
+                upper_probs[finite_mask_upper] = norm.cdf(
+                    (
+                        uppers[finite_mask_upper]
+                        - means.repeat(n_boxes, 0)[finite_mask_upper]
+                    )
+                    / std.repeat(n_boxes, 0)[finite_mask_upper]
+                )
+
+            # Compute partial expectations
+            partial_exp = std * (
+                norm.pdf((lowers - means) / std) - norm.pdf((uppers - means) / std)
+            ) + means * (upper_probs - lower_probs)
+
+            # Multiply along objectives dimension
+            contributions = np.prod(partial_exp, axis=1)
+            ehvi_values[i] = np.sum(contributions)
+
+        return ehvi_values
+
+    def _decompose_dominated_space(self, pareto_front: np.ndarray) -> List[Box]:
+        n_points = len(pareto_front)
+        sorted_indices = np.argsort(pareto_front[:, 0])
+        sorted_front = pareto_front[sorted_indices]
+
+        lower_bounds = np.full((n_points + 1, self.n_objectives), -np.inf)
+        upper_bounds = np.full((n_points + 1, self.n_objectives), np.inf)
+
+        lower_bounds[1:] = sorted_front
+        upper_bounds[:-1] = sorted_front
+        upper_bounds[-1] = self.ref_point
+
+        valid_boxes = np.all(upper_bounds > lower_bounds, axis=1)
+        boxes = [
+            Box(lower_bounds[i], upper_bounds[i])
+            for i in range(n_points + 1)
+            if valid_boxes[i]
+        ]
+
+        return boxes
 
 
 # ============================================================================

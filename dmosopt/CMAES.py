@@ -529,7 +529,7 @@ def updateCholesky(A, Ainv, z, psucc, pc, cc, ccov, pthresh):
         root = np.sqrt(1 + beta / alpha * norm_w2)
         b = a / norm_w2 * (root - 1)
 
-        A = a * A + b * np.outer(pc, w)  # Removed .T
+        A = a * A + b * np.outer(pc, w)
 
         c = 1.0 / (a * norm_w2) * (1.0 - 1.0 / root)
         Ainv = (1.0 / a) * Ainv - c * np.outer(w, w_times_Ainv)
