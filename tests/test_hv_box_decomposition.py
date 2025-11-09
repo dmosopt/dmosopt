@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 
-from hv_box_decomposition import (
+from dmosopt.hv_box_decomposition import (
     HyperVolumeBoxDecomposition,
     compute_hypervolume_box_decomposition,
     compute_hypervolume_box_decomposition_batch,
@@ -41,13 +41,6 @@ class TestCorrectnessAnalytical:
         points = np.array([[1.0, 2.0], [2.0, 1.0]])
         ref = np.array([3.0, 3.0])
 
-        # Area = (3-1)*(3-1) + (3-2)*(3-2) = 4 + 1 = 5
-        # OR: (3-1)*(3-2) + (3-2)*(3-1) = 2 + 2 = 4?
-        # Let me recalculate properly:
-        # Point (1,2) contributes: (3-1) × (3-2) = 2 × 1 = 2
-        # Point (2,1) contributes: (3-2) × (3-1) = 1 × 2 = 2
-        # Total = 2 + 2 = 4
-
         hv = compute_hypervolume_box_decomposition(points, ref)
         expected = 4.0
 
@@ -57,22 +50,6 @@ class TestCorrectnessAnalytical:
         """Three points forming staircase pattern."""
         points = np.array([[1.0, 3.0], [2.0, 2.0], [3.0, 1.0]])
         ref = np.array([4.0, 4.0])
-
-        # Manual calculation:
-        # (4-1)*(4-3) = 3*1 = 3
-        # (4-2)*(4-2) = 2*2 = 4
-        # (4-3)*(4-1) = 1*3 = 3
-        # Total = 3 + 4 + 3 = 10? No, this counts overlaps
-
-        # Proper calculation (non-overlapping):
-        # From (1,3): width=3, height=1, area=3
-        # From (2,2): width=2, additional height=1, area=2
-        # From (3,1): width=1, additional height=2, area=2
-        # Total = 3 + 2 + 2 = 7? Let me recalculate...
-
-        # Actually for staircase: total area under curve
-        # Integration: from x=1 to 4, with y-values forming steps
-        # (4-1)*(4-1) = 9 is the full square
 
         hv = compute_hypervolume_box_decomposition(points, ref)
         expected = 6.0  # Full 3x3 square for this configuration
@@ -94,12 +71,6 @@ class TestCorrectnessAnalytical:
         points = np.array([[1.0, 1.0, 2.0], [1.0, 2.0, 1.0]])
         ref = np.array([3.0, 3.0, 3.0])
 
-        # Point 1: (3-1)*(3-1)*(3-2) = 2*2*1 = 4
-        # Point 2 adds: (3-1)*(3-2)*(3-1) = 2*1*2 = 4
-        # But need to subtract overlap at (1,1,1)
-        # Overlap = (3-1)*(3-1)*(3-1) = 8? No...
-
-        # This is complex, just test that it runs
         hv = compute_hypervolume_box_decomposition(points, ref)
         assert hv > 0
         assert hv <= 8.0  # Can't exceed full cube

@@ -18,8 +18,8 @@ Computers & Operations Research, 2016.
 
 import numpy as np
 from typing import Tuple, Optional
-from hv_box_decomposition import compute_hypervolume_box_decomposition
-from hv_adaptive import (
+from dmosopt.hv_box_decomposition import compute_hypervolume_box_decomposition
+from dmosopt.hv_adaptive import (
     ApproximationResult,
     compute_hypervolume_fpras,
     compute_hypervolume_mcm2rv,

@@ -24,7 +24,8 @@ from dmosopt.termination import (
     MaximumGenerationTermination,
     TerminationCollection,
 )
-from dmosopt.indicators import Hypervolume, crowding_distance_metric
+from dmosopt.indicators import crowding_distance_metric
+from dmosopt.hv_termination import HypervolumeProgressTermination
 
 
 @dataclass
@@ -150,130 +151,6 @@ class PerObjectiveConvergence(SlidingWindowTermination):
         self.problem.logger.info(
             f"Convergence progress: {n_converged}/{self.n_objectives} objectives converged "
             f"({converged_fraction:.1%}), mean improvement rate: {latest['mean_improvement']:.2e}"
-        )
-        return True
-
-
-class HypervolumeProgressTermination(SlidingWindowTermination):
-    """
-    Hypervolume-based termination that is more robust in high-dimensional
-    objective spaces. Tracks the rate of hypervolume improvement.
-
-    More suitable than IGD for many-objective problems as hypervolume
-    maintains its discriminative power better in high dimensions.
-    """
-
-    def __init__(
-        self,
-        problem,
-        ref_point: Optional[np.ndarray] = None,
-        hv_tol: float = 1e-5,
-        n_last: int = 15,
-        nth_gen: int = 5,
-        n_max_gen: Optional[int] = None,
-        adaptive_ref_point: bool = True,
-        **kwargs,
-    ):
-        """
-        Parameters
-        ----------
-        problem : optimization problem instance
-        ref_point : reference point for hypervolume calculation
-        hv_tol : tolerance for hypervolume improvement rate
-        n_last : window size for tracking hypervolume
-        nth_gen : check every n-th generation
-        n_max_gen : maximum generations
-        adaptive_ref_point : whether to adapt reference point during optimization
-        """
-        super().__init__(
-            problem,
-            metric_window_size=n_last,
-            data_window_size=2,
-            min_data_for_metric=2,
-            nth_gen=nth_gen,
-            n_max_gen=n_max_gen,
-            **kwargs,
-        )
-        self.ref_point = ref_point
-        self.hv_tol = hv_tol
-        self.adaptive_ref_point = adaptive_ref_point
-        self.hv_history = []
-
-    def _store(self, opt):
-        """Store objective values and update reference point if adaptive."""
-        F = opt.y
-
-        # Initialize or update reference point
-        if self.ref_point is None or self.adaptive_ref_point:
-            # Set reference point slightly beyond worst values
-            margin = 0.1
-            worst = F.max(axis=0)
-            best = F.min(axis=0)
-            range_vals = worst - best
-            self.ref_point = worst + margin * np.abs(range_vals)
-
-        return {"F": F, "ref_point": self.ref_point}
-
-    def _metric(self, data):
-        """Calculate hypervolume and improvement rate."""
-        _, current = data[-2], data[-1]
-
-        # Normalize objectives
-        F_current = current["F"]
-        ideal = F_current.min(axis=0)
-        nadir = F_current.max(axis=0)
-
-        norm = nadir - ideal
-        norm[norm < 1e-32] = 1.0
-
-        F_norm = (F_current - ideal) / norm
-        ref_norm = (current["ref_point"] - ideal) / norm
-
-        # Calculate hypervolume
-        try:
-            hv_indicator = Hypervolume(ref_point=ref_norm, nds=True)
-            hv_current = hv_indicator.do(F_norm)
-            self.hv_history.append(hv_current)
-        except Exception as e:
-            self.problem.logger.warning(f"Hypervolume calculation failed: {e}")
-            return {"hv": 0.0, "hv_improvement": 0.0}
-
-        # Calculate improvement rate
-        if len(self.hv_history) >= 2:
-            hv_improvement = self.hv_history[-1] - self.hv_history[-2]
-            relative_improvement = hv_improvement / (self.hv_history[-2] + 1e-10)
-        else:
-            hv_improvement = 0.0
-            relative_improvement = 0.0
-
-        return {
-            "hv": hv_current,
-            "hv_improvement": hv_improvement,
-            "relative_improvement": relative_improvement,
-        }
-
-    def _decide(self, metrics):
-        """Terminate when hypervolume improvement stagnates."""
-        # Need at least a few metrics to assess trend
-        if len(metrics) < max(3, self.metric_window_size // 2):
-            return True
-
-        # Calculate mean relative improvement
-        improvements = [m["relative_improvement"] for m in metrics]
-        mean_improvement = np.mean(improvements)
-
-        if abs(mean_improvement) < self.hv_tol:
-            current_hv = metrics[-1]["hv"]
-            self.problem.logger.info(
-                f"Optimization terminated: hypervolume improvement rate "
-                f"{mean_improvement:.2e} below tolerance {self.hv_tol:.2e} "
-                f"(current HV: {current_hv:.6f})"
-            )
-            return False
-
-        self.problem.logger.info(
-            f"Hypervolume progress: {metrics[-1]['hv']:.6f}, "
-            f"mean improvement rate: {mean_improvement:.2e}"
         )
         return True
 

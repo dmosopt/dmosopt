@@ -168,7 +168,7 @@ class CMAES(MOEA):
         popsize = self.opt_params.popsize
 
         if candidates_x.shape[0] <= popsize:
-            return np.ones_like(candidates_inds, dtype=bool_), np.zeros_like(
+            return np.ones_like(candidates_inds, dtype=bool), np.zeros_like(
                 candidates_inds, dtype=bool
             )
 
@@ -230,7 +230,7 @@ class CMAES(MOEA):
 
     def generate_strategy(self, **params):
         """
-        Generates a population of :math:`\lambda` individuals.
+        Generates a population of :math:`\\lambda` individuals.
         :returns: A list of individuals.
         """
 
@@ -487,7 +487,30 @@ def sortMO(
 
 
 def updateCholesky(A, Ainv, z, psucc, pc, cc, ccov, pthresh):
-    alpha = None
+    """
+    Implements rank-1 Cholesky update for covariance matrix:
+    C_new = alpha * C + beta * v .o v^T
+
+    where C = A @ A.T and v = pc (evolution path).
+
+    The update maintains:
+    - A is lower Cholesky factor: C = A @ A.T
+    - Ainv = A^(-1)
+
+    Args:
+        A: Lower Cholesky factor (n, n)
+        Ainv: Inverse of A (n, n)
+        z: Normalized step (n,)
+        psucc: Success probability scalar
+        pc: Evolution path (n,)
+        cc: Cumulation time horizon
+        ccov: Covariance learning rate
+        pthresh: Threshold success rate
+
+    Returns:
+        Updated A, Ainv, pc
+    """
+
     if psucc < pthresh:
         pc = (1.0 - cc) * pc + np.sqrt(cc * (2.0 - cc)) * z
         alpha = 1.0 - ccov
@@ -500,14 +523,15 @@ def updateCholesky(A, Ainv, z, psucc, pc, cc, ccov, pthresh):
 
     # Under this threshold, the update is mostly noise
     if w.max() > 1e-20:
-        w_inv = np.dot(w, Ainv)
+        w_times_Ainv = np.dot(w, Ainv)
         a = np.sqrt(alpha)
         norm_w2 = np.sum(w**2)
         root = np.sqrt(1 + beta / alpha * norm_w2)
         b = a / norm_w2 * (root - 1)
-        A = a * A + b * np.outer(pc, w.T)
+
+        A = a * A + b * np.outer(pc, w)  # Removed .T
 
         c = 1.0 / (a * norm_w2) * (1.0 - 1.0 / root)
-        Ainv = (1.0 / a) * Ainv - c * w * (w.T * Ainv)
+        Ainv = (1.0 / a) * Ainv - c * np.outer(w, w_times_Ainv)
 
     return A, Ainv, pc
