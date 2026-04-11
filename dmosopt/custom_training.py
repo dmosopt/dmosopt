@@ -787,7 +787,10 @@ class JointFTTransformer(keras.Model):
             return None
         return np.array(self.min_mean_yR).tolist(), np.array(self.max_std_yR).tolist()
 
-    def eval(self, X_test, y_test, per_feature=False, verbose=1):
+    def eval(self, X_test=None, y_test=None, per_feature=False, verbose=1):
+        if X_test is None:
+            return
+
         def normed(metric):
             def _w(y_true, y_pred, *args, **kwargs):
                 return metric(
@@ -800,9 +803,9 @@ class JointFTTransformer(keras.Model):
             return _w
 
         if self.mode == "c+o":
-            assert not per_feature, (
-                "Joint model does not support per_feature evaluation"
-            )
+            assert (
+                not per_feature
+            ), "Joint model does not support per_feature evaluation"
             y_pred = self.predict(X_test, verbose=verbose)
 
             y_test_prime = y_test["constraints"].all(axis=1).astype(int)
@@ -1098,12 +1101,12 @@ def joint(
                 points, reduction=lambda x: ops.mean(ops.square(x), axis=0)
             )["objectives"]
 
-            sens = sens / (ops.max(sens) + 1e-7)
+            sens = np.array(sens / (ops.max(sens) + 1e-7))
 
             computed_di_crossover = 1 + (np.abs(sens) * 20)
             computed_di_mutation = 1 + (np.abs(sens) * 20)
-            di_crossover = np.maximum(1, np.minimum(30, computed_di_crossover))
-            di_mutation = np.maximum(1, np.minimum(30, computed_di_mutation))
+            di_crossover = np.maximum(1, np.minimum(30, computed_di_crossover)).astype(np.float64)
+            di_mutation = np.maximum(1, np.minimum(30, computed_di_mutation)).astype(np.float64)
 
             return {
                 "di_mutation": di_mutation,

@@ -146,6 +146,23 @@ In this example:
    and retrieve the best parameters and corresponding objective
    values.
 
+## Cite
+
+If you use dmosopt for your published research, we kindly ask you to cite our [paper](https://arxiv.org/abs/2603.20984)
+
+```
+@online{gressmannJointSurrogateLearning2026,
+  title = {Joint {{Surrogate Learning}} of {{Objectives}}, {{Constraints}}, and {{Sensitivities}} for {{Efficient Multi-objective Optimization}} of {{Neural Dynamical Systems}}},
+  author = {Gressmann, Frithjof and Raikov, Ivan Georgiev and Kim, Seung Hyun and Gazzola, Mattia and Rauchwerger, Lawrence and Soltesz, Ivan},
+  date = {2026-03-22},
+  eprint = {2603.20984},
+  eprinttype = {arXiv},
+  eprintclass = {cs},
+  doi = {10.48550/arXiv.2603.20984},
+  url = {http://arxiv.org/abs/2603.20984},
+  pubstate = {prepublished},
+}
+```
 
 ## Acknowledgements
 

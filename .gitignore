@@ -3,6 +3,13 @@ node_modules
 docs/.vitepress/dist
 docs/.vitepress/cache
 
+examples/motoneuron/results
+examples/motoneuron/mechanisms/x86_64
+examples/motoneuron/mechanisms/i686
+examples/motoneuron/mechanisms/powerpc
+*.h5
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
