@@ -282,12 +282,10 @@ def ic_constant_f(
     cell.soma.ic_constant = ic_constant + round(x, 6)
     h.finitialize(h.v_init)
     h.finitialize(h.v_init)
-    try:
-        h.run()
-    except:
-        pass
 
-    t = vec_t.as_numpy()
+    h.run()
+
+    t = vec_t.as_numpy()  # noqa: F841
     v = vec_v.as_numpy()
     mean_v = np.mean(v) if np.max(v) < 0.0 else 0.0
     return mean_v - v_hold
@@ -347,7 +345,7 @@ def run_iclamp_steps(cell, Isteps, **kwargs):
     for amp, t0, t1 in Isteps:
         try:
             t, v = run_iclamp(cell, amp, t0, t1, **kwargs)
-        except:
+        except Exception:
             results.append(None)
         else:
             results.append({"t": t, "v": v})
@@ -499,7 +497,7 @@ def detect_spikes(T, Y, t0, t1, before_peak=50.0):
     dydt_threshold = mean_dydt + 2 * sd_dydt
     try:
         threshold_idx = np.argwhere(dydt[T_before_idx:peak_idx] >= dydt_threshold)[0]
-    except:
+    except Exception:
         return N_peaks_pre, 0, None, None
 
     threshold = Y_spk[T_before_idx:peak_idx][threshold_idx][0]
@@ -795,7 +793,7 @@ def obj_fun(exp_protocol, feature_dtypes, pp):
     if initial_v_constr > 0:
         try:
             iclamp_results = exp_protocol.run_iclamp(cell, target="Rin", tstop=3000.0)
-        except:
+        except Exception:
             pass
         else:
             passive_results = measure_passive(**iclamp_results)
@@ -1043,7 +1041,7 @@ def main(
         "population_size": population_size,
         "num_generations": num_generations,
         # Surrogate: joint model via custom training
-        "surrogate_custom_training": "dmosopt.custom_training.joint",
+        "surrogate_custom_training": "dmosopt.model_transformer.joint",
         "surrogate_custom_training_kwargs": {
             "mode": "c+o",
             "epochs": "auto",

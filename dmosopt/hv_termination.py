@@ -1044,7 +1044,7 @@ class HypervolumeProgressTermination(SlidingWindowTermination):
             worst = F.max(axis=0)
             best = F.min(axis=0)
             range_vals = worst - best
-            self.ref_point = worst + margin * np.abs(range_vals)
+            self.ref_point = worst + np.maximum(margin * np.abs(range_vals), 1e-6)
 
         # Initialize precision scheduler
         self._precision_scheduler = ProgressivePrecisionScheduler(
@@ -1084,7 +1084,7 @@ class HypervolumeProgressTermination(SlidingWindowTermination):
             worst = F.max(axis=0)
             best = F.min(axis=0)
             range_vals = worst - best
-            self.ref_point = worst + margin * np.abs(range_vals)
+            self.ref_point = worst + np.maximum(margin * np.abs(range_vals), 1e-6)
             if self._mf_tracker is not None:
                 self._mf_tracker.reference_point = self.ref_point
 

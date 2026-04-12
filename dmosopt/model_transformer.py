@@ -1,9 +1,11 @@
+import logging
 import math
 from typing import Optional, Sequence
 
 import numpy as np
 import keras
 from keras import layers, ops
+
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
@@ -15,6 +17,8 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import KFold, TimeSeriesSplit
 from scipy.stats import qmc
+
+logger = logging.getLogger("dmosopt")
 
 
 def preprocess(x, y, yC=None, remove_outliers=False, nan="remove"):
@@ -395,22 +399,22 @@ class JointFTTransformer(keras.Model):
         weights = 1
 
         if verbose:
-            print("mins", mins)
-            print("maxs", maxs)
-            print(y_true, "y_true")
-            print(y_pred, "y_pred")
+            logger.debug(f"mins: {mins}")
+            logger.debug(f"maxs: {maxs}")
+            logger.debug(f"y_true: {y_true}")
+            logger.debug(f"y_pred: {y_pred}")
 
         ytrue = y_true - mins
         ypred = y_pred - mins
 
         if verbose:
-            print(ytrue, "ytrue")
-            print(ypred, "ypred")
+            logger.debug(f"ytrue: {ytrue}")
+            logger.debug(f"ypred: {ypred}")
 
         rerr = ops.abs(ytrue - ypred) / (alpha * ops.abs(ytrue) + beta)
 
         if verbose:
-            print(rerr, "rerr")
+            logger.debug(f"rerr: {rerr}")
 
         rerr_ = ops.mean(rerr, axis=0)
         return ops.mean(weights * rerr_)
@@ -474,9 +478,15 @@ class JointFTTransformer(keras.Model):
         verbose=2,
         **kwargs,
     ):
+        logger.info(
+            "autofit: mode=%s, samples=%d, epochs=%s",
+            self.mode,
+            x.shape[0],
+            epochs,
+        )
         if epochs == "auto":
             m = self.autoepoch(x, y, yC, verbose=1)
-            print("Automatic epochs: ", m, " -> ", np.mean(m))
+            logger.info(f"Automatic epochs: {m} -> {np.mean(m)}")
             epochs = np.mean(m)
         else:
             self.build(input_shape=x.shape)
@@ -548,19 +558,15 @@ class JointFTTransformer(keras.Model):
         timeout_epochs = max(25, min(round(timeout_samples / x.shape[0]), 10000))
         epoch_increment = max(10, round(timeout_epochs / 10.0))
 
-        def p(*args, **kwargs):
-            if verbose > 0:
-                print(*args, **kwargs)
-
         self.build(input_shape=x.shape)
         # Compile once to avoid repeated XLA re-tracing during CV sweeps
         self.autocompile()
         initial_weights = self.get_weights()
         optimizer_reset = getattr(self.optimizer, "reset_state", None)
 
-        p("Autoepoch cross-validation ...")
+        logger.info("Autoepoch cross-validation ...")
         for s, (train_index, val_index) in enumerate(kf.split(x)):
-            p(f"Split {s}")
+            logger.info(f"Split {s}")
             self.set_weights(initial_weights)
             if optimizer_reset is not None:
                 optimizer_reset()
@@ -575,7 +581,7 @@ class JointFTTransformer(keras.Model):
 
             total_epochs = 0
             while total_epochs < timeout_epochs:
-                p(f"{total_epochs} / {timeout_epochs} ({epoch_increment})")
+                logger.info(f"{total_epochs} / {timeout_epochs} ({epoch_increment})")
                 if self.mode == "c+o":
                     y_ = {"objectives": y_train, "constraints": yC_train}
                     val_ = (
@@ -617,12 +623,12 @@ class JointFTTransformer(keras.Model):
                 epochs_this_round = len(history.epoch)
                 total_epochs += epochs_this_round
                 if epochs_this_round < epoch_increment:
-                    p(
+                    logger.info(
                         f"Stopping at {epochs_this_round} < {epoch_increment} (total: {total_epochs})"
                     )
                     break
 
-            p(f"Stopped after {total_epochs} for split {s}")
+            logger.info(f"Stopped after {total_epochs} for split {s}")
             stopped_after_epochs.append(total_epochs)
 
         self.set_weights(initial_weights)
@@ -803,9 +809,9 @@ class JointFTTransformer(keras.Model):
             return _w
 
         if self.mode == "c+o":
-            assert (
-                not per_feature
-            ), "Joint model does not support per_feature evaluation"
+            assert not per_feature, (
+                "Joint model does not support per_feature evaluation"
+            )
             y_pred = self.predict(X_test, verbose=verbose)
 
             y_test_prime = y_test["constraints"].all(axis=1).astype(int)
@@ -868,14 +874,13 @@ class JointFTTransformer(keras.Model):
                 return tbl
 
             if verbose > 2:
-                print("\nMisclassified samples:")
+                logger.debug("Misclassified samples:")
                 diff_mask = y_pred != y_test
                 for i in range(len(y_test)):
                     if diff_mask[i].any():
-                        print(f"Row {i}:")
-                        print(f"Predicted: {y_pred[i]}")
-                        print(f"Actual:    {y_test[i]}")
-                        print()
+                        logger.debug(
+                            f"Row {i}: predicted={y_pred[i]}  actual={y_test[i]}"
+                        )
 
             return {
                 "epochs": self._last_fit_epochs,
@@ -1105,8 +1110,12 @@ def joint(
 
             computed_di_crossover = 1 + (np.abs(sens) * 20)
             computed_di_mutation = 1 + (np.abs(sens) * 20)
-            di_crossover = np.maximum(1, np.minimum(30, computed_di_crossover)).astype(np.float64)
-            di_mutation = np.maximum(1, np.minimum(30, computed_di_mutation)).astype(np.float64)
+            di_crossover = np.maximum(1, np.minimum(30, computed_di_crossover)).astype(
+                np.float64
+            )
+            di_mutation = np.maximum(1, np.minimum(30, computed_di_mutation)).astype(
+                np.float64
+            )
 
             return {
                 "di_mutation": di_mutation,

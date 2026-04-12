@@ -78,6 +78,7 @@ class BenchmarkRunner:
         max_gen: int = 500,
         population_size: int = 100,
         verbose: bool = True,
+        save: bool = True,
     ) -> BenchmarkResult:
         """
         Run a single benchmark problem.
@@ -134,8 +135,10 @@ class BenchmarkRunner:
             "objective_names": objective_names,
             "n_initial": max(5, n_obj),
             "n_epochs": 4,
-            "save": True,
-            "file_path": str(self.output_dir / f"{problem_name}_m{n_obj}.h5"),
+            "save": save,
+            "file_path": str(self.output_dir / f"{problem_name}_m{n_obj}.h5")
+            if save
+            else None,
             "resample_fraction": 1.0,
         }
 
@@ -199,14 +202,15 @@ class BenchmarkRunner:
 
     def _compute_final_hv(self, besty_dict: Dict, n_obj: int) -> float:
         """Compute hypervolume of final solutions."""
-        # Extract objective values
-        front = np.array([[besty_dict[f"f{i + 1}"] for i in range(n_obj)]])
+        # Each besty_dict value is a 1-D array over all best solutions;
+        # column_stack gives shape (n_solutions, n_obj) as required by HV.
+        front = np.column_stack([besty_dict[f"f{i + 1}"] for i in range(n_obj)])
 
         # Compute reference point (simple approach)
         ref_point = np.max(front, axis=0) * 1.1
 
         # Compute HV (simplified)
-        hv = AdaptiveHyperVolume(ref_point=ref_point)
+        hv = AdaptiveHyperVolume(reference_point=ref_point)
         return hv.compute_hypervolume(front, algorithm="hybrid")
 
     def _save_result(self, result: BenchmarkResult):
@@ -326,6 +330,117 @@ class BenchmarkRunner:
 
         with open(report_path, "r") as f:
             print(f.read())
+
+
+# ============================================================================
+# Solution quality helpers
+# ============================================================================
+
+
+def dtlz2_solution_quality(
+    objectives: np.ndarray,
+    epsilon: float = 0.1,
+) -> dict:
+    """
+    Measure proximity of solutions to the analytical DTLZ2 Pareto front.
+
+    The DTLZ2 front is the unit-sphere arc where sum(f_i^2) = 1, f_i ≥ 0.
+    Distance from the front for a point f is | ||f||_2 − 1 |.
+
+    Parameters
+    ----------
+    objectives : (n, n_obj) array
+    epsilon : tolerance for classifying a point as "on-front"
+    """
+    norms = np.linalg.norm(objectives, axis=1)
+    distances = np.abs(norms - 1.0)
+    return {
+        "mean_dist_to_front": float(np.mean(distances)),
+        "max_dist_to_front": float(np.max(distances)),
+        "n_on_front": int(np.sum(distances <= epsilon)),
+        "pct_on_front": float(np.mean(distances <= epsilon) * 100),
+    }
+
+
+# ============================================================================
+# Pytest entry points
+# ============================================================================
+
+
+def test_dtlz2_gpr(tmp_path):
+    """
+    DTLZ2 (3 objectives) with the default GPR surrogate.
+
+    DTLZ2 is the standard unconstrained baseline: its Pareto front is the
+    unit-sphere arc (sum f_i^2 = 1), which is unimodal and well-understood.
+    The test checks that:
+      1. The run completes without error.
+      2. A positive hypervolume is achieved.
+      3. At least some best solutions lie close to the analytical front.
+    """
+    n_obj = 3
+    opt_id = f"dtlz2_m{n_obj}"
+
+    runner = BenchmarkRunner(output_dir=str(tmp_path))
+    result = runner.run_single_benchmark(
+        "dtlz2",
+        n_obj=n_obj,
+        population_size=60,
+        max_gen=50,
+        verbose=False,
+        save=False,
+    )
+
+    assert result.final_hv > 0.0, "DTLZ2/GPR: hypervolume should be positive."
+
+    # Retrieve best objectives via get_best() for quality check.
+    # get_best() returns (prms, lres) where lres is [(name, array), ...].
+    obj_names = [f"f{i + 1}" for i in range(n_obj)]
+    _, lres = dmosopt.dopt_dict[opt_id].get_best()
+    besty = dict(lres)
+    obj_mat = np.column_stack([besty[name] for name in obj_names])
+
+    quality = dtlz2_solution_quality(obj_mat)
+    logger.info(
+        "DTLZ2/GPR: HV=%.4f  mean_dist=%.4f  on_front=%d (%.0f%%)",
+        result.final_hv,
+        quality["mean_dist_to_front"],
+        quality["n_on_front"],
+        quality["pct_on_front"],
+    )
+    assert quality["n_on_front"] > 0, (
+        "DTLZ2/GPR: no solutions found near the analytical Pareto front "
+        f"(mean dist={quality['mean_dist_to_front']:.4f})."
+    )
+
+
+def test_dtlz1_gpr(tmp_path):
+    """
+    DTLZ1 (3 objectives) with the default GPR surrogate.
+
+    DTLZ1 is more challenging than DTLZ2: it has 11^(k−1) local Pareto
+    fronts and a linear true front where sum(f_i) = 0.5.  The test checks
+    that the run completes and achieves a positive hypervolume; convergence
+    to the global front is not required within the short budget.
+    """
+    runner = BenchmarkRunner(output_dir=str(tmp_path))
+    result = runner.run_single_benchmark(
+        "dtlz1",
+        n_obj=3,
+        population_size=60,
+        max_gen=60,
+        verbose=False,
+        save=False,
+    )
+
+    assert result.final_hv > 0.0, "DTLZ1/GPR: hypervolume should be positive."
+    assert result.final_generation > 0
+    logger.info(
+        "DTLZ1/GPR: HV=%.4f  evals=%d  time=%.1fs",
+        result.final_hv,
+        result.final_generation,
+        result.computation_time_seconds,
+    )
 
 
 # ============================================================================

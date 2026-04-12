@@ -313,6 +313,8 @@ def compute_hypervolume_fpras(
     # Compute hyperrectangle volumes
     volumes = np.prod(reference_point - pareto_front, axis=1)
     W = np.sum(volumes)
+    if W <= 0.0:
+        return ApproximationResult(0.0, 0, 0, "FPRAS", epsilon, delta)
     probabilities = volumes / W
 
     # Compute stopping threshold M1
@@ -620,6 +622,8 @@ def compute_hypervolume_hybrid(
     # Compute parameters needed for all levels
     volumes = np.prod(reference_point - pareto_front, axis=1)
     W = np.sum(volumes)
+    if W <= 0.0:
+        return ApproximationResult(0.0, 0, 0, "Hybrid", epsilon, delta)
     probabilities = volumes / W
     ideal_point = np.min(pareto_front, axis=0)
     U = np.prod(reference_point - ideal_point)
@@ -953,8 +957,8 @@ class AdaptiveHyperVolume:
                 self.epsilon,
                 self.delta,
                 minimize,
-                self.hybrid_rounds,
                 use_kdtree=self.use_kdtree,
+                n_overlap_probes=self.hybrid_rounds,
                 verbose=verbose,
             )
         else:
