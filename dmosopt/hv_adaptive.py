@@ -412,7 +412,6 @@ def compute_hypervolume_mcm2rv(
     total_comparisons = 0
 
     while S < R:
-        print(f"S = {S} R = {R}")
         # sample uniformly in bounding box Omega
         current_batch_size = min(batch_size, int(R - S) * 5)
 

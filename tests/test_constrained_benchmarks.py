@@ -488,7 +488,7 @@ _PROBLEM_REGISTRY = {
         "space": tnk_space(),
         "objective_names": ["f1", "f2"],
         "constraint_names": ["c1", "c2"],
-        "n_initial": 12,
+        "n_initial": 20,
     },
     "osy": {
         "obj_fun_name": "test_constrained_benchmarks.osy_obj_fun",
@@ -835,8 +835,8 @@ def test_constr_transformer(tmp_path):
     result = runner.run(
         "constr",
         use_transformer=True,
-        population_size=60,
-        num_generations=50,
+        population_size=100,
+        num_generations=100,
         n_epochs=3,
     )
 
@@ -863,8 +863,8 @@ def test_tnk_transformer(tmp_path):
     result = runner.run(
         "tnk",
         use_transformer=True,
-        population_size=80,
-        num_generations=60,
+        population_size=100,
+        num_generations=400,
         n_epochs=3,
     )
 
@@ -896,8 +896,8 @@ def test_osy_transformer(tmp_path):
     result = runner.run(
         "osy",
         use_transformer=True,
-        population_size=80,
-        num_generations=60,
+        population_size=100,
+        num_generations=400,
         n_epochs=3,
     )
 
@@ -939,7 +939,7 @@ if __name__ == "__main__":
         help="Surrogate to use (default: both)",
     )
     parser.add_argument("--pop", type=int, default=100, help="Population size")
-    parser.add_argument("--gen", type=int, default=200, help="Max generations")
+    parser.add_argument("--gen", type=int, default=400, help="Max generations")
     parser.add_argument(
         "--epochs", type=int, default=4, help="Surrogate epochs (n_epochs)"
     )

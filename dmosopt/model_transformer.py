@@ -683,7 +683,9 @@ class JointFTTransformer(keras.Model):
         self._last_fit_epochs = epochs
 
         if self.mode == "c+o":
-            self.y_norm_ = _tensor_to_numpy(self.norm_output(y["objectives"], adapt=True))
+            self.y_norm_ = _tensor_to_numpy(
+                self.norm_output(y["objectives"], adapt=True)
+            )
             if validation_data is not None:
                 validation_data = (
                     validation_data[0],
@@ -1110,8 +1112,14 @@ def joint(
             self._wrapped = model
 
         def rank(self, x):
-            # return dummy; will be reset in Optimizer
-            return None
+            if self._wrapped.num_constraints == 0:
+                return np.ones(x.shape[0])
+            result = self._wrapped.predict(x, verbose=0)
+            if isinstance(result, dict):
+                constraint_probs = np.array(result["constraints"])
+            else:
+                constraint_probs = np.array(result)
+            return np.mean(1.0 - constraint_probs, axis=1)
 
         def evaluate(self, x):
             return self.predict_objectives(x)
