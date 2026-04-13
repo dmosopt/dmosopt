@@ -14,7 +14,7 @@ You may also point to your custom implementations by specifying a Python import 
 
 ## Joint model
 
-The joint model is a Transformer-based surrogate that can predict objectives and constraints simultaneously using the `JointFTTransformer` architecture from `dmosopt.custom_training`. Unlike Gaussian process surrogates which fit a separate model per objective, the joint model trains a single multi-task model over all outputs at once. This can be especially effective for problems with many objectives and constraints, or where objectives and constraints are correlated.
+The joint model is a Transformer-based surrogate that can predict objectives and constraints simultaneously using the `JointFTTransformer` architecture from `dmosopt.model_transformer`. Unlike Gaussian process surrogates which fit a separate model per objective, the joint model trains a single multi-task model over all outputs at once. This can be especially effective for problems with many objectives and constraints, or where objectives and constraints are correlated.
 
 ### Installation
 
@@ -31,7 +31,7 @@ To use the joint model, set `surrogate_custom_training` to point to the built-in
 ```python
 dmosopt_params = {
     # ... problem definition ...
-    "surrogate_custom_training": "dmosopt.custom_training.joint",
+    "surrogate_custom_training": "dmosopt.model_transformer.joint",
     "surrogate_custom_training_kwargs": {
         "mode": "c+o",  
         "epochs": "auto", 
@@ -56,4 +56,3 @@ The joint model additionally provides gradient-based parameter sensitivity analy
 ### Example
 
 See the [Motoneuron example](/examples/motoneuron) for a complete worked example using the joint model to optimize a neuron model with 5 objectives and 8 constraints.
-
