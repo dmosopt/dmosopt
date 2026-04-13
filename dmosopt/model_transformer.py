@@ -21,6 +21,20 @@ from scipy.stats import qmc
 logger = logging.getLogger("dmosopt")
 
 
+def _tensor_to_numpy(x):
+    """Convert a Keras tensor (or numpy array) to a numpy array.
+
+    When using torch backend with CUDA, tensors must be moved to CPU before
+    calling .numpy().
+    """
+    if keras.backend.backend() == "torch":
+        import torch
+
+        if isinstance(x, torch.Tensor):
+            return x.detach().cpu().numpy()
+    return np.array(x)
+
+
 def preprocess(x, y, yC=None, remove_outliers=False, nan="remove"):
     if nan == "max":
         m = np.max(np.nan_to_num(y), axis=0)
@@ -669,12 +683,12 @@ class JointFTTransformer(keras.Model):
         self._last_fit_epochs = epochs
 
         if self.mode == "c+o":
-            self.y_norm_ = np.array(self.norm_output(y["objectives"], adapt=True))
+            self.y_norm_ = _tensor_to_numpy(self.norm_output(y["objectives"], adapt=True))
             if validation_data is not None:
                 validation_data = (
                     validation_data[0],
                     {
-                        "objectives": np.array(
+                        "objectives": _tensor_to_numpy(
                             self.norm_output(validation_data[1]["objectives"])
                         ),
                         "constraints": validation_data[1]["constraints"],
@@ -709,11 +723,11 @@ class JointFTTransformer(keras.Model):
                 **kwargs,
             )
         else:
-            self.y_norm_ = np.array(self.norm_output(y, adapt=True))
+            self.y_norm_ = _tensor_to_numpy(self.norm_output(y, adapt=True))
             if validation_data is not None:
                 validation_data = (
                     validation_data[0],
-                    np.array(self.norm_output(validation_data[1])),
+                    _tensor_to_numpy(self.norm_output(validation_data[1])),
                 )
             return super().fit(
                 x,
@@ -747,6 +761,11 @@ class JointFTTransformer(keras.Model):
                 self.max_std_yR.assign(np.std(yR, axis=0))
             elif method == "log":
                 pass
+
+        # Convert to tensor so arithmetic with Keras Variables works with any
+        # backend.
+        # Torch throws an error when numpy arrays are used with Keras variables.
+        yR = ops.convert_to_tensor(yR, dtype="float32")
 
         if "max" in method:
             centering = 0.0
@@ -800,8 +819,8 @@ class JointFTTransformer(keras.Model):
         def normed(metric):
             def _w(y_true, y_pred, *args, **kwargs):
                 return metric(
-                    np.nan_to_num(np.array(self.norm_output(y_true))),
-                    np.nan_to_num(np.array(self.norm_output(y_pred))),
+                    np.nan_to_num(_tensor_to_numpy(self.norm_output(y_true))),
+                    np.nan_to_num(_tensor_to_numpy(self.norm_output(y_pred))),
                     *args,
                     **kwargs,
                 )
@@ -932,14 +951,14 @@ class JointFTTransformer(keras.Model):
         if self.mode == "c+o":
             return {
                 "constraints": y_pred["constraints"],
-                "objectives": np.array(
+                "objectives": _tensor_to_numpy(
                     self.norm_output(y_pred["objectives"], inverse=True)
                 ),
             }
         if self.mode == "c":
             return y_pred
         if self.mode == "o":
-            return np.array(self.norm_output(y_pred, inverse=True))
+            return _tensor_to_numpy(self.norm_output(y_pred, inverse=True))
 
     def raw_predict(self, x, *args, **kwargs):
         return super().predict(x, *args, **kwargs)
@@ -1012,7 +1031,7 @@ class JointFTTransformer(keras.Model):
                 grads = self._compute_input_gradients(X_batch, forward, key)
                 grads = grads * X_batch
 
-                batch_sens = np.array(reduction(grads))
+                batch_sens = _tensor_to_numpy(reduction(grads))
                 if key not in sens or sens[key] is None:
                     sens[key] = np.zeros_like(batch_sens)
                 sens[key] += batch_sens * (end_idx - start_idx) / num_samples
@@ -1106,7 +1125,7 @@ def joint(
                 points, reduction=lambda x: ops.mean(ops.square(x), axis=0)
             )["objectives"]
 
-            sens = np.array(sens / (ops.max(sens) + 1e-7))
+            sens = sens / (np.max(sens) + 1e-7)
 
             computed_di_crossover = 1 + (np.abs(sens) * 20)
             computed_di_mutation = 1 + (np.abs(sens) * 20)
