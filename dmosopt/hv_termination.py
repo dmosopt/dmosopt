@@ -973,7 +973,7 @@ class HypervolumeProgressTermination(SlidingWindowTermination):
         self,
         problem,
         ref_point: Optional[np.ndarray] = None,
-        hv_tol: float = 1e-5,
+        hv_tol: float = 1e-6,
         n_last: int = 15,
         nth_gen: int = 5,
         n_max_gen: Optional[int] = None,

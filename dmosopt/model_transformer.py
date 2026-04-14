@@ -21,6 +21,21 @@ from scipy.stats import qmc
 logger = logging.getLogger("dmosopt")
 
 
+class _EpochLogger(keras.callbacks.Callback):
+    """Print a one-line training summary every `freq` epochs."""
+
+    def __init__(self, freq=100):
+        super().__init__()
+        self.freq = freq
+
+    def on_epoch_end(self, epoch, logs=None):
+        if (epoch + 1) % self.freq == 0:
+            logs = logs or {}
+            parts = [f"epoch {epoch + 1}"]
+            parts += [f"{k}={v:.4f}" for k, v in logs.items()]
+            logger.info("  ".join(parts))
+
+
 def _tensor_to_numpy(x):
     """Convert a Keras tensor (or numpy array) to a numpy array.
 
@@ -527,17 +542,38 @@ class JointFTTransformer(keras.Model):
         elif self.mode == "o":
             Y = y
 
-        return self.fit(
+        callbacks = [
+            keras.callbacks.TerminateOnNaN(),
+        ]
+        if verbose:
+            callbacks.append(_EpochLogger(freq=100))
+        history = self.fit(
             x,
             Y,
             epochs=epochs,
             batch_size=batch_size,
-            verbose=verbose,
-            callbacks=[
-                keras.callbacks.TerminateOnNaN(),
-            ],
+            verbose=0,
+            callbacks=callbacks,
             **kwargs,
         )
+
+        if yC is not None and self.mode in ("c", "c+o"):
+            pred = self.predict(x, verbose=0)
+            if isinstance(pred, dict):
+                c_pred = np.array(pred["constraints"])
+            else:
+                c_pred = np.array(pred)
+            c_pred_bin = (c_pred > 0.5).astype(int)
+            per_constraint_acc = np.mean(c_pred_bin == yC, axis=0)
+            logger.info(
+                "autofit constraint accuracy (per constraint): %s  "
+                "mean=%.3f  frac_degenerate(>0.99)=%.2f",
+                np.round(per_constraint_acc, 3),
+                per_constraint_acc.mean(),
+                np.mean(per_constraint_acc > 0.99),
+            )
+
+        return history
 
     def autoeval(self, x, y, yC, verbose=2):
         x, y, yC = self.preprocess(x, y, yC)
@@ -615,23 +651,25 @@ class JointFTTransformer(keras.Model):
                     val_ = (X_val, y_val)
                     monitor_metrics = ["val_mae"]
 
+                callbacks = [
+                    keras.callbacks.EarlyStopping(
+                        monitor=mon,
+                        patience=250,
+                        restore_best_weights=False,
+                        mode="min",
+                    )
+                    for mon in monitor_metrics
+                ] + [keras.callbacks.TerminateOnNaN()]
+                if verbose:
+                    callbacks.append(_EpochLogger(freq=100))
                 history = self.fit(
                     X_train,
                     y_,
                     validation_data=val_,
                     epochs=total_epochs + epoch_increment,
                     batch_size=2048,
-                    callbacks=[
-                        keras.callbacks.EarlyStopping(
-                            monitor=mon,
-                            patience=250,
-                            restore_best_weights=False,
-                            mode="min",
-                        )
-                        for mon in monitor_metrics
-                    ]
-                    + [keras.callbacks.TerminateOnNaN()],
-                    verbose=verbose,
+                    callbacks=callbacks,
+                    verbose=0,
                     initial_epoch=total_epochs,
                 )
                 epochs_this_round = len(history.epoch)
@@ -1119,7 +1157,19 @@ def joint(
                 constraint_probs = np.array(result["constraints"])
             else:
                 constraint_probs = np.array(result)
-            return np.mean(1.0 - constraint_probs, axis=1)
+            # constraint_probs represents P(feasible): 1=feasible, 0=infeasible.
+            # Callers use -rank in lexsort so higher rank = better (more feasible).
+            feasibility_rank = np.mean(constraint_probs, axis=1)
+            logger.debug(
+                "transformer rank: n=%d  min=%.3f  mean=%.3f  max=%.3f  "
+                "frac_feasible(>0.5)=%.2f",
+                len(feasibility_rank),
+                feasibility_rank.min(),
+                feasibility_rank.mean(),
+                feasibility_rank.max(),
+                np.mean(feasibility_rank > 0.5),
+            )
+            return feasibility_rank
 
         def evaluate(self, x):
             return self.predict_objectives(x)
