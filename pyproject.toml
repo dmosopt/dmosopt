@@ -28,6 +28,13 @@ extras = [
     "salib>=1.5.1",
     "gpflow>=2.9.2",
 ]
+transformer = [
+    # Keras 3 multi-backend deep learning framework (model_transformer.py)
+    "keras>=3.0",
+    # Default backend; can be substituted with "torch" or "jax[cuda]"
+    # by setting KERAS_BACKEND or ~/.keras/keras.json accordingly.
+    "tensorflow>=2.10",
+]
 
 [build-system]
 requires = ["hatchling"]

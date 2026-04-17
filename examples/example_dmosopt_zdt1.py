@@ -52,7 +52,7 @@ if __name__ == "__main__":
         "population_size": 200,
         "num_generations": 100,
         "initial_maxiter": 10,
-        "optimizer_name": "cmaes",
+        "optimizer_name": "nsga2",
         "surrogate_method_name": "megp",
         "termination_conditions": True,
         "optimize_mean_variance": False,

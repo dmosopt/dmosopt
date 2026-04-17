@@ -306,9 +306,9 @@ class DistOptStrategy:
         return result
 
     def initialize_epoch(self, epoch_index):
-        assert self.opt_gen is None, (
-            "Optimization generator is active in DistOptStrategy"
-        )
+        assert (
+            self.opt_gen is None
+        ), "Optimization generator is active in DistOptStrategy"
 
         optimizer_index = next(self.optimizer_iter)
         optimizer_kwargs = {}
@@ -2442,8 +2442,8 @@ def dopt_init(
     dopt_params["obj_fun"] = objfun
     reducefun_name = dopt_params.get("reduce_fun_name", None)
     if reducefun_name is not None:
-        reducefun = import_object_by_path(reducefun_name)
-        dopt_params["reduce_fun"] = reducefun
+        reduce_fun = import_object_by_path(reducefun_name)
+        dopt_params["reduce_fun"] = reduce_fun
     else:
         # If using MPI with 1 process per worker, then each worker
         # will always return a list containing one element, and

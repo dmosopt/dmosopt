@@ -35,6 +35,7 @@ export default defineConfig({
           items: [
             { text: 'ZDT', link: '/examples/zdt' },
             { text: 'Lorenz', link: '/examples/lorenz' },
+            { text: 'Motoneuron', link: '/examples/motoneuron' },
           ]
         }
       ],

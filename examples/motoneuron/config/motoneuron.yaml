@@ -1,0 +1,67 @@
+Celltype: Motoneuron 
+Numerics:
+    adaptive: False
+    use_coreneuron: True
+    t0: 0
+    tstop: 2000
+    dt: 0.0125
+    record_dt: 0.01
+    v_init: -60.0
+Record: 
+    soma: ['V']
+    dend: ['V']
+Targets:
+    Rin:    
+        I: [-100.0]
+        I_factor: 1.0e-3
+        upper: [598.0]
+        lower: [540.0]
+        t: [250, 1250]
+    tau0:    
+        I: [-0.1]
+        upper: [19.375]
+        lower: [16.308]
+        t: [250, 1250]
+    threshold: -37.0
+    V_hold:
+        val: -60
+        I : 0 
+    V_rest:
+        val: -57.4
+        I : 0 
+    f_I:
+        I: [20, 30, 40, 50, 60, 70, 80]
+        I_factor: 1.0e-3
+        mean: [3.88, 9.09, 11.75, 14.29, 15.96, 16.58, 18.25]
+        t: [500, 1500]
+    spike_amp:
+        upper: [80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0]
+        lower: [60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0]
+    spike_adaptation:
+        upper: [1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6]
+        lower: [1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2]
+        t: [500, 1500]
+Parameters:
+  soma_f_Caconc: 0.004
+  soma_alpha_Caconc: 1
+  soma_kCa_Caconc: 8
+  dend_f_Caconc: 0.004
+  dend_alpha_Caconc: 1
+  dend_kCa_Caconc: 8
+  global_diam:  5.0
+  global_cm:  2.0
+  e_pas: -62
+  pp: 0.1
+  Ltotal: 120.0
+Space:
+  gc:  [0.1, 2.0]
+  soma_gmax_Na:  [0.1, 0.3]
+  soma_gmax_K:  [0.01, 0.3]
+  soma_gmax_KCa:  [0.0001, 0.01]
+  soma_gmax_CaN:  [0.00001, 0.03]
+  soma_g_pas:  [0.00001, 0.01]
+  dend_gmax_CaL:  [0.00001, 0.001]
+  dend_gmax_CaN:  [0.00001, 0.001]
+  dend_gmax_KCa:  [0.0001, 0.005]
+  dend_g_pas:  [0.00001, 0.01]
+  cm_ratio: [1.0, 40.0]
