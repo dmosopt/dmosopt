@@ -128,7 +128,6 @@ class NSGA2(MOEA):
         xub = self.state.bounds[:, 1]
 
         population_parm = self.state.population_parm
-        population_obj = self.state.population_obj
         rank = self.state.rank
 
         pool_idxs = tournament_selection(
@@ -196,8 +195,6 @@ class NSGA2(MOEA):
         rank = self.state.rank
 
         popsize = self.opt_params.popsize
-        nInput = self.nInput
-        nOutput = self.nOutput
 
         crossover_indices = state["crossover_indices"]
         mutation_indices = state["mutation_indices"]
@@ -225,9 +222,21 @@ class NSGA2(MOEA):
             self.state.population_obj = population_obj
             self.state.rank = rank
         else:
-            self.state.population_parm[:] = population_parm
-            self.state.population_obj[:] = population_obj
-            self.state.rank[:] = rank
+            n_selected = population_parm.shape[0]
+            if n_selected < popsize:
+                if self.logger is not None:
+                    self.logger.warning(
+                        f"NSGA2: population shrank from {popsize} to "
+                        f"{n_selected} after duplicate removal; "
+                        f"will recover next generation."
+                    )
+                self.state.population_parm = population_parm
+                self.state.population_obj = population_obj
+                self.state.rank = rank
+            else:
+                self.state.population_parm[:] = population_parm
+                self.state.population_obj[:] = population_obj
+                self.state.rank[:] = rank
 
         if self.opt_params.adaptive_population_size:
             self.update_population_size()

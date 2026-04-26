@@ -1013,6 +1013,7 @@ class HypervolumeProgressTermination(SlidingWindowTermination):
             min_data_for_metric=2,
             nth_gen=nth_gen,
             n_max_gen=n_max_gen,
+            min_generations=min_generations,
             **kwargs,
         )
 
