@@ -37,12 +37,16 @@ class TestCorrectnessAnalytical:
         assert np.isclose(hv, expected)
 
     def test_two_points_2d_orthogonal(self):
-        """Two orthogonal points form L-shape."""
+        """Two orthogonal points form L-shape.
+
+        Dominated region is the union of [1,3]x[2,3] and [2,3]x[1,3],
+        which overlap at [2,3]x[2,3], so HV = 2 + 2 - 1 = 3.
+        """
         points = np.array([[1.0, 2.0], [2.0, 1.0]])
         ref = np.array([3.0, 3.0])
 
         hv = compute_hypervolume_box_decomposition(points, ref)
-        expected = 4.0
+        expected = 3.0
 
         assert np.isclose(hv, expected)
 
@@ -128,7 +132,7 @@ class TestCorrectnessDimensions:
         assert np.isclose(hv_auto, hv_3d)
 
     def test_4d_fonseca(self):
-        """Test 4D using full Fonseca algorithm."""
+        """Test 4D using full box-decomposition algorithm."""
         np.random.seed(42)
         points = np.random.rand(10, 4) * 5
         ref = np.array([6.0] * 4)
@@ -136,7 +140,7 @@ class TestCorrectnessDimensions:
         hv = compute_hypervolume_box_decomposition(points, ref, algorithm="fonseca")
 
         assert hv > 0
-        assert hv <= 1.0  # Can't exceed unit hypercube scaled
+        assert hv <= 6.0**4  # Can't exceed the full bounding box
 
     def test_high_dimensional(self):
         """Test 8D case."""
@@ -303,9 +307,13 @@ class TestFunctionalProperties:
 
         assert hv2 >= hv1
 
-    def test_additive_for_disjoint_regions(self):
-        """HV should be additive for non-overlapping fronts."""
-        # Two points that don't overlap in dominated space
+    def test_subadditive_for_combined_front(self):
+        """HV of a combined front is <= sum of individual HVs (subadditive).
+
+        For points (1,3) and (3,1) with ref (4,4) the dominated regions
+        overlap at [3,4]x[3,4], so the combined HV (5) is strictly less
+        than hv1 + hv2 (3 + 3 = 6).
+        """
         points1 = np.array([[1.0, 3.0]])
         points2 = np.array([[3.0, 1.0]])
         combined = np.vstack([points1, points2])
@@ -316,9 +324,10 @@ class TestFunctionalProperties:
         hv2 = compute_hypervolume_box_decomposition(points2, ref)
         hv_combined = compute_hypervolume_box_decomposition(combined, ref)
 
-        # For orthogonal points, should be additive
-        # This is a special case - in general HV is NOT additive
-        assert np.isclose(hv_combined, hv1 + hv2, rtol=0.1)
+        assert np.isclose(hv1, 3.0)
+        assert np.isclose(hv2, 3.0)
+        assert np.isclose(hv_combined, 5.0)
+        assert hv_combined < hv1 + hv2  # overlap makes it subadditive
 
 
 class TestMemoryEfficiency:
