@@ -184,9 +184,22 @@ class TRS(MOEA):
             self.state.population_obj = population_obj
             self.state.rank = rank
         else:
-            self.state.population_parm[:] = population_parm
-            self.state.population_obj[:] = population_obj
-            self.state.rank[:] = rank
+            popsize = self.opt_params.popsize
+            n_selected = population_parm.shape[0]
+            if n_selected < popsize:
+                if self.logger is not None:
+                    self.logger.warning(
+                        f"TRS: population shrank from {popsize} to "
+                        f"{n_selected} after candidate selection; "
+                        f"will recover next generation."
+                    )
+                self.state.population_parm = population_parm
+                self.state.population_obj = population_obj
+                self.state.rank = rank
+            else:
+                self.state.population_parm[:] = population_parm
+                self.state.population_obj[:] = population_obj
+                self.state.rank[:] = rank
 
         if self.opt_params.adaptive_population_size:
             self.update_population_size()

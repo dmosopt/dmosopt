@@ -96,6 +96,7 @@ class SlidingWindowTermination(TerminationCollection):
         min_data_for_metric=1,
         nth_gen=1,
         n_max_gen=None,
+        min_generations=0,
         truncate_metrics=True,
         truncate_data=True,
     ):
@@ -112,6 +113,12 @@ class SlidingWindowTermination(TerminationCollection):
 
         nth_gen : int
             Each n-th generation the termination should be checked for
+
+        min_generations : int
+            Minimum total number of generations (across all epochs) that must
+            elapse before any termination decision can be made.  Prevents
+            premature stopping when a surrogate is not yet well-calibrated
+            (e.g. a transformer in the first epoch).
 
         """
 
@@ -137,6 +144,10 @@ class SlidingWindowTermination(TerminationCollection):
         # number of entries of data need to be stored to calculate the metric at all
         self.min_data_for_metric = min_data_for_metric
 
+        # minimum total generations (persistent across epoch resets of opt.n_gen)
+        self.min_generations = min_generations
+        self.n_total_gens = 0
+
     def reset(self):
         self.data = SlidingWindow(self.data_window_size) if self.truncate_data else []
         self.metrics = (
@@ -148,6 +159,8 @@ class SlidingWindowTermination(TerminationCollection):
         if not super()._do_continue(opt):
             return False
 
+        self.n_total_gens += 1
+
         # store the data decided to be used by the implementation
         obj = self._store(opt)
         if obj is not None:
@@ -158,6 +171,10 @@ class SlidingWindowTermination(TerminationCollection):
             metric = self._metric(self.data[-self.data_window_size :])
             if metric is not None:
                 self.metrics.append(metric)
+
+        # enforce minimum generations floor before any termination decision
+        if self.n_total_gens < self.min_generations:
+            return True
 
         # if its the n-th generation and enough metrics have been calculated make the decision
         if (

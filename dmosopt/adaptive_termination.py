@@ -63,6 +63,7 @@ class PerObjectiveConvergence(SlidingWindowTermination):
         n_last: int = 20,
         nth_gen: int = 5,
         n_max_gen: Optional[int] = None,
+        min_generations: int = 0,
         **kwargs,
     ):
         """
@@ -74,6 +75,7 @@ class PerObjectiveConvergence(SlidingWindowTermination):
         n_last : window size for tracking convergence
         nth_gen : check convergence every n-th generation
         n_max_gen : maximum generations
+        min_generations : minimum total generations before any termination decision
         """
         super().__init__(
             problem,
@@ -82,6 +84,7 @@ class PerObjectiveConvergence(SlidingWindowTermination):
             min_data_for_metric=2,
             nth_gen=nth_gen,
             n_max_gen=n_max_gen,
+            min_generations=min_generations,
             **kwargs,
         )
         self.n_objectives = problem.n_objectives
@@ -172,6 +175,7 @@ class MultiScaleStagnationTermination(SlidingWindowTermination):
         min_scales_stagnant: int = 3,
         n_max_gen: Optional[int] = None,
         nth_gen: int = 1,
+        min_generations: int = 0,
         **kwargs,
     ):
         """
@@ -183,6 +187,7 @@ class MultiScaleStagnationTermination(SlidingWindowTermination):
         min_scales_stagnant : minimum number of scales that must be stagnant
         n_max_gen : maximum generations
         nth_gen : check every n-th generation
+        min_generations : minimum total generations before any termination decision
         """
         max_scale = max(timescales)
         super().__init__(
@@ -192,6 +197,7 @@ class MultiScaleStagnationTermination(SlidingWindowTermination):
             min_data_for_metric=max(timescales),
             nth_gen=nth_gen,
             n_max_gen=n_max_gen,
+            min_generations=min_generations,
             **kwargs,
         )
         self.timescales = sorted(timescales)
@@ -381,6 +387,8 @@ class CompositeAdaptiveTermination(TerminationCollection):
         # Multi-scale params
         timescales: Optional[List[int]] = None,
         stagnation_tol: float = 1e-4,
+        # Minimum generations before any criterion can fire
+        min_generations: int = 50,
         # Control flags
         use_per_objective: bool = True,
         use_hypervolume: bool = True,
@@ -398,6 +406,10 @@ class CompositeAdaptiveTermination(TerminationCollection):
         ref_point : reference point for hypervolume (None = auto)
         timescales : timescales for multi-scale analysis (None = auto)
         stagnation_tol : tolerance for stagnation detection
+        min_generations : minimum total generations (across all epochs) before
+            any sub-criterion can trigger termination.  Prevents premature
+            stopping when a surrogate model (e.g. a transformer) is not yet
+            well-calibrated during early epochs.
         use_per_objective : enable per-objective termination
         use_hypervolume : enable hypervolume termination
         use_multiscale : enable multi-scale termination
@@ -413,6 +425,7 @@ class CompositeAdaptiveTermination(TerminationCollection):
                     min_converged_fraction=min_converged_fraction,
                     n_last=20,
                     nth_gen=5,
+                    min_generations=min_generations,
                     **kwargs,
                 )
             )
@@ -425,6 +438,7 @@ class CompositeAdaptiveTermination(TerminationCollection):
                     hv_tol=hv_tol,
                     n_last=15,
                     nth_gen=5,
+                    min_generations=min_generations,
                     **kwargs,
                 )
             )
@@ -442,6 +456,7 @@ class CompositeAdaptiveTermination(TerminationCollection):
                     stagnation_tol=stagnation_tol,
                     min_scales_stagnant=3,
                     nth_gen=2,
+                    min_generations=min_generations,
                     **kwargs,
                 )
             )

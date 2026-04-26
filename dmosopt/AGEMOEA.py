@@ -133,7 +133,6 @@ class AGEMOEA(MOEA):
         xub = self.state.bounds[:, 1]
 
         population_parm = self.state.population_parm
-        population_obj = self.state.population_obj
         rank = self.state.rank
         crowd_dist = self.state.crowd_dist
 
@@ -220,10 +219,23 @@ class AGEMOEA(MOEA):
             self.state.rank = rank
             self.state.crowd_dist = crowd_dist
         else:
-            self.state.population_parm[:] = population_parm
-            self.state.population_obj[:] = population_obj
-            self.state.rank[:] = rank
-            self.state.crowd_dist[:] = crowd_dist
+            n_selected = population_parm.shape[0]
+            if n_selected < popsize:
+                if self.logger is not None:
+                    self.logger.warning(
+                        f"AGEMOEA: population shrank from {popsize} to "
+                        f"{n_selected} after duplicate removal; "
+                        f"will recover next generation."
+                    )
+                self.state.population_parm = population_parm
+                self.state.population_obj = population_obj
+                self.state.rank = rank
+                self.state.crowd_dist = crowd_dist
+            else:
+                self.state.population_parm[:] = population_parm
+                self.state.population_obj[:] = population_obj
+                self.state.rank[:] = rank
+                self.state.crowd_dist[:] = crowd_dist
 
         if self.opt_params.adaptive_population_size:
             self.update_population_size()
@@ -300,7 +312,7 @@ def normalize(front, extreme):
 
     try:
         hyperplane = np.linalg.solve(front[extreme], np.ones(n))
-    except:
+    except np.linalg.LinAlgError:
         hyperplane = [np.nan]
 
     if any(np.isnan(hyperplane)) or any(np.isinf(hyperplane)) or any(hyperplane < 0):
@@ -445,7 +457,6 @@ def environmental_selection(
 
     xs, ys, rank = sortMO(population_parm, population_obj)
     rmax = int(np.max(rank[rank != max_int]))
-    rmin = int(np.min(rank))
 
     yn = np.zeros_like(ys)
     crowd_dist = np.zeros_like(rank).astype(np.float32)
