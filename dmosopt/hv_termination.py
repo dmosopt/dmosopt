@@ -1151,10 +1151,12 @@ class HypervolumeProgressTermination(SlidingWindowTermination):
             return False
 
         # Continue optimization
-        self.problem.logger.info(
+        progress_msg = (
             f"HV Progress - Current: {latest['hv']:.6f}, "
-            f"Improvement: {latest['relative_improvement']:.2e}, "
-            f"Confidence: {latest['confidence']:.2%}"
+            f"Improvement: {latest['relative_improvement']:.2e}"
         )
+        if latest["confidence"] > 0.0:
+            progress_msg += f", Convergence confidence: {latest['confidence']:.2%}"
+        self.problem.logger.info(progress_msg)
 
         return True
