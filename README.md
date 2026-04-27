@@ -172,3 +172,9 @@ Gong, W., Q. Duan, J. Li, C. Wang, Z. Di, A. Ye, C. Miao, and Y. Dai
 (2016), Multiobjective adaptive surrogate modeling-based optimization
 for parameter estimation of large, complex geophysical models, Water
 Resour. Res., 52(3), 1984-2008. doi:10.1002/2015WR018230.
+
+Hypervolume computation uses [moocore](https://github.com/multi-objective/moocore),
+a high-performance C library for multi-objective optimization utilities, when it is
+available. moocore provides optimally-efficient hypervolume algorithms (O(n log n)
+for 2D/3D fronts) via a Python interface, and is used as the preferred backend for
+exact hypervolume calculation in dmosopt.
