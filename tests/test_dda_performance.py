@@ -14,7 +14,8 @@ import time
 import numpy as np
 import pytest
 
-from dmosopt.dda import _MOOCORE_AVAILABLE, dda_ens, dda_non_dominated_sort
+from dmosopt.pareto_rank import _MOOCORE_AVAILABLE, pareto_rank as dda_ens
+from dmosopt.dda import dda_non_dominated_sort
 from tests.test_dda import _ref_dda_ens, _ref_dda_ns
 
 if _MOOCORE_AVAILABLE:
@@ -120,8 +121,10 @@ def test_dda_correctness_with_duplicates(d, n):
 @pytest.mark.parametrize("d,n", CASES)
 def test_dda_return_dom(d, n):
     """dda_ens(return_dom=True) must return (rank, DM) with correct shapes."""
+    from dmosopt.dda import dda_ens as _dda_ens_direct
+
     x = _random_unique(n, d, seed=d * 4000 + n)
-    result = dda_ens(x, return_dom=True)
+    result = _dda_ens_direct(x, return_dom=True)
     assert isinstance(result, tuple) and len(result) == 2, (
         "return_dom=True must return a 2-tuple"
     )
@@ -137,12 +140,14 @@ def test_dda_return_dom(d, n):
 @pytest.mark.skipif(not _MOOCORE_AVAILABLE, reason="moocore not installed")
 @pytest.mark.parametrize("d,n", CASES)
 def test_dda_correctness_vs_moocore(d, n):
-    """When moocore is installed the fast path must match moocore.pareto_rank() - 1."""
+    """Fast path must return 0-indexed ranks matching moocore.pareto_rank() directly."""
     x = _random_unique(n, d, seed=d * 5000 + n)
     rank_dmosopt = dda_ens(x)
-    rank_moocore = _moocore.pareto_rank(x).astype(np.intp) - 1
-    assert _same_fronts(rank_dmosopt, rank_moocore), (
-        f"d={d} n={n}: fast-path result differs from moocore.pareto_rank()"
+    rank_moocore = _moocore.pareto_rank(x).astype(np.intp)
+    np.testing.assert_array_equal(
+        rank_dmosopt,
+        rank_moocore,
+        err_msg=f"d={d} n={n}: fast-path result differs from moocore.pareto_rank()",
     )
 
 

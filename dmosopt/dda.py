@@ -9,13 +9,6 @@
 
 import numpy as np
 
-try:
-    import moocore as _moocore
-
-    _MOOCORE_AVAILABLE = True
-except ImportError:
-    _MOOCORE_AVAILABLE = False
-
 
 def comparison_matrix(y, output=None):
     """Construct comparison matrix for input vector y
@@ -86,9 +79,6 @@ def dda_ens(Y, return_dom=False):
     """Rank objectives by Dominance Degree Matrix.
     y: input matrix (N, D)
     """
-    if _MOOCORE_AVAILABLE and not return_dom:
-        return _moocore.pareto_rank(Y).astype(np.intp) - 1
-
     n, d = Y.shape
 
     # 1. Construct the dominance degree matrix of set Y
