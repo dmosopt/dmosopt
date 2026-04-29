@@ -12,7 +12,7 @@
 #
 
 import numpy as np
-from dmosopt.dda import dda_ens
+from dmosopt.pareto_rank import pareto_rank
 from dmosopt.MOEA import (
     Struct,
     MOEA,
@@ -275,7 +275,7 @@ def sortMO(x, y):
     x: input parameter matrix
     y: output objectives matrix
     """
-    rank = dda_ens(y)
+    rank = pareto_rank(y)
     idxr = rank.argsort()
     rank = rank[idxr]
     x = x[idxr, :]

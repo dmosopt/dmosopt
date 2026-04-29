@@ -6,7 +6,7 @@ from abc import abstractmethod
 import numpy as np
 from dmosopt.normalization import PreNormalization
 from dmosopt.hv_box_decomposition import HyperVolumeBoxDecomposition as _HyperVolume
-from dmosopt.dda import dda_ens
+from dmosopt.pareto_rank import pareto_rank
 
 
 def crowding_distance_metric(Y):
@@ -246,7 +246,7 @@ class Hypervolume(Indicator):
 
     def _do(self, F):
         if self.nds:
-            rank = dda_ens(F)
+            rank = pareto_rank(F)
             non_dom = np.argwhere(rank == 0).ravel()
             F = np.copy(F[non_dom, :])
 
@@ -297,7 +297,7 @@ class HypervolumeImprovement(Indicator):
         assert len(F) > 0
 
         if self.nds:
-            rank = dda_ens(F)
+            rank = pareto_rank(F)
             non_dom = np.argwhere(rank == 0).ravel()
             if len(non_dom) > 0:
                 F = np.copy(F[non_dom, :])

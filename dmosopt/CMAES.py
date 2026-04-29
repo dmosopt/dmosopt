@@ -8,7 +8,7 @@
 ###
 
 import numpy as np
-from dmosopt.dda import dda_ens
+from dmosopt.pareto_rank import pareto_rank
 from dmosopt.MOEA import (
     Struct,
     MOEA,
@@ -470,7 +470,7 @@ def sortMO(
             else:
                 raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
 
-    rank = dda_ens(y)
+    rank = pareto_rank(y)
 
     x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
     rmax = int(rank.max())
