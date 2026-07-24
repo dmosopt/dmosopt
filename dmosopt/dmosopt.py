@@ -820,7 +820,6 @@ class DistOptimizer:
                     self.problem_ids,
                     self.has_problem_ids,
                     self.param_space,
-                    self.param_names,
                     self.objective_names,
                     self.feature_dtypes,
                     self.constraint_names,
@@ -1790,6 +1789,42 @@ def h5_init_types(
     dset[:] = param_path_array
 
 
+def h5_init_opt_group(
+    f,
+    opt_id,
+    objective_names,
+    feature_dtypes,
+    constraint_names,
+    problem_parameters,
+    parameter_space,
+    problem_ids,
+    has_problem_ids,
+    metadata,
+    random_seed,
+    surrogate_mean_variance=False,
+):
+    if opt_id in f.keys():
+        return
+    h5_init_types(
+        f,
+        opt_id,
+        objective_names,
+        feature_dtypes,
+        constraint_names,
+        problem_parameters,
+        parameter_space,
+        surrogate_mean_variance=surrogate_mean_variance,
+    )
+    opt_grp = h5_get_group(f, opt_id)
+    if metadata is not None:
+        opt_grp["metadata"] = metadata
+    opt_grp["problem_ids"] = np.asarray(
+        list(problem_ids) if has_problem_ids else [0], dtype=np.int32
+    )
+    if random_seed is not None:
+        opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int32)
+
+
 def h5_load_raw(input_file, opt_id):
     ## N is number of trials
     ## M is number of hyperparameters
@@ -2028,7 +2063,7 @@ def save_to_h5(
     problem_ids,
     has_problem_ids,
     objective_names,
-    feature_names,
+    feature_dtypes,
     constraint_names,
     parameter_space,
     evals,
@@ -2044,25 +2079,20 @@ def save_to_h5(
     """
 
     f = h5py.File(fpath, "a")
-    if opt_id not in f.keys():
-        h5_init_types(
-            f,
-            opt_id,
-            objective_names,
-            problem_parameters,
-            constraint_names,
-            parameter_space,
-            surrogate_mean_variance=surrogate_mean_variance,
-        )
-        opt_grp = h5_get_group(f, opt_id)
-        if metadata is not None:
-            opt_grp["metadata"] = metadata
-        if has_problem_ids:
-            opt_grp["problem_ids"] = np.asarray(list(problem_ids), dtype=np.int32)
-        else:
-            opt_grp["problem_ids"] = np.asarray([0], dtype=np.int32)
-        if random_seed is not None:
-            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int32)
+    h5_init_opt_group(
+        f,
+        opt_id,
+        objective_names,
+        feature_dtypes,
+        constraint_names,
+        problem_parameters,
+        parameter_space,
+        problem_ids,
+        has_problem_ids,
+        metadata,
+        random_seed,
+        surrogate_mean_variance=surrogate_mean_variance,
+    )
 
     opt_grp = h5_get_group(f, opt_id)
 
@@ -2287,7 +2317,6 @@ def init_h5(
     problem_ids,
     has_problem_ids,
     parameter_space,
-    param_names,
     objective_names,
     feature_dtypes,
     constraint_names,
@@ -2302,24 +2331,20 @@ def init_h5(
     """
 
     f = h5py.File(fpath, "a")
-    if opt_id not in f.keys():
-        h5_init_types(
-            f,
-            opt_id,
-            objective_names,
-            feature_dtypes,
-            constraint_names,
-            problem_parameters,
-            parameter_space,
-            surrogate_mean_variance=surrogate_mean_variance,
-        )
-        opt_grp = h5_get_group(f, opt_id)
-        if has_problem_ids:
-            opt_grp["problem_ids"] = np.asarray(list(problem_ids), dtype=np.int32)
-        if metadata is not None:
-            opt_grp["metadata"] = metadata
-        if random_seed is not None:
-            opt_grp["random_seed"] = np.asarray([random_seed], dtype=np.int32)
+    h5_init_opt_group(
+        f,
+        opt_id,
+        objective_names,
+        feature_dtypes,
+        constraint_names,
+        problem_parameters,
+        parameter_space,
+        problem_ids,
+        has_problem_ids,
+        metadata,
+        random_seed,
+        surrogate_mean_variance=surrogate_mean_variance,
+    )
 
     f.close()
 
