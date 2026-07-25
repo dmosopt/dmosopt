@@ -12,6 +12,7 @@ from typing import List, Dict
 import json
 
 from dmosopt import dmosopt
+from dmosopt.benchmarks import moo_benchmarks
 from dmosopt.benchmarks.moo_benchmarks import (
     generate_problem_space,
     get_problem_metadata,
@@ -49,7 +50,7 @@ class BenchmarkRunner:
 
     def create_objective_function(self, problem_name: str, n_obj: int):
         """Create objective function for dmosopt."""
-        problem_func = globals()[problem_name]
+        problem_func = getattr(moo_benchmarks, problem_name)
 
         def obj_fun(pp):
             """Objective function wrapper for dmosopt."""

@@ -79,4 +79,5 @@ def check_order():
         )
 
 
-check_order()
+if __name__ == "__main__":
+    check_order()
