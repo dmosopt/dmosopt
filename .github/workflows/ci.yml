@@ -1,5 +1,9 @@
 # CI: unit test suite plus an MPI-distributed evaluation test.
 #
+# Uses Open MPI rather than mpich: mpich's ch4:ucx device (pulled in by the
+# Ubuntu 24.04 mpich apt package) silently falls back to a singleton
+# MPI_Init on GitHub Actions' hosted runners, so every rank sees
+# COMM_WORLD size 1 instead of joining the job.
 name: CI
 
 on:
@@ -32,12 +36,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential mpich
+          sudo apt-get install -y build-essential openmpi-bin libopenmpi-dev
 
       - name: Install system MPI (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install mpich
+          brew install open-mpi
 
       - name: Install Python dependencies
         run: |
@@ -85,12 +89,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential mpich
+          sudo apt-get install -y build-essential openmpi-bin libopenmpi-dev
 
       - name: Install system MPI (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install mpich
+          brew install open-mpi
 
       - name: Install Python dependencies
         run: |
@@ -100,4 +104,7 @@ jobs:
 
       - name: Run MPI-distributed evaluation test
         run: |
-          mpirun -n 4 python tests/mpi/test_mpi_distributed.py
+          # --oversubscribe: GH Actions runners have fewer cores than the 4
+          # ranks requested here; Open MPI otherwise refuses to start with
+          # "not enough slots".
+          mpirun --oversubscribe -n 4 python tests/mpi/test_mpi_distributed.py
