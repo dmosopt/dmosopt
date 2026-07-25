@@ -98,6 +98,6 @@ jobs:
           python -m pip install --no-binary mpi4py "mpi4py>=4.0.0"
           python -m pip install -e .
 
-      - name: Run MPI-distributed evaluation smoke test
+      - name: Run MPI-distributed evaluation test
         run: |
           mpirun -n 4 python tests/mpi/test_mpi_distributed.py
