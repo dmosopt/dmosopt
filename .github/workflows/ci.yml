@@ -1,0 +1,103 @@
+# CI: unit test suite plus an MPI-distributed evaluation test.
+#
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install system MPI (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential mpich
+
+      - name: Install system MPI (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install mpich
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          # Build mpi4py against the system MPI installed above rather than
+          # using the prebuilt PyPI wheel, so it matches the mpirun used
+          # later in the mpi-test job.
+          python -m pip install --no-binary mpi4py "mpi4py>=4.0.0"
+          python -m pip install -e .
+          python -m pip install moocore pytest
+
+      - name: Run unit test suite
+        run: |
+          pytest tests/ -v \
+            --ignore=tests/mpi \
+            --ignore=tests/test_restore.py \
+            --ignore=tests/test_ehvi_incremental.py \
+            --ignore=tests/test_parameter_space_order.py \
+            --ignore=tests/test_moo_benchmarks.py \
+            --ignore=tests/test_constrained_benchmarks.py \
+            --ignore=tests/test_model_transformer.py \
+            --ignore=tests/test_zdt1_age.py \
+            --ignore=tests/test_zdt1_age_dotname.py \
+            --ignore=tests/test_zdt1_age_nested.py \
+            --ignore=tests/test_zdt1_nsga2_trs.py
+
+  mpi-test:
+    name: MPI distributed evaluation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system MPI (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential mpich
+
+      - name: Install system MPI (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install mpich
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --no-binary mpi4py "mpi4py>=4.0.0"
+          python -m pip install -e .
+
+      - name: Run MPI-distributed evaluation smoke test
+        run: |
+          mpirun -n 4 python tests/mpi/test_mpi_distributed.py
