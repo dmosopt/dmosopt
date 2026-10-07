@@ -381,21 +381,13 @@ class JointFTTransformer(keras.Model):
 
         if self.parameter_group_size > 1:
             group_size = self.parameter_group_size
-            x_shape = ops.shape(x)
-            num_tokens = x_shape[1]
-            group_size_tensor = ops.convert_to_tensor(
-                group_size, dtype=num_tokens.dtype
-            )
-            remainder = ops.mod(num_tokens, group_size_tensor)
-            pad = ops.mod(group_size_tensor - remainder, group_size_tensor)
-            padding = ops.zeros((x_shape[0], pad, x_shape[2]), dtype=x.dtype)
-            x = ops.concatenate([x, padding], axis=1)
-            x_shape = ops.shape(x)
-            new_tokens = x_shape[1] // group_size_tensor
-            new_shape = ops.stack(
-                [x_shape[0], new_tokens, group_size_tensor, x_shape[2]]
-            )
-            x = ops.reshape(x, new_shape)
+            num_tokens = x.shape[1]
+            embedding_dim = x.shape[2]
+            pad = (group_size - num_tokens % group_size) % group_size
+            if pad > 0:
+                x = ops.pad(x, [[0, 0], [0, pad], [0, 0]])
+            new_tokens = (num_tokens + pad) // group_size
+            x = ops.reshape(x, (-1, new_tokens, group_size, embedding_dim))
             x = ops.mean(x, axis=2)
 
         for block, pooler in zip(self.blocks, self.token_poolers):
@@ -505,6 +497,7 @@ class JointFTTransformer(keras.Model):
         epochs="auto",
         batch_size=2048,
         verbose=2,
+        callbacks=None,
         **kwargs,
     ):
         logger.info(
@@ -542,11 +535,13 @@ class JointFTTransformer(keras.Model):
         elif self.mode == "o":
             Y = y
 
+        extra = list(callbacks or ())
         callbacks = [
             keras.callbacks.TerminateOnNaN(),
         ]
         if verbose:
             callbacks.append(_EpochLogger(freq=100))
+        callbacks.extend(extra)
         history = self.fit(
             x,
             Y,
@@ -1123,6 +1118,10 @@ def joint(
     objectives=True,
     constraints=False,
     sensitivity=True,
+    sensitivity_samples=10000,
+    aggregate="mean",
+    model_cls=None,
+    optimizer_wrapper=None,
     epochs="auto",
     iterations=[],
 ):
@@ -1137,6 +1136,11 @@ def joint(
         objectives: Whether to use this model for objective prediction
         constraints: Whether to use this model for constraint/feasibility prediction
         sensitivity: Whether to use this model for sensitivity analysis
+        aggregate: How rank combines per-constraint P(feasible)
+        sensitivity_samples: SALib sample count expanding to 
+            `N * (num_parameters + 1)` points
+        model_cls: Model to fit, defaulting to `JointFTTransformer`
+        optimizer_wrapper: Optional `f(optimizer_cls, model) -> optimizer_cls`
         epochs: Number of training epochs ("auto" for cross-validated selection)
     """
     x = Xinit.copy()
@@ -1157,9 +1161,12 @@ def joint(
                 constraint_probs = np.array(result["constraints"])
             else:
                 constraint_probs = np.array(result)
-            # constraint_probs represents P(feasible): 1=feasible, 0=infeasible.
-            # Callers use -rank in lexsort so higher rank = better (more feasible).
-            feasibility_rank = np.mean(constraint_probs, axis=1)
+            if aggregate == "log":
+                feasibility_rank = np.mean(
+                    np.log(np.clip(constraint_probs, 1e-6, 1.0)), axis=1
+                )
+            else:
+                feasibility_rank = np.mean(constraint_probs, axis=1)
             logger.debug(
                 "transformer rank: n=%d  min=%.3f  mean=%.3f  max=%.3f  "
                 "frac_feasible(>0.5)=%.2f",
@@ -1167,7 +1174,7 @@ def joint(
                 feasibility_rank.min(),
                 feasibility_rank.mean(),
                 feasibility_rank.max(),
-                np.mean(feasibility_rank > 0.5),
+                np.mean(np.all(constraint_probs > 0.5, axis=1)),
             )
             return feasibility_rank
 
@@ -1176,7 +1183,7 @@ def joint(
 
         def di_dict(self):
             points = salib_finite_difference_sampling(
-                num_vars=len(xlb), bounds=list(zip(xlb, xub)), N=10000
+                num_vars=len(xlb), bounds=list(zip(xlb, xub)), N=sensitivity_samples
             )
 
             sens = self.sensitivity(
@@ -1184,19 +1191,13 @@ def joint(
             )["objectives"]
 
             sens = sens / (np.max(sens) + 1e-7)
-
-            computed_di_crossover = 1 + (np.abs(sens) * 20)
-            computed_di_mutation = 1 + (np.abs(sens) * 20)
-            di_crossover = np.maximum(1, np.minimum(30, computed_di_crossover)).astype(
-                np.float64
-            )
-            di_mutation = np.maximum(1, np.minimum(30, computed_di_mutation)).astype(
+            di = np.maximum(1, np.minimum(30, 1 + (np.abs(sens) * 20))).astype(
                 np.float64
             )
 
             return {
-                "di_mutation": di_mutation,
-                "di_crossover": di_crossover,
+                "di_mutation": di,
+                "di_crossover": di.copy(),
             }
 
         def __call__(self, *args, **kwargs):
@@ -1206,7 +1207,7 @@ def joint(
             return getattr(self._wrapped, name)
 
     model = _Model(
-        JointFTTransformer(
+        (model_cls or JointFTTransformer)(
             num_parameters=Xinit.shape[1],
             num_constraints=C.shape[1] if C is not None else 0,
             num_objectives=Yinit.shape[1],
@@ -1224,6 +1225,9 @@ def joint(
     scores["iteration"] = len(iterations)
 
     model.stats = {f"model_{k}": np.mean(v) for k, v in scores.items()}
+
+    if optimizer_wrapper is not None:
+        optimizer_cls = optimizer_wrapper(optimizer_cls, model)
 
     return (
         optimizer_cls,
