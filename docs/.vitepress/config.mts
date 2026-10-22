@@ -36,8 +36,15 @@ export default defineConfig({
             { text: 'ZDT', link: '/examples/zdt' },
             { text: 'Lorenz', link: '/examples/lorenz' },
             { text: 'Motoneuron', link: '/examples/motoneuron' },
+
           ]
-        }
+        },
+        {
+          text: 'How-to guides',
+          items: [
+            { text: 'Surrogate gradient descent', link: '/examples/howto/surrogate-gradient-descent' },
+          ]
+        },
       ],
       '/reference/': [
         {
