@@ -56,3 +56,31 @@ The joint model additionally provides gradient-based parameter sensitivity analy
 ### Example
 
 See the [Motoneuron example](/examples/motoneuron) for a complete worked example using the joint model to optimize a neuron model with 5 objectives and 8 constraints.
+
+### Gradient-based feasibility solving
+
+Because the joint model is differentiable in the parameters, its predictions can also be used to inform the optimizer via `feasibility_solving`:
+
+```python
+dmosopt_params = {
+    # ...
+    "surrogate_custom_training": "dmosopt.model_transformer.joint",
+    "surrogate_custom_training_kwargs": {
+        "mode": "c+o",
+        "objectives": True,
+        "feasibility_solving": True,
+        "feasibility_constraint_weights": {0: 4, 4: 4},
+    },
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `feasibility_solving` | `False` | Project the population before it is evaluated |
+| `feasibility_targets` | `"objective constraint"` | Loss terms: a hypervolume stand-in on the predicted objectives, focal cross-entropy on the predicted constraint probabilities, or both |
+| `feasibility_iterations` | `1000` | Maximum descent steps per projection |
+| `feasibility_after` | `10` | NSGA-II generations before the projection runs |
+| `feasibility_constraint_weights` | `None` | One weight per constraint, or `{column: weight}` with the rest at 1, scaling each constraint's share of the loss |
+| `feasibility_max_move` | `0.1` | Adam trust region, as a fraction of each parameter's range |
+
+See the how-to guide [Surrogate gradient descent](/examples/howto/surrogate-gradient-descent) for a full walk through of the idea, the code, and its results on a 146-parameter network model with 57 constraints.

@@ -998,6 +998,165 @@ class JointFTTransformer(keras.Model):
     def raw_predict(self, x, *args, **kwargs):
         return super().predict(x, *args, **kwargs)
 
+    def _input_value_and_grad(self, inputs, loss_fn):
+        """``(loss, d loss / d inputs)`` of ``loss_fn(inputs)`` as numpy"""
+        backend_name = keras.backend.backend()
+        if backend_name == "jax":
+            import jax
+
+            value, grad = jax.value_and_grad(loss_fn)(ops.convert_to_tensor(inputs))
+            return float(value), np.asarray(grad)
+        if backend_name == "tensorflow":
+            import tensorflow as tf
+
+            inputs_t = tf.convert_to_tensor(np.asarray(inputs, dtype=np.float32))
+            with tf.GradientTape() as tape:
+                tape.watch(inputs_t)
+                value = loss_fn(inputs_t)
+            return float(value), tape.gradient(value, inputs_t).numpy()
+        if backend_name == "torch":
+            import torch
+
+            inputs_t = torch.tensor(
+                np.asarray(inputs, dtype=np.float32),
+                device=ops.convert_to_tensor(np.zeros(1, dtype=np.float32)).device,
+                requires_grad=True,
+            )
+            value = loss_fn(inputs_t)
+            value.backward()
+            return float(value.detach().cpu()), inputs_t.grad.detach().cpu().numpy()
+        raise ValueError(f"Unsupported backend: {backend_name}")
+
+    def make_feasible(
+        self,
+        X,
+        targets="objective constraint",
+        max_iterations=1000,
+        learning_rate=1e-3,
+        plateau_window=50,
+        bound_margin=0.01,
+        min_iterations=0,
+        constraint_weights=None,
+        max_move=None,
+    ):
+        """Move a batch of parameters down the gradient of this model's predictions.
+
+        The loss combines
+
+        - ``"constraint"``: binary focal cross-entropy pushing the predicted
+          probability of every constraint to 1, each constraint's term scaled
+          by ``constraint_weights`` (one weight per constraint, default 1; a
+          mapping ``{column: weight}`` sets some and leaves the rest at 1).
+          A larger weight makes the optimizer work harder on that constraint
+        - ``"objective"``: a smooth hypervolume stand-in against the evaluated
+          objectives, so objectives are traded against constraints too much
+
+        Descent is using Adam, clipped by ``bound_margin`` of the range and, 
+        with ``max_move`` trust region. Stops when the loss has plateaued 
+        within``plateau_window`` after ``min_iterations``.
+
+        Returns 
+          ``(moved_params, {steps: ..., loss_start: ..., loss_end: ...})``
+        """
+        X = np.atleast_2d(np.asarray(X, dtype=np.float32))
+        lo = np.asarray(self.xlb, dtype=np.float32).ravel()
+        hi = np.asarray(self.xub, dtype=np.float32).ravel()
+        y_norm = (
+            None
+            if self.y_norm_ is None
+            else ops.convert_to_tensor(np.asarray(self.y_norm_, dtype=np.float32))
+        )
+
+        mode = self.mode
+        weights = np.ones(int(self.num_constraints), dtype=np.float32)
+        if constraint_weights is not None:
+            if isinstance(constraint_weights, dict):
+                for column, weight in constraint_weights.items():
+                    weights[int(column)] = float(weight)
+            else:
+                weights = np.asarray(constraint_weights, dtype=np.float32).ravel()
+                if weights.shape != (int(self.num_constraints),):
+                    raise ValueError(
+                        f"constraint_weights has {weights.shape[0]} entries for "
+                        f"{self.num_constraints} constraints"
+                    )
+        weights_t = ops.convert_to_tensor(weights)
+
+        def heads(x):
+            out = self(x, training=False)
+            if mode == "c+o":
+                return out["objectives"], out["constraints"]
+            return (out, None) if mode == "o" else (None, out)
+
+        terms = []
+        if "objective" in targets and mode != "c" and y_norm is not None:
+
+            def hypervolume(x):
+                o, _ = heads(x)
+                nadir = ops.max(ops.concatenate([o, y_norm], axis=0), axis=0)
+                front = o / (nadir + 1e-8)
+                return -ops.sum(ops.prod(ops.maximum(1.1 - front, 0.0), axis=-1))
+
+            terms.append(hypervolume)
+        if "constraint" in targets and mode != "o" and self.num_constraints:
+
+            def infeasibility(x):
+                _, c = heads(x)
+                p = ops.clip(c, 1e-7, 1.0 - 1e-7)
+                focal = -((1.0 - p) ** 2) * ops.log(p)
+                return ops.mean(focal * weights_t)
+
+            terms.append(infeasibility)
+        if not terms:
+            return X, {"steps": 0}
+
+        rate = float(learning_rate) * (hi - lo)
+        inset = float(bound_margin) * (hi - lo)
+        lo_in, hi_in = lo + inset, hi - inset
+        x = X.copy()
+        if max_move is not None:
+            span = float(max_move) * (hi - lo)
+            lo_in = np.maximum(lo_in, x - span)
+            hi_in = np.minimum(hi_in, x + span)
+        m = np.zeros_like(x)
+        v = np.zeros_like(x)
+        b1, b2, eps = 0.9, 0.999, 1e-7
+        history = []
+        iteration = 0
+        for iteration in range(1, int(max_iterations) + 1):
+            evaluated = [self._input_value_and_grad(x, term) for term in terms]
+            losses = [value for value, _ in evaluated]
+            grads = [g for _, g in evaluated]
+            if len(grads) > 1:
+                ref = np.linalg.norm(grads[0])
+                factors = [ref / (np.linalg.norm(g) + 1e-8) for g in grads]
+                grad = sum(f * g for f, g in zip(factors, grads))
+                loss = float(sum(f * term for f, term in zip(factors, losses)))
+            else:
+                grad, loss = grads[0], losses[0]
+            if not np.isfinite(loss):
+                return X, {"steps": iteration, "failed": True}
+            history.append(loss)
+            m = b1 * m + (1 - b1) * grad
+            v = b2 * v + (1 - b2) * grad**2
+            mhat = m / (1 - b1**iteration)
+            vhat = v / (1 - b2**iteration)
+            x = np.clip(x - rate * mhat / (np.sqrt(vhat) + eps), lo_in, hi_in).astype(
+                np.float32
+            )
+            if iteration >= min_iterations and len(history) > plateau_window:
+                recent = history[-plateau_window:]
+                q1, q3 = np.percentile(recent, [25, 75])
+                median = np.median(recent)
+                if (q3 - q1) / (abs(median) if median != 0 else 1.0) < 0.01:
+                    break
+        info = {
+            "steps": iteration,
+            "loss_start": history[0] if history else float("nan"),
+            "loss_end": history[-1] if history else float("nan"),
+        }
+        return x, info
+
     def _compute_input_gradients(self, inputs, forward_fn, key):
         backend_name = keras.backend.backend()
 
@@ -1104,6 +1263,101 @@ def salib_finite_difference_sampling(
     return combined.reshape((-1, num_vars))
 
 
+class Projecting:
+    def __init__(
+        self,
+        optimizer,
+        surrogate,
+        seen,
+        targets="objective constraint",
+        iterations=1000,
+        after=10,
+        constraint_weights=None,
+        max_move=0.1,
+    ):
+        self._wrapped = optimizer
+        self._wrapped.x_distance_metrics = None
+        self._surrogate = surrogate
+        self._seen = np.asarray(seen, dtype=np.float64)
+        self._targets = targets
+        self._iterations = int(iterations)
+        self._after = int(after)
+        self._constraint_weights = constraint_weights
+        self._max_move = None if max_move is None else float(max_move)
+        self._generations = 0
+        self._cache = None
+
+    @property
+    def population_objectives(self):
+        parameters = np.array(self._wrapped.state.population_parm, copy=True)
+        objectives = np.array(self._wrapped.state.population_obj, copy=True)
+        if self._generations < self._after:
+            return parameters, objectives
+        key = parameters.tobytes()
+        if self._cache is not None and self._cache[0] == key:
+            return self._cache[1]
+
+        # project non-elite half
+        move = np.zeros(len(parameters), dtype=bool)
+        move[len(parameters) // 2 :] = True
+        if len(self._seen):
+            from scipy.spatial.distance import cdist
+
+            move |= cdist(parameters, self._seen).min(axis=1) <= 1e-12
+        
+        original = parameters.copy()
+        model = self._surrogate._wrapped
+        info = {}
+        if move.any():
+            moved, info = model.make_feasible(
+                parameters[move],
+                targets=self._targets,
+                max_iterations=self._iterations,
+                min_iterations=200,
+                constraint_weights=self._constraint_weights,
+                max_move=self._max_move,
+            )
+            parameters[move] = moved
+        
+        # revert moves that the surrogate itself rates worse on every objective
+        reverted = np.zeros(len(parameters), dtype=bool)
+        if move.any():
+            before = np.asarray(self._surrogate.evaluate(original[move]))
+            after = np.asarray(self._surrogate.evaluate(parameters[move]))
+            worse = np.all(after >= before, axis=1) & np.any(after > before, axis=1)
+            idx = np.flatnonzero(move)[worse]
+            parameters[idx] = original[idx]
+            reverted[idx] = True
+        logger.info(
+            "feasibility projection: %d of %d moved (%d elites held, %d reverted "
+            "as predicted worse); %s steps, loss %.4g -> %.4g",
+            int((move & ~reverted).sum()),
+            len(parameters),
+            int((~move).sum()),
+            int(reverted.sum()),
+            info.get("steps"),
+            info.get("loss_start", float("nan")),
+            info.get("loss_end", float("nan")),
+        )
+        predicted = np.asarray(self._surrogate.evaluate(parameters))
+        result = (
+            parameters,
+            predicted if predicted.shape == objectives.shape else objectives,
+        )
+        self._cache = (key, result)
+        return result
+
+    def get_population_strategy(self):
+        return self.population_objectives
+
+    def generate(self, *args, **kwargs):
+        self._generations += 1
+        return self._wrapped.generate(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+
 def joint(
     optimizer_cls,
     Xinit,
@@ -1124,6 +1378,12 @@ def joint(
     optimizer_wrapper=None,
     epochs="auto",
     iterations=[],
+    feasibility_solving=False,
+    feasibility_targets="objective constraint",
+    feasibility_iterations=1000,
+    feasibility_after=10,
+    feasibility_constraint_weights=None,
+    feasibility_max_move=0.1,
 ):
     """
     Joint model surrogate custom training function
@@ -1142,6 +1402,17 @@ def joint(
         model_cls: Model to fit, defaulting to `JointFTTransformer`
         optimizer_wrapper: Optional `f(optimizer_cls, model) -> optimizer_cls`
         epochs: Number of training epochs ("auto" for cross-validated selection)
+        feasibility_solving: Project the optimizer's population down the
+            surrogate gradient
+        feasibility_targets: Loss terms of the projection, "objective",
+            "constraint" or both
+        feasibility_iterations: Maximum descent steps per projection
+        feasibility_after: Generations to run before projecting
+        feasibility_constraint_weights: One weight per constraint (sequence),
+            or a mapping ``{column index: weight}`` with the rest at 1, scaling
+            each constraint's share of the projection loss
+        feasibility_max_move: Trust region, as a fraction of each parameter's
+            range (None for no trust region)
     """
     x = Xinit.copy()
     y = Yinit.copy()
@@ -1225,6 +1496,35 @@ def joint(
     scores["iteration"] = len(iterations)
 
     model.stats = {f"model_{k}": np.mean(v) for k, v in scores.items()}
+
+    if feasibility_solving:
+        if not objectives:
+            logger.warning(
+                "feasibility_solving=True has no effect with objectives=False!"
+            )
+        else:
+            seen = np.asarray(Xinit)
+            base_cls = optimizer_cls
+            logger.info(
+                "feasibility projection on targets %r, after %d generations, "
+                "constraint weights %s, max move %s",
+                feasibility_targets,
+                feasibility_after,
+                feasibility_constraint_weights,
+                feasibility_max_move,
+            )
+
+            def optimizer_cls(*args, **kw):
+                return Projecting(
+                    base_cls(*args, **kw),
+                    model,
+                    seen,
+                    targets=feasibility_targets,
+                    iterations=feasibility_iterations,
+                    after=feasibility_after,
+                    constraint_weights=feasibility_constraint_weights,
+                    max_move=feasibility_max_move,
+                )
 
     if optimizer_wrapper is not None:
         optimizer_cls = optimizer_wrapper(optimizer_cls, model)
