@@ -19,6 +19,8 @@ from dmosopt.MOEA import (
     crossover_sbx,
     mutation,
     tournament_selection,
+    mating_pool_size,
+    validate_population_size,
     remove_duplicates,
 )
 from dmosopt.indicators import PopulationDiversity
@@ -64,7 +66,8 @@ class AGEMOEA(MOEA):
         if mutation_rate is None:
             self.opt_params.mutation_rate = 1.0 / float(nInput)
 
-        self.opt_params.poolsize = int(round(popsize / 2.0))
+        validate_population_size(self.name, self.opt_params)
+        self.opt_params.poolsize = mating_pool_size(self.opt_params.popsize)
         self.optimize_mean_variance = optimize_mean_variance
         self.diversity_indicator = PopulationDiversity()
 
@@ -136,6 +139,9 @@ class AGEMOEA(MOEA):
         rank = self.state.rank
         crowd_dist = self.state.crowd_dist
 
+        # The population can hold fewer individuals than popsize after
+        # duplicate removal, so the pool is limited to its actual size.
+        poolsize = min(poolsize, population_parm.shape[0])
         pool_idxs = tournament_selection(
             local_random, population_parm.shape[0], poolsize, -crowd_dist, rank
         )
@@ -146,7 +152,7 @@ class AGEMOEA(MOEA):
 
         while count < popsize - 1:
             if local_random.random() < crossover_prob:
-                parentidx = local_random.choice(poolsize, 2, replace=False)
+                parentidx = local_random.choice(poolsize, 2, replace=poolsize < 2)
                 parent1 = pool[parentidx[0], :]
                 parent2 = pool[parentidx[1], :]
                 children1, children2 = crossover_sbx(
@@ -267,7 +273,7 @@ class AGEMOEA(MOEA):
             new_size = current_size
 
         self.opt_params.popsize = new_size
-        self.opt_params.poolsize = int(round(self.opt_params.popsize / 2.0))
+        self.opt_params.poolsize = mating_pool_size(self.opt_params.popsize)
 
 
 def sortMO(x, y):
