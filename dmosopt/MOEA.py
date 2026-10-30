@@ -382,6 +382,26 @@ def tournament_prob(ax, i):
     return (ax[0], p)
 
 
+def mating_pool_size(popsize):
+    """Return the size of the tournament mating pool: half the population,
+    but never fewer than the two parents required by crossover."""
+    return max(2, int(round(popsize / 2.0)))
+
+
+def validate_population_size(name, opt_params):
+    """Check that the population can supply two parents for crossover."""
+    if opt_params.popsize < 2:
+        raise ValueError(f"{name}: popsize must be >= 2, got {opt_params.popsize}")
+    if (
+        getattr(opt_params, "adaptive_population_size", False)
+        and opt_params.min_population_size < 2
+    ):
+        raise ValueError(
+            f"{name}: min_population_size must be >= 2, "
+            f"got {opt_params.min_population_size}"
+        )
+
+
 def tournament_selection(local_random, pop, poolsize, *metrics):
     """tournament selecting the best individuals into the mating pool"""
 

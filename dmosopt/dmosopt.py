@@ -308,9 +308,9 @@ class DistOptStrategy:
         return result
 
     def initialize_epoch(self, epoch_index):
-        assert (
-            self.opt_gen is None
-        ), "Optimization generator is active in DistOptStrategy"
+        assert self.opt_gen is None, (
+            "Optimization generator is active in DistOptStrategy"
+        )
 
         optimizer_index = next(self.optimizer_iter)
         optimizer_kwargs = {}
@@ -678,6 +678,11 @@ class DistOptimizer:
             self.logger.setLevel(logging.INFO)
 
         # Verify inputs
+        if population_size < 2:
+            raise ValueError(
+                f"population_size must be >= 2 so that crossover can select "
+                f"two parents, got {population_size}"
+            )
         if file_path is None:
             if problem_parameters is None or space is None:
                 raise ValueError(
