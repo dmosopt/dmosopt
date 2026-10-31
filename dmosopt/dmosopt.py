@@ -1177,6 +1177,7 @@ class DistOptimizer:
                 rets = self.controller.probe_all_next_results()
                 for ret in rets:
                     task_id, res = ret
+                    res = unwrap_task_result(res)
                     if self.reduce_fun is None:
                         rres = res
                     else:
@@ -2439,6 +2440,22 @@ def eval_obj_fun_mp(
     result_dict["time"] = time.time() - t
 
     return result_dict
+
+
+def unwrap_task_result(res):
+    """Return the payload of a result received from the distwq controller.
+
+    distwq 2.0 wraps results in TaskResult (single process) or
+    CollectiveTaskResult (worker group); earlier versions return the
+    payload directly.
+    """
+    collective_cls = getattr(distwq, "CollectiveTaskResult", None)
+    if collective_cls is not None and isinstance(res, collective_cls):
+        return res.values
+    single_cls = getattr(distwq, "TaskResult", None)
+    if single_cls is not None and isinstance(res, single_cls):
+        return res.value
+    return res
 
 
 def reducefun(xs):
