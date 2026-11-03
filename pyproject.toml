@@ -9,12 +9,12 @@ dependencies = [
     "mpi4py>=4.0.0",
     "h5py>=3.11.0",
     "scikit-learn>=1.5.1",
-    "distwq @ git+https://github.com/iraikov/distwq.git",
+    "distwq>=1.3.4,<2",
     "scipy>=1.13.1",
 ]
 license = "GPL-3.0-or-later"
 readme = "README.md"
-requires-python = ">= 3.9"
+requires-python = ">= 3.11"
 
 [project.scripts]
 # Main functions
@@ -26,7 +26,7 @@ dmosopt-onestep = "dmosopt.dmosopt_onestep:main"
 extras = [
     "gpytorch>=1.12",
     "salib>=1.5.1",
-    "gpflow>=2.9.2",
+    "gpflow>=2.9.2,<2.10",
     "moocore>=0.3.0",
 ]
 transformer = [
@@ -42,6 +42,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
+# gpflow 2.9 requires the discontinued tensorflow-macos on Apple Silicon,
+# which stops at 2.16 and caps numpy below 2.  Drop that requirement (the
+# marker can never match under requires-python) so that macOS uses the
+# regular tensorflow wheels pulled in by tensorflow-probability[tf].
+override-dependencies = [
+    "tensorflow>=2.16",
+    "tensorflow-macos; python_version < '3.11'",
+]
+# tensorflow 2.21 has no Intel macOS wheels, so the lock settles on 2.20;
+# keep tf-keras on the matching minor version.
+constraint-dependencies = [
+    "tf-keras<2.21",
+]
 dev-dependencies = [
     "pre-commit>=4.1.0",
     "ruff==0.9.3",
