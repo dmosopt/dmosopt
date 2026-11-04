@@ -6,25 +6,18 @@ Verifies:
 - Dynamic path resolution via import_object_by_path (mirrors MOASMO usage)
 - End-to-end joint() training on a small synthetic dataset
 - Logging output instead of bare print statements
+- Constraint weights keyed by constraint name
 """
 
 import logging
-import numpy as np
+import types
 
-from dmosopt.config import import_object_by_path
+import pytest
 
+pytest.importorskip("keras")
 
-RNG = np.random.default_rng(42)
-
-
-def _synthetic_data(n=40, n_params=3, n_obj=2, n_con=1):
-    """Return (X, Y, C) with shapes (n, n_params), (n, n_obj), (n, n_con)."""
-    X = RNG.uniform(0.0, 1.0, (n, n_params))
-    Y = np.sum(X**2, axis=1, keepdims=True) * np.ones((1, n_obj)) + RNG.normal(
-        0, 0.01, (n, n_obj)
-    )
-    C = np.sum(X, axis=1, keepdims=True) - n_params / 2.0  # feasible when > 0
-    return X.astype(np.float32), Y.astype(np.float32), C.astype(np.float32)
+from dmosopt.config import import_object_by_path  # noqa: E402
+from dmosopt.model_transformer import joint  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +26,7 @@ def _synthetic_data(n=40, n_params=3, n_obj=2, n_con=1):
 
 
 def test_import():
-    from dmosopt.model_transformer import joint, JointFTTransformer  # noqa: F401
+    from dmosopt.model_transformer import JointFTTransformer, joint  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -43,8 +36,6 @@ def test_import():
 
 def test_path_resolution():
     fn = import_object_by_path("dmosopt.model_transformer.joint")
-    from dmosopt.model_transformer import joint
-
     assert fn is joint
 
 
@@ -53,12 +44,8 @@ def test_path_resolution():
 # ---------------------------------------------------------------------------
 
 
-def test_joint_returns_tuple():
-    X, Y, C = _synthetic_data()
-    xlb = np.zeros(X.shape[1], dtype=np.float32)
-    xub = np.ones(X.shape[1], dtype=np.float32)
-
-    from dmosopt.model_transformer import joint
+def test_joint_returns_tuple(synthetic_data):
+    X, Y, C, xlb, xub = synthetic_data
 
     result = joint(
         object,  # dummy optimizer_cls — not used inside joint()
@@ -89,12 +76,8 @@ def test_joint_returns_tuple():
 # ---------------------------------------------------------------------------
 
 
-def test_logging_emitted(caplog):
-    X, Y, C = _synthetic_data()
-    xlb = np.zeros(X.shape[1], dtype=np.float32)
-    xub = np.ones(X.shape[1], dtype=np.float32)
-
-    from dmosopt.model_transformer import joint
+def test_logging_emitted(caplog, synthetic_data):
+    X, Y, C, xlb, xub = synthetic_data
 
     with caplog.at_level(logging.INFO, logger="dmosopt"):
         joint(
@@ -118,3 +101,49 @@ def test_logging_emitted(caplog):
     assert dmosopt_records, (
         "Expected at least one INFO log record from the 'dmosopt' logger"
     )
+
+
+# ---------------------------------------------------------------------------
+# 5. Constraint weights keyed by name
+# ---------------------------------------------------------------------------
+
+
+class _StubModel:
+    def __init__(self, num_constraints, **kwargs):
+        self.num_constraints = num_constraints
+
+    def autofit(self, *args, **kwargs):
+        pass
+
+    def autoeval(self, *args, **kwargs):
+        return {}
+
+
+def _projected_weights(data, weights):
+    X, Y, C, xlb, xub = data
+    optimizer_cls, *_ = joint(
+        lambda *args, **kwargs: types.SimpleNamespace(),
+        X,
+        Y,
+        C,
+        xlb=xlb,
+        xub=xub,
+        file_path=None,
+        options={"constraint_names": ["g1", "g2", "g3"]},
+        model_cls=_StubModel,
+        sensitivity=False,
+        feasibility_solving=True,
+        feasibility_constraint_weights=weights,
+    )
+    return optimizer_cls()._constraint_weights
+
+
+def test_named_weights_match_column_weights(synthetic_data):
+    assert _projected_weights(synthetic_data, {"g2": 4, "g3": 2.5}) == (
+        _projected_weights(synthetic_data, {1: 4, 2: 2.5})
+    )
+
+
+def test_unknown_constraint_name_raises(synthetic_data):
+    with pytest.raises(KeyError, match="g4"):
+        _projected_weights(synthetic_data, {"g4": 4})
