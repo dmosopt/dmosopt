@@ -239,6 +239,88 @@ def crossover_sbx(local_random, parent1, parent2, di_crossover, xlb, xub, nchild
     return children1, children2
 
 
+def per_front_crowding_distance_metric(y, rank):
+    """Crowding distance computed separately within each non-dominated front.
+
+    The crowding distance of a solution measures how far apart its nearest
+    neighbors on the same front lie along each objective.  Solutions on
+    other fronts are not neighbors, so each front is scored on its own.
+
+    y: output objectives matrix
+    rank: non-dominated front index of each row of y
+    """
+    dist = np.zeros(y.shape[0])
+    for r in np.unique(rank):
+        front = np.flatnonzero(rank == r)
+        dist[front] = crowding_distance_metric(y[front])
+    return dist
+
+
+def _objective_distance_functions(y_distance_metrics):
+    """Resolve objective-space distance metrics into functions of (y, rank)."""
+    functions = []
+    if y_distance_metrics is None:
+        return functions
+    assert len(y_distance_metrics) > 0
+    for distance_metric in y_distance_metrics:
+        if callable(distance_metric):
+            functions.append(lambda y, rank, f=distance_metric: f(y))
+        elif distance_metric == "crowding":
+            functions.append(per_front_crowding_distance_metric)
+        elif distance_metric == "euclidean":
+            functions.append(lambda y, rank: euclidean_distance_metric(y))
+        else:
+            raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
+    return functions
+
+
+def _parameter_distance_functions(x_distance_metrics):
+    """Validate parameter-space distance metrics, which must be callables."""
+    functions = []
+    if x_distance_metrics is None:
+        return functions
+    for distance_metric in x_distance_metrics:
+        if callable(distance_metric):
+            functions.append(distance_metric)
+        else:
+            raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
+    return functions
+
+
+def orderMO(
+    x,
+    y,
+    x_distance_metrics=None,
+    y_distance_metrics=None,
+):
+    """Returns the ordering for a non-dominated sort for multi-objective optimization
+
+    Solutions are ordered by non-dominated rank first.  Within a rank, ties
+    are broken by the parameter-space metrics and then by the objective-space
+    metrics, larger values first.
+
+    x: input parameter matrix
+    y: output objectives matrix
+    Returns the permutation, and the rank and objective distances in that order.
+    """
+    y_distance_functions = _objective_distance_functions(y_distance_metrics)
+    x_distance_functions = _parameter_distance_functions(x_distance_metrics)
+
+    rank = pareto_rank(y)
+
+    y_dists = [f(y, rank) for f in y_distance_functions]
+    x_dists = [f(x) for f in x_distance_functions]
+
+    perm = np.lexsort(
+        (list([-dist for dist in x_dists]) + list([-dist for dist in y_dists]) + [rank])
+    )
+
+    rank = rank[perm]
+    y_dists = tuple([dist[perm] for dist in y_dists])
+
+    return perm, rank, y_dists
+
+
 def sortMO(
     x,
     y,
@@ -251,100 +333,19 @@ def sortMO(
     y: output objectives matrix
     return_perm: if True, return permutation indices of original input
     """
-    y_distance_functions = []
-    if y_distance_metrics is not None:
-        y_distance_functions = []
-        assert len(y_distance_metrics) > 0
-        for distance_metric in y_distance_metrics:
-            if callable(distance_metric):
-                y_distance_functions.append(distance_metric)
-            elif distance_metric == "crowding":
-                y_distance_functions.append(crowding_distance_metric)
-            elif distance_metric == "euclidean":
-                y_distance_functions.append(euclidean_distance_metric)
-            else:
-                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
-
-    x_distance_functions = []
-    if x_distance_metrics is not None:
-        for distance_metric in x_distance_metrics:
-            if callable(distance_metric):
-                x_distance_functions.append(distance_metric)
-            else:
-                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
-
-    rank = pareto_rank(y)
-
-    y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
-    x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
-    for i, y_distance_function in enumerate(y_distance_functions):
-        y_dists[i] = y_distance_function(y)
-    for i, x_distance_function in enumerate(x_distance_functions):
-        x_dists[i] = x_distance_function(x)
-
-    perm = np.lexsort(
-        (list([-dist for dist in x_dists]) + list([-dist for dist in y_dists]) + [rank])
+    perm, rank, y_dists = orderMO(
+        x,
+        y,
+        x_distance_metrics=x_distance_metrics,
+        y_distance_metrics=y_distance_metrics,
     )
-
     x = x[perm]
     y = y[perm]
-    rank = rank[perm]
-    y_dists = tuple([dist[perm] for dist in y_dists])
 
     if return_perm:
         return x, y, rank, y_dists, perm
     else:
         return x, y, rank, y_dists
-
-
-def orderMO(
-    x,
-    y,
-    x_distance_metrics=None,
-    y_distance_metrics=None,
-):
-    """Returns the ordering for a non-dominated sort for multi-objective optimization
-    x: input parameter matrix
-    y: output objectives matrix
-    """
-    y_distance_functions = []
-    if y_distance_metrics is not None:
-        assert len(y_distance_metrics) > 0
-        for distance_metric in y_distance_metrics:
-            if callable(distance_metric):
-                y_distance_functions.append(distance_metric)
-            elif distance_metric == "crowding":
-                y_distance_functions.append(crowding_distance_metric)
-            elif distance_metric == "euclidean":
-                y_distance_functions.append(euclidean_distance_metric)
-            else:
-                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
-
-    x_distance_functions = []
-    if x_distance_metrics is not None:
-        for distance_metric in x_distance_metrics:
-            if callable(distance_metric):
-                x_distance_functions.append(distance_metric)
-            else:
-                raise RuntimeError(f"sortMO: unknown distance metric {distance_metric}")
-
-    rank = pareto_rank(y)
-
-    y_dists = list([np.zeros_like(rank) for _ in y_distance_functions])
-    x_dists = list([np.zeros_like(rank) for _ in x_distance_functions])
-    for i, y_distance_function in enumerate(y_distance_functions):
-        y_dists[i] = y_distance_function(y)
-    for i, x_distance_function in enumerate(x_distance_functions):
-        x_dists[i] = x_distance_function(x)
-
-    perm = np.lexsort(
-        (list([-dist for dist in x_dists]) + list([-dist for dist in y_dists]) + [rank])
-    )
-
-    rank = rank[perm]
-    y_dists = tuple([dist[perm] for dist in y_dists])
-
-    return perm, rank, y_dists
 
 
 def top_k_MO(x, y, top_k=None):
