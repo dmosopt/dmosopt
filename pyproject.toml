@@ -3,7 +3,8 @@ name = "dmosopt"
 version = "0.9.4"
 description = "Distributed multi-objective surrogate optimization algorithm."
 authors = [
-    { name = "Ivan Raikov", email = "ivan.g.raikov@gmail.com" }
+    { name = "Ivan Raikov", email = "ivan.g.raikov@gmail.com" },
+    { name = "Frithjof Gressmann", email = "mail@frthjf.com" },
 ]
 dependencies = [
     "mpi4py>=4.0.0",
