@@ -615,6 +615,8 @@ def get_best(
             f = f[~is_duplicate]
         if c is not None:
             c = c[~is_duplicate]
+        if epochs is not None:
+            epochs = epochs[~is_duplicate]
 
     xtmp, ytmp, rank, _, perm = MOEA.sortMO(xtmp, ytmp, return_perm=True)
     idxp = rank == 0
@@ -660,7 +662,6 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     # x, y are already permutated upon return
     perm_f = f[perm]
     perm_epoch = epochs[perm]
-    perm_c = c[perm]
 
     uniq_rank, rnk_inv, rnk_cnt = np.unique(
         rank, return_inverse=True, return_counts=True
