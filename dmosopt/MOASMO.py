@@ -1,6 +1,5 @@
 # Multi-Objective Adaptive Surrogate Model-based Optimization
 
-import sys
 import itertools
 import time
 from scipy import stats
@@ -220,6 +219,7 @@ def epoch(
     local_random=None,
     logger=None,
     file_path=None,
+    constraint_names=None,
 ):
     """
     Multi-Objective Adaptive Surrogate Modelling-based Optimization
@@ -290,6 +290,7 @@ def epoch(
                 "sensitivity_method_name": sensitivity_method_name,
                 "sensitivity_method_kwargs": sensitivity_method_kwargs,
                 "return_mean_variance": optimize_mean_variance,
+                "constraint_names": constraint_names,
             },
             **(surrogate_custom_training_kwargs or {}),
         )
@@ -304,10 +305,9 @@ def epoch(
         try:
             logger.info("Constructing feasibility model...")
             feasibility_method_cls = import_object_by_path(feasibility_method_name)
-            mdl.feasibility = feasibility_method_cls(x, C)
-        except:
-            e = sys.exc_info()[0]
-            logger.warning(f"Unable to fit feasibility model: {e}")
+            mdl.feasibility = feasibility_method_cls(Xinit, C)
+        except Exception as e:
+            logger.warning(f"Unable to fit feasibility model: {e!r}")
 
     # objective
     if surrogate_method_name is not None and mdl.objective is None:
@@ -615,6 +615,8 @@ def get_best(
             f = f[~is_duplicate]
         if c is not None:
             c = c[~is_duplicate]
+        if epochs is not None:
+            epochs = epochs[~is_duplicate]
 
     xtmp, ytmp, rank, _, perm = MOEA.sortMO(xtmp, ytmp, return_perm=True)
     idxp = rank == 0
@@ -660,7 +662,6 @@ def get_feasible(x, y, f, c, nInput, nOutput, epochs=None):
     # x, y are already permutated upon return
     perm_f = f[perm]
     perm_epoch = epochs[perm]
-    perm_c = c[perm]
 
     uniq_rank, rnk_inv, rnk_cnt = np.unique(
         rank, return_inverse=True, return_counts=True

@@ -106,11 +106,6 @@ class AGEMOEA(MOEA):
             logger=self.logger,
         )
 
-        population_parm = x[: self.opt_params.popsize]
-        population_obj = y[: self.opt_params.popsize]
-        rank = rank[: self.opt_params.popsize]
-        crowd_dist = crowd_dist[: self.opt_params.popsize]
-
         state = Struct(
             bounds=bounds,
             population_parm=population_parm,

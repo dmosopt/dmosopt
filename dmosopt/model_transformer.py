@@ -18,6 +18,8 @@ from sklearn.metrics import (
 from sklearn.model_selection import KFold, TimeSeriesSplit
 from scipy.stats import qmc
 
+from dmosopt.config import import_object_by_path
+
 logger = logging.getLogger("dmosopt")
 
 
@@ -1051,11 +1053,11 @@ class JointFTTransformer(keras.Model):
         - ``"objective"``: a smooth hypervolume stand-in against the evaluated
           objectives, so objectives are traded against constraints too much
 
-        Descent is using Adam, clipped by ``bound_margin`` of the range and, 
-        with ``max_move`` trust region. Stops when the loss has plateaued 
+        Descent is using Adam, clipped by ``bound_margin`` of the range and,
+        with ``max_move`` trust region. Stops when the loss has plateaued
         within``plateau_window`` after ``min_iterations``.
 
-        Returns 
+        Returns
           ``(moved_params, {steps: ..., loss_start: ..., loss_end: ...})``
         """
         X = np.atleast_2d(np.asarray(X, dtype=np.float32))
@@ -1304,7 +1306,7 @@ class Projecting:
             from scipy.spatial.distance import cdist
 
             move |= cdist(parameters, self._seen).min(axis=1) <= 1e-12
-        
+
         original = parameters.copy()
         model = self._surrogate._wrapped
         info = {}
@@ -1318,7 +1320,7 @@ class Projecting:
                 max_move=self._max_move,
             )
             parameters[move] = moved
-        
+
         # revert moves that the surrogate itself rates worse on every objective
         reverted = np.zeros(len(parameters), dtype=bool)
         if move.any():
@@ -1358,6 +1360,15 @@ class Projecting:
         return getattr(self._wrapped, name)
 
 
+def build_callback(spec):
+    if isinstance(spec, str):
+        return import_object_by_path(spec)()
+    if isinstance(spec, (list, tuple)):
+        path, kwargs = spec
+        return import_object_by_path(path)(**(kwargs or {}))
+    return spec
+
+
 def joint(
     optimizer_cls,
     Xinit,
@@ -1377,6 +1388,8 @@ def joint(
     model_cls=None,
     optimizer_wrapper=None,
     epochs="auto",
+    callbacks=None,
+    validation_split=0.0,
     iterations=[],
     feasibility_solving=False,
     feasibility_targets="objective constraint",
@@ -1397,11 +1410,13 @@ def joint(
         constraints: Whether to use this model for constraint/feasibility prediction
         sensitivity: Whether to use this model for sensitivity analysis
         aggregate: How rank combines per-constraint P(feasible)
-        sensitivity_samples: SALib sample count expanding to 
+        sensitivity_samples: SALib sample count expanding to
             `N * (num_parameters + 1)` points
         model_cls: Model to fit, defaulting to `JointFTTransformer`
         optimizer_wrapper: Optional `f(optimizer_cls, model) -> optimizer_cls`
         epochs: Number of training epochs ("auto" for cross-validated selection)
+        callbacks: Keras callbacks as list of import path or [import path, kwargs]
+        validation_split: fraction to hold out for monitoring
         feasibility_solving: Project the optimizer's population down the
             surrogate gradient
         feasibility_targets: Loss terms of the projection, "objective",
@@ -1409,11 +1424,25 @@ def joint(
         feasibility_iterations: Maximum descent steps per projection
         feasibility_after: Generations to run before projecting
         feasibility_constraint_weights: One weight per constraint (sequence),
-            or a mapping ``{column index: weight}`` with the rest at 1, scaling
-            each constraint's share of the projection loss
+            or a mapping ``{column index or constraint name: weight}`` with the
+            rest at 1, scaling each constraint's share of the projection loss
         feasibility_max_move: Trust region, as a fraction of each parameter's
             range (None for no trust region)
     """
+    if isinstance(feasibility_constraint_weights, dict):
+        names = list((options or {}).get("constraint_names") or ())
+        unknown = [
+            key
+            for key in feasibility_constraint_weights
+            if isinstance(key, str) and key not in names
+        ]
+        if unknown:
+            raise KeyError(f"{unknown} not in {names}")
+        feasibility_constraint_weights = {
+            (names.index(key) if isinstance(key, str) else int(key)): float(weight)
+            for key, weight in feasibility_constraint_weights.items()
+        }
+
     x = Xinit.copy()
     y = Yinit.copy()
     yC = None
@@ -1488,7 +1517,15 @@ def joint(
         )
     )
 
-    model.autofit(x, y, yC, verbose=1, epochs=epochs)
+    model.autofit(
+        x,
+        y,
+        yC,
+        verbose=1,
+        epochs=epochs,
+        callbacks=[build_callback(spec) for spec in callbacks or ()],
+        validation_split=validation_split,
+    )
 
     scores = model.autoeval(x, y, yC)
 

@@ -38,16 +38,15 @@ def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
         _,
         _,
         old_evals,
-        param_names,
-        is_int,
-        lo_bounds,
-        hi_bounds,
+        param_space,
         objective_names,
         feature_names,
         constraint_names,
         problem_parameters,
         problem_ids,
     ) = init_from_h5(file_path, None, opt_id, None)
+    lo_bounds = param_space.bound1
+    hi_bounds = param_space.bound2
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(opt_id)
@@ -64,7 +63,7 @@ def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
         f = None
         if feature_names is not None:
             old_eval_fs = [e.features for e in old_evals[problem_id]]
-            f = np.concatenate(old_eval_fs, axis=None)
+            f = np.concatenate(old_eval_fs, axis=None)  # noqa: F841
         old_eval_cs = None
         c = None
         if constraint_names is not None:
@@ -86,7 +85,7 @@ def main(file_path, opt_id, output_file_path, surrogate_method, verbose):
             x,
             y,
             C=c,
-            surrogate_method=surrogate_method,
+            surrogate_method_name=surrogate_method,
             logger=logger,
         )
 

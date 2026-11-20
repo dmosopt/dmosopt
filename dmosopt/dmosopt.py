@@ -349,6 +349,7 @@ class DistOptStrategy:
             local_random=self.local_random,
             logger=self.logger,
             file_path=self.file_path,
+            constraint_names=self.prob.constraint_names,
         )
 
         item = None

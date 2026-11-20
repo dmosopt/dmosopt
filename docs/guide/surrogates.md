@@ -49,6 +49,20 @@ The `mode` parameter controls which outputs are modelled jointly:
 
 When `epochs` is set to `"auto"`, the model uses cross-validation to determine the optimal number of training epochs, which is recommended for most use cases.
 
+Use `callbacks` to pass Keras callbacks, with validation_split holding out a subset to condition on: 
+
+```python
+"surrogate_custom_training_kwargs": {
+    "epochs": 500,
+    "validation_split": 0.2,
+    "callbacks": [
+        ["keras.callbacks.EarlyStopping",
+         {"monitor": "val_objectives_loss", "patience": 150,
+          "mode": "min", "restore_best_weights": True}],
+    ],
+},
+```
+
 ### Sensitivity-guided optimization
 
 The joint model additionally provides gradient-based parameter sensitivity analysis. When sensitivity is enabled (the default), the optimizer uses the estimated sensitivities to adapt crossover and mutation rates per parameter, focusing search effort on the most influential parameters.
@@ -80,7 +94,7 @@ dmosopt_params = {
 | `feasibility_targets` | `"objective constraint"` | Loss terms: a hypervolume stand-in on the predicted objectives, focal cross-entropy on the predicted constraint probabilities, or both |
 | `feasibility_iterations` | `1000` | Maximum descent steps per projection |
 | `feasibility_after` | `10` | NSGA-II generations before the projection runs |
-| `feasibility_constraint_weights` | `None` | One weight per constraint, or `{column: weight}` with the rest at 1, scaling each constraint's share of the loss |
+| `feasibility_constraint_weights` | `None` | One weight per constraint, or `{column or constraint name: weight}` with the rest at 1, scaling each constraint's share of the loss |
 | `feasibility_max_move` | `0.1` | Adam trust region, as a fraction of each parameter's range |
 
 See the how-to guide [Surrogate gradient descent](/examples/howto/surrogate-gradient-descent) for a full walk through of the idea, the code, and its results on a 146-parameter network model with 57 constraints.

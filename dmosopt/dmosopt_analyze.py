@@ -50,16 +50,14 @@ def main(
         _,
         max_epoch,
         old_evals,
-        param_names,
-        is_int,
-        lo_bounds,
-        hi_bounds,
+        param_space,
         objective_names,
         feature_names,
         constraint_names,
         problem_parameters,
         problem_ids,
     ) = init_from_h5(file_path, None, opt_id, None)
+    param_names = param_space.parameter_names
 
     if problem_ids is None:
         problem_ids = [0]
@@ -92,7 +90,7 @@ def main(
             filtered_objective_names = [
                 objective_names[i] for i in filtered_objective_index
             ]
-            filtered_y = y[filtered_objective_index]
+            filtered_y = y[:, filtered_objective_index]
             objective_names = filtered_objective_names
             y = filtered_y
 
