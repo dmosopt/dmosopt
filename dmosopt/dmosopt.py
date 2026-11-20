@@ -597,6 +597,7 @@ class DistOptimizer:
         feasibility_method_kwargs=None,
         termination_conditions=None,
         controller: Optional[distwq.MPIController] = None,
+        time_limit: Optional[float] = None,
         **kwargs,
     ) -> None:
         """
@@ -627,6 +628,10 @@ class DistOptimizer:
         :param int save_eval: (optional) How often to save progress.
         :param str file_path: (optional) File name for restoring and/or saving results and settings.
         :param bool save: (optional) Save settings and progress periodically.
+        :param float time_limit: (optional) Wall-clock time in seconds,
+        counted from the creation of the optimizer.  Once it has passed,
+        no further evaluations are submitted; those already running are
+        collected, the current epoch ends, and no further epoch starts.
         """
 
         if (random_seed is not None) and (local_random is not None):
@@ -639,6 +644,8 @@ class DistOptimizer:
             local_random = default_rng(seed=random_seed)
 
         self.controller = controller
+        self.time_limit = time_limit
+        self.start_time = time.time()
         self.opt_id = opt_id
         self.verbose = verbose
         self.population_size = population_size
@@ -1156,6 +1163,13 @@ class DistOptimizer:
                 else:
                     self.logger.info(f"Best eval {i} so far: {res_i}@{prms_i}")
 
+    def time_limit_reached(self):
+        """Return True when time_limit seconds have passed since this
+        optimizer was created; always False without a time limit."""
+        return (self.time_limit is not None) and (
+            time.time() - self.start_time
+        ) >= self.time_limit
+
     def _process_requests(self):
         task_ids = []
 
@@ -1168,11 +1182,6 @@ class DistOptimizer:
         next_phase = False
         while (len(task_ids) > 0) or has_requests:
             self.controller.process()
-
-            if (self.controller.time_limit is not None) and (
-                time.time() - self.controller.start_time
-            ) >= self.controller.time_limit:
-                break
 
             if len(task_ids) > 0:
                 rets = self.controller.probe_all_next_results()
@@ -1289,10 +1298,11 @@ class DistOptimizer:
                 self.save_evals()
                 self.saved_eval_count = self.eval_count
 
-            if (self.controller.time_limit is not None) and (
-                time.time() - self.controller.start_time
-            ) >= self.controller.time_limit:
-                break
+            if self.time_limit_reached():
+                # Submit no further evaluations, but keep collecting the
+                # results of those still running, so that none is lost.
+                has_requests = False
+                continue
 
             task_args = []
             task_reqs = []
@@ -1320,11 +1330,6 @@ class DistOptimizer:
                         )
                     )
                     task_reqs.append(eval_req_dict)
-
-            if (self.controller.time_limit is not None) and (
-                time.time() - self.controller.start_time
-            ) >= self.controller.time_limit:
-                break
 
             if len(task_args) > 0:
                 new_task_ids = self.controller.submit_multiple(
@@ -1395,7 +1400,7 @@ class DistOptimizer:
                         **(self.dynamic_initial_sampling_kwargs or {}),
                     )
 
-                    if more_samples is None:
+                    if more_samples is None or self.time_limit_reached():
                         break
 
                     distopt.reqs.extend(
@@ -1415,6 +1420,13 @@ class DistOptimizer:
 
         while not completed_epoch:
             eval_count, saved_eval_count = self._process_requests()
+
+            if self.time_limit_reached():
+                self.logger.info(
+                    f"Time limit of {self.time_limit} s reached in epoch {epoch}; "
+                    f"stopping after {self.eval_count} evaluations"
+                )
+                break
 
             for problem_id in self.problem_ids:
                 ## Have we completed the evaluations for an epoch or a generation
@@ -2533,7 +2545,7 @@ def dopt_ctrl(controller, dopt_params, nprocs_per_worker, verbose=True):
         # initial sampling only
         return dopt.run_epoch(completed_epoch=True)
 
-    while dopt.epoch_count < dopt.n_epochs:
+    while dopt.epoch_count < dopt.n_epochs and not dopt.time_limit_reached():
         dopt.run_epoch()
 
 
@@ -2565,6 +2577,8 @@ def run(
     worker_debug=False,
 ):
     if distwq.is_controller:
+        if time_limit is not None:
+            dopt_params = {**dopt_params, "time_limit": time_limit}
         distwq.run(
             fun_name="dopt_ctrl",
             module_name="dmosopt.dmosopt",
@@ -2582,7 +2596,6 @@ def run(
             spawn_args=spawn_args,
             nprocs_per_worker=nprocs_per_worker,
             collective_mode=collective_mode,
-            time_limit=time_limit,
         )
         opt_id = dopt_params["opt_id"]
         dopt = dopt_dict[opt_id]
@@ -2616,6 +2629,5 @@ def run(
             spawn_args=spawn_args,
             nprocs_per_worker=nprocs_per_worker,
             collective_mode=collective_mode,
-            time_limit=time_limit,
         )
         return None
