@@ -7,5 +7,6 @@ $ pip install dmosopt
 ```
 
 ::: info
-dmosopt currently supports Python 3.8 and higher
+dmosopt requires Python 3.11 or higher. From version 1.0, it uses
+distwq 2 for distributed evaluation; dmosopt 0.9.x uses distwq 1.x.
 :::

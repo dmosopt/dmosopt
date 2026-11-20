@@ -1,6 +1,6 @@
 [project]
 name = "dmosopt"
-version = "0.9.5"
+version = "1.0.0"
 description = "Distributed multi-objective surrogate optimization algorithm."
 authors = [
     { name = "Ivan Raikov", email = "ivan.g.raikov@gmail.com" },
@@ -10,7 +10,7 @@ dependencies = [
     "mpi4py>=4.0.0",
     "h5py>=3.11.0",
     "scikit-learn>=1.5.1",
-    "distwq>=1.3.4,<2",
+    "distwq>=2.0.0,<3",
     "scipy>=1.13.1",
     # Command-line interface of dmosopt-analyze and dmosopt-train
     "click>=8.0",

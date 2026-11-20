@@ -31,7 +31,7 @@ various configuration options.
 
 **Parameters:**
 - `dopt_params` (dict): A dictionary specifying the optimization parameters, including the objective function, parameter space, and optimization settings.
-- `time_limit` (float, optional): The time limit for the optimization in seconds. If not provided, the optimization will run until the specified number of epochs is reached.
+- `time_limit` (float, optional): The time limit for the optimization in seconds. Once it has passed, no further evaluations are submitted; the evaluations still running are collected, the current epoch ends, and `run` returns the best solutions found so far. If not provided, the optimization will run until the specified number of epochs is reached.
 - `feasible` (bool, optional): If True, only feasible solutions will be returned. Default is True.
 - `return_features` (bool, optional): If True, the function will also return the features of the best solution. Default is False.
 - `return_constraints` (bool, optional): If True, the function will also return the constraint values of the best solution. Default is False.

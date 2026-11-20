@@ -108,3 +108,10 @@ jobs:
           # ranks requested here; Open MPI otherwise refuses to start with
           # "not enough slots".
           mpirun --oversubscribe -n 4 python tests/mpi/test_mpi_distributed.py
+
+      - name: Run MPI time-limit test
+        # A run that ignores its time limit would go on for 1000 epochs;
+        # the step timeout turns that into a failure rather than a hung job.
+        timeout-minutes: 10
+        run: |
+          mpirun --oversubscribe -n 4 python tests/mpi/test_mpi_time_limit.py
